@@ -1,7 +1,7 @@
 import { toolReceiptDomain, TOOL_RECEIPT_TYPES, type UnsignedToolReceipt } from '@shipyard402/evidence-sdk';
 import { Contract, Wallet, getAddress, type InterfaceAbi, type JsonRpcProvider } from 'ethers';
 
-import { ATTESTATION_TYPED_DATA_TYPES, attestationTypedDataValue, registryDomain } from './registry-eip712.js';
+import { ATTESTATION_TYPED_DATA_TYPES, attestationTypedDataValue, registryDomain, RESULT_INDEX } from './registry-eip712.js';
 import type { ConfirmedPayment, NativePaymentSender, RegistryAttestor, RunAttestationInput, ToolReceiptSigner } from './ports.js';
 
 export class EthersNativePaymentSender implements NativePaymentSender {
@@ -75,7 +75,10 @@ export class EthersRegistryAttestor implements RegistryAttestor {
       ATTESTATION_TYPED_DATA_TYPES,
       attestationTypedDataValue(attestation),
     );
-    const tx = await this.#contract['recordRun']!(attestation, signature);
+    // The contract's `result` field is a Solidity enum (uint8) — the on-chain call needs its
+    // numeric index, unlike the EIP-712 signature above which hashes the outcome as a string.
+    const callData = { ...attestation, result: RESULT_INDEX[attestation.result] };
+    const tx = await this.#contract['recordRun']!(callData, signature);
     const receipt = await tx.wait(1);
     if (!receipt || receipt.status !== 1) {
       throw new Error(`Attestation transaction did not confirm successfully: ${tx.hash}`);

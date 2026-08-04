@@ -22,7 +22,7 @@ const RUN_OUTCOME_TYPEHASH = keccak256(toUtf8Bytes(
   'RunOutcome(uint64 completedAt,uint64 expiresAt,uint8 result)',
 ));
 
-const RESULT_INDEX: Record<RunAttestationInput['result'], number> = {
+export const RESULT_INDEX: Record<RunAttestationInput['result'], number> = {
   PASS: 0,
   CONDITIONAL: 1,
   FAIL: 2,
