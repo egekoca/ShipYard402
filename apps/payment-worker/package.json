@@ -12,7 +12,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@shipyard402/payment-reconciliation": "workspace:*"
+    "@shipyard402/goat-chain-reader": "workspace:*",
+    "@shipyard402/goat-flow-adapter": "workspace:*",
+    "@shipyard402/goat-network-config": "workspace:*",
+    "@shipyard402/payment-reconciliation": "workspace:*",
+    "@shipyard402/persistence-postgres": "workspace:*",
+    "zod": "3.24.2"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

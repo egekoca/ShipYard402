@@ -15,6 +15,24 @@ export type PaymentJobResult =
   | Readonly<{ action: 'RETRY'; delayMilliseconds: number; reason: string }>
   | Readonly<{ action: 'DEAD_LETTER'; reason: string; failureCodes?: readonly string[] }>;
 
+export type LeasedPaymentReconciliationJob = PaymentReconciliationJob & Readonly<{
+  leaseOwner: string;
+}>;
+
+export interface PaymentReconciliationJobQueue {
+  claimNext(input: Readonly<{
+    workerId: string;
+    leaseDurationSeconds: number;
+  }>): Promise<LeasedPaymentReconciliationJob | null>;
+  markCompleted(job: LeasedPaymentReconciliationJob): Promise<void>;
+  markRetry(job: LeasedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void>;
+  markDeadLetter(
+    job: LeasedPaymentReconciliationJob,
+    reason: string,
+    failureCodes?: readonly string[],
+  ): Promise<void>;
+}
+
 export class PaymentReconciliationJobHandler {
   readonly #reconciler: PaymentReconciler;
 
@@ -44,6 +62,28 @@ export class PaymentReconciliationJobHandler {
         reason: error instanceof PaymentNotReadyError ? 'PAYMENT_NOT_READY' : classifyRetryableError(error),
       };
     }
+  }
+}
+
+export async function processNextPaymentJob(
+  queue: PaymentReconciliationJobQueue,
+  handler: PaymentReconciliationJobHandler,
+  claim: Readonly<{ workerId: string; leaseDurationSeconds: number }>,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const job = await queue.claimNext(claim);
+  if (!job) return false;
+  const result = await handler.handle(job, signal);
+  switch (result.action) {
+    case 'ACK':
+      await queue.markCompleted(job);
+      return true;
+    case 'RETRY':
+      await queue.markRetry(job, result.delayMilliseconds, result.reason);
+      return true;
+    case 'DEAD_LETTER':
+      await queue.markDeadLetter(job, result.reason, result.failureCodes ?? []);
+      return true;
   }
 }
 

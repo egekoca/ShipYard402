@@ -68,7 +68,7 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
   }
 }
 
-export function createGoatMainnetReceiptReader(rpcUrl = GOAT_MAINNET.publicRpcUrl): ViemGoatReceiptReader {
+export function createGoatMainnetReceiptReader(rpcUrl: string = GOAT_MAINNET.publicRpcUrl): ViemGoatReceiptReader {
   const parsed = new URL(rpcUrl);
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
     throw new Error('GOAT mainnet RPC must be an HTTPS URL without embedded credentials');

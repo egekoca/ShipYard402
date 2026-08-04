@@ -273,6 +273,14 @@ async function insertEventAndOutbox(client: PoolClient, event: RunTransitionedEv
      VALUES ('RUN', $1, $2, $3::jsonb)`,
     [event.runId, event.type, JSON.stringify(event)],
   );
+  if (event.to === 'PAYMENT_REQUIRED') {
+    await client.query(
+      `INSERT INTO payment_reconciliation_jobs (run_id)
+       VALUES ($1)
+       ON CONFLICT (run_id) DO NOTHING`,
+      [event.runId],
+    );
+  }
 }
 
 function parseQuoteRow(row: QuoteRow): Quote {
