@@ -42,8 +42,9 @@ corepack pnpm install
 corepack pnpm infra:up
 corepack pnpm test:postgres
 corepack pnpm verify
-cd contracts && forge test
 ```
+
+`pnpm verify` includes the Foundry unit, 512-run fuzz, and stateful invariant suites. Install the stable Foundry toolchain from its official installer before running the command.
 
 The local PostgreSQL service uses a digest-pinned official `postgres:17.10-alpine3.23` image and binds only to `127.0.0.1:5432`. `infra:up` waits for database health, then runs checksum-verified migrations under a PostgreSQL advisory lock. The credentials in `compose.yaml` are local-development defaults and must never be used in a deployed environment. `corepack pnpm infra:down` stops the service without deleting its data volume.
 
