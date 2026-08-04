@@ -18,6 +18,8 @@ export type ApiRunRecord = Readonly<{
   requestIdempotencyKey: string;
   paymentOrder?: MerchantOrder;
   uncommittedEvent?: RunTransitionedEvent;
+  customerPaymentProofHash?: `0x${string}`;
+  customerPaymentAtomic?: string;
 }>;
 
 type QuoteRow = QueryResultRow & {
@@ -44,6 +46,8 @@ type RunRow = QueryResultRow & {
   updated_at: Date | string;
   applied_keys: string[];
   order_id: string | null;
+  customer_payment_proof_hash: Buffer | null;
+  customer_payment_atomic: string | null;
 };
 
 export class QuoteTargetNotOnboardedError extends Error {
@@ -179,6 +183,7 @@ export class PostgresRunRepository {
       `SELECT
         r.id, r.quote_id, r.request_idempotency_key, r.status, r.result,
         r.revision::text, r.created_at, r.updated_at,
+        r.customer_payment_proof_hash, r.customer_payment_atomic::text AS customer_payment_atomic,
         ARRAY(SELECT e.idempotency_key FROM run_events e WHERE e.run_id = r.id ORDER BY e.revision) AS applied_keys,
         po.order_id
       FROM runs r
@@ -194,6 +199,8 @@ export class PostgresRunRepository {
       quoteId: row.quote_id,
       requestIdempotencyKey: row.request_idempotency_key,
       ...(paymentContext ? { paymentOrder: paymentContext.order } : {}),
+      ...(row.customer_payment_proof_hash ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) } : {}),
+      ...(row.customer_payment_atomic ? { customerPaymentAtomic: row.customer_payment_atomic } : {}),
     };
   }
 }

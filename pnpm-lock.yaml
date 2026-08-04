@@ -63,8 +63,57 @@ importers:
         specifier: 5.11.2
         version: 5.11.2
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      tsx:
+        specifier: 4.20.5
+        version: 4.20.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/node@24.3.0)(tsx@4.20.5)
+
+  apps/orchestrator-worker:
+    dependencies:
+      '@shipyard402/evidence-sdk':
+        specifier: workspace:*
+        version: link:../../packages/evidence-sdk
+      '@shipyard402/goat-network-config':
+        specifier: workspace:*
+        version: link:../../packages/goat-network-config
+      '@shipyard402/persistence-postgres':
+        specifier: workspace:*
+        version: link:../../packages/persistence-postgres
+      '@shipyard402/policy-engine':
+        specifier: workspace:*
+        version: link:../../packages/policy-engine
+      '@shipyard402/protected-delivery-runner':
+        specifier: workspace:*
+        version: link:../../packages/protected-delivery-runner
+      '@shipyard402/quote-engine':
+        specifier: workspace:*
+        version: link:../../packages/quote-engine
+      '@shipyard402/risk-classifier':
+        specifier: workspace:*
+        version: link:../../packages/risk-classifier
+      '@shipyard402/run-domain':
+        specifier: workspace:*
+        version: link:../../packages/run-domain
+      ethers:
+        specifier: 6.17.0
+        version: 6.17.0
+      openai:
+        specifier: 7.4.0
+        version: 7.4.0(ws@8.21.0)(zod@3.25.76)
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -97,8 +146,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/persistence-postgres
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -146,15 +195,21 @@ importers:
 
   apps/x402-demo-target:
     dependencies:
+      '@shipyard402/goat-network-config':
+        specifier: workspace:*
+        version: link:../../packages/goat-network-config
       '@shipyard402/protected-delivery-runner':
         specifier: workspace:*
         version: link:../../packages/protected-delivery-runner
       fastify:
         specifier: 5.11.2
         version: 5.11.2
+      viem:
+        specifier: 2.55.10
+        version: 2.55.10(typescript@5.9.3)(zod@3.25.76)
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -175,8 +230,8 @@ importers:
         specifier: 6.17.0
         version: 6.17.0
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -198,7 +253,7 @@ importers:
         version: link:../payment-reconciliation
       viem:
         specifier: 2.55.10
-        version: 2.55.10(typescript@5.9.3)(zod@3.24.2)
+        version: 2.55.10(typescript@5.9.3)(zod@3.25.76)
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -222,8 +277,8 @@ importers:
         specifier: 0.3.0
         version: 0.3.0
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -238,8 +293,8 @@ importers:
   packages/goat-network-config:
     dependencies:
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -300,8 +355,8 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -322,8 +377,8 @@ importers:
         specifier: workspace:*
         version: link:../run-domain
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -365,8 +420,27 @@ importers:
         specifier: workspace:*
         version: link:../run-domain
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 24.3.0
+        version: 24.3.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.7
+        version: 3.2.7(@types/node@24.3.0)(tsx@4.20.5)
+
+  packages/risk-classifier:
+    dependencies:
+      openai:
+        specifier: 7.4.0
+        version: 7.4.0(ws@8.21.0)(zod@3.25.76)
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -402,8 +476,8 @@ importers:
         specifier: 6.17.0
         version: 6.17.0
       zod:
-        specifier: 3.24.2
-        version: 3.24.2
+        specifier: 3.25.76
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0
@@ -1431,6 +1505,27 @@ packages:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
 
+  openai@7.4.0:
+    resolution: {integrity: sha512-+C9Muit5x8j9R8ej8ZzVgKcrVDtqFqTy9gxFdov0EItLgU68zrJtF9ZeT0cyqJQW9S3PCJkdFgADtRGquRBtew==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
+      '@smithy/hash-node': '>=4.3.0 <5'
+      '@smithy/signature-v4': '>=5.4.0 <6'
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      '@aws-sdk/credential-provider-node':
+        optional: true
+      '@smithy/hash-node':
+        optional: true
+      '@smithy/signature-v4':
+        optional: true
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   ox@0.14.33:
     resolution: {integrity: sha512-rooA/4o7bBof4Ge2VH/eovfNPb/AEEYyrNj03wggc55g5HZD8Pjs/OeWhttgjic3dDcqn0r29bDuvQEdTiUemQ==}
     peerDependencies:
@@ -1837,8 +1932,8 @@ packages:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
 
-  zod@3.24.2:
-    resolution: {integrity: sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ==}
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
 
@@ -2354,10 +2449,10 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  abitype@1.2.3(typescript@5.9.3)(zod@3.24.2):
+  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.24.2
+      zod: 3.25.76
 
   abstract-logging@2.0.1: {}
 
@@ -2628,7 +2723,12 @@ snapshots:
 
   on-exit-leak-free@2.1.2: {}
 
-  ox@0.14.33(typescript@5.9.3)(zod@3.24.2):
+  openai@7.4.0(ws@8.21.0)(zod@3.25.76):
+    optionalDependencies:
+      ws: 8.21.0
+      zod: 3.25.76
+
+  ox@0.14.33(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -2636,7 +2736,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.24.2)
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -2939,15 +3039,15 @@ snapshots:
 
   undici-types@7.10.0: {}
 
-  viem@2.55.10(typescript@5.9.3)(zod@3.24.2):
+  viem@2.55.10(typescript@5.9.3)(zod@3.25.76):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.24.2)
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.33(typescript@5.9.3)(zod@3.24.2)
+      ox: 0.14.33(typescript@5.9.3)(zod@3.25.76)
       ws: 8.21.0
     optionalDependencies:
       typescript: 5.9.3
@@ -3040,4 +3140,4 @@ snapshots:
 
   xtend@4.0.2: {}
 
-  zod@3.24.2: {}
+  zod@3.25.76: {}

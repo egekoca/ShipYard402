@@ -164,6 +164,10 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
          VALUES ('RUN', $1, $2, $3::jsonb)`,
         [input.run.id, input.event.type, JSON.stringify(input.event)],
       );
+      await client.query(
+        `INSERT INTO orchestrator_jobs (run_id) VALUES ($1) ON CONFLICT (run_id) DO NOTHING`,
+        [input.run.id],
+      );
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
