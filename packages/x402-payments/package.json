@@ -19,7 +19,7 @@
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/run-domain": "workspace:*",
     "ethers": "6.17.0",
-    "zod": "3.25.76"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

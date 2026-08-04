@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@shipyard402/run-domain": "workspace:*",
-    "zod": "3.25.76"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
