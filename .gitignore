@@ -1,0 +1,21 @@
+node_modules/
+.pnpm-store/
+.turbo/
+dist/
+.next/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/out-solc/
+contracts/broadcast/
+
+# Runtime data
+.local/
+evidence-private/
