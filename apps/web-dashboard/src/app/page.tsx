@@ -1,12 +1,12 @@
-import { ReleaseRunForm } from '../components/release-run-form';
+import type { CSSProperties } from 'react';
 
-const proofSteps = [
-  'Customer payment',
-  'AI risk plan',
-  'Paid tool procurement',
-  'Deterministic evidence',
-  'GOAT attestation',
-];
+import { AnimatedWorkflow } from '../components/animated-workflow';
+import { ReleaseRunForm } from '../components/release-run-form';
+import { ReplayDefenseDemo } from '../components/replay-defense-demo';
+
+function delayStyle(ms: number): CSSProperties {
+  return { '--delay': `${ms}ms` } as CSSProperties;
+}
 
 export default function HomePage() {
   return (
@@ -20,26 +20,25 @@ export default function HomePage() {
       </header>
 
       <section className="hero" id="top">
-        <div className="eyebrow">AUTONOMOUS RELEASE ASSURANCE</div>
-        <h1>Prove the paid path.<br /><em>Before users find the drift.</em></h1>
-        <p className="hero-copy">
+        <div className="eyebrow hero-in" style={delayStyle(0)}>AUTONOMOUS RELEASE ASSURANCE</div>
+        <h1>
+          <span className="hero-in" style={delayStyle(80)}>Prove the paid path.</span>
+          <br />
+          <em className="hero-in" style={delayStyle(200)}>Before users find the drift.</em>
+        </h1>
+        <p className="hero-copy hero-in" style={delayStyle(340)}>
           Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound
           attestations for one exact service version.
         </p>
-        <div className="scope-note">
+        <div className="scope-note hero-in" style={delayStyle(460)}>
           <strong>What a PASS means</strong>
           <span>Tested under a named policy at a recorded time. It is not a blanket security certificate.</span>
         </div>
       </section>
 
-      <section className="workflow" aria-label="Assurance workflow">
-        {proofSteps.map((step, index) => (
-          <div className="workflow-step" key={step}>
-            <span>{String(index + 1).padStart(2, '0')}</span>
-            <p>{step}</p>
-          </div>
-        ))}
-      </section>
+      <AnimatedWorkflow />
+
+      <ReplayDefenseDemo />
 
       <section className="run-section">
         <div className="section-heading">

@@ -98,7 +98,7 @@ export class ShipyardApiClient {
   readonly #baseUrl: URL;
   readonly #fetch: typeof fetch;
 
-  constructor(baseUrl: string, fetchImplementation: typeof fetch = fetch) {
+  constructor(baseUrl: string, fetchImplementation: typeof fetch = fetch.bind(globalThis)) {
     this.#baseUrl = normalizeBaseUrl(baseUrl);
     this.#fetch = fetchImplementation;
   }
