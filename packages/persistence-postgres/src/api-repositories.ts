@@ -46,6 +46,15 @@ type RunRow = QueryResultRow & {
   order_id: string | null;
 };
 
+export class QuoteTargetNotOnboardedError extends Error {
+  readonly code = 'QUOTE_TARGET_NOT_ONBOARDED';
+
+  constructor() {
+    super('Quote target is not bound to an active onboarded service, release, and policy');
+    this.name = 'QuoteTargetNotOnboardedError';
+  }
+}
+
 export class PostgresQuoteRepository {
   readonly #pool: Pool;
 
@@ -214,7 +223,7 @@ async function resolveCatalogBinding(
   );
   const row = result.rows[0];
   if (!row) {
-    throw new Error('Quote target is not bound to an active onboarded service, release, and policy');
+    throw new QuoteTargetNotOnboardedError();
   }
   return { serviceId: row.service_id, releaseId: row.release_id, policyId: row.policy_id };
 }

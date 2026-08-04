@@ -18,6 +18,7 @@
     "infra:status": "docker-compose ps",
     "infra:up": "docker-compose up -d --wait postgres",
     "db:psql": "docker-compose exec postgres psql -U shipyard -d shipyard",
+    "test:postgres": "pnpm --filter @shipyard402/persistence-postgres test:postgres",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile"

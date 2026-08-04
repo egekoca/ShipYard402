@@ -99,6 +99,40 @@ afterEach(async () => {
 });
 
 describe('api gateway vertical slice', () => {
+  it('reports persistence and merchant readiness without claiming signer access', async () => {
+    const app = createApp({
+      capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
+      quoteEngine: new QuoteEngine({
+        pricingStatus: 'HYPOTHESIS',
+        baseOrchestrationFeeAtomic: '1',
+        mandatoryToolBudgetAtomic: '1',
+        dynamicToolBudgetAtomic: '1',
+        modelInfrastructureReserveAtomic: '1',
+        chainStorageReserveAtomic: '1',
+        riskSupportReserveAtomic: '1',
+        quoteTtlSeconds: 60,
+      }),
+      quoteRepository: new InMemoryQuoteRepository(),
+      runRepository: new InMemoryRunRepository(),
+      runtimeStatusProvider: {
+        async getRuntimeStatus() {
+          return {
+            status: 'degraded', environment: 'development', persistence: 'postgresql',
+            database: 'connected', merchantPayments: 'not_configured',
+          };
+        },
+      },
+    });
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/health' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: 'degraded', persistence: 'postgresql', database: 'connected',
+      merchantPayments: 'not_configured', mainnetWritesEnabled: false,
+    });
+  });
+
   it('fails closed instead of inventing a payment capability', async () => {
     const response = await testApp(false).inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody });
     expect(response.statusCode).toBe(503);

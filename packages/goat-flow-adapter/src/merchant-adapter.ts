@@ -84,7 +84,7 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
     return new GoatFlowMerchantAdapter({
       merchantId: options.merchantId,
       client: new GoatFlowClient({
-        baseUrl: GOAT_MAINNET.flowApiUrl,
+        baseUrl: GOAT_MAINNET.x402ApiUrl,
         apiKey: options.apiKey,
         apiSecret: options.apiSecret,
       }),

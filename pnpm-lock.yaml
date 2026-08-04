@@ -35,9 +35,15 @@ importers:
       '@fastify/cors':
         specifier: 11.3.0
         version: 11.3.0
+      '@shipyard402/goat-flow-adapter':
+        specifier: workspace:*
+        version: link:../../packages/goat-flow-adapter
       '@shipyard402/goat-network-config':
         specifier: workspace:*
         version: link:../../packages/goat-network-config
+      '@shipyard402/persistence-postgres':
+        specifier: workspace:*
+        version: link:../../packages/persistence-postgres
       '@shipyard402/quote-engine':
         specifier: workspace:*
         version: link:../../packages/quote-engine

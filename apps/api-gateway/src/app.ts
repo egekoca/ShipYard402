@@ -32,12 +32,25 @@ export interface RuntimeCapabilityProvider {
   getShipyardMerchantCapability(): Promise<FlowRuntimeCapability | null>;
 }
 
+export type RuntimeStatus = Readonly<{
+  status: 'ok' | 'degraded' | 'unavailable';
+  environment: 'development' | 'test' | 'production';
+  persistence: 'postgresql' | 'memory';
+  database: 'connected' | 'unavailable' | 'not_configured';
+  merchantPayments: 'configured' | 'not_configured';
+}>;
+
+export interface RuntimeStatusProvider {
+  getRuntimeStatus(): Promise<RuntimeStatus>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
   runRepository: RunRepository;
   capabilityProvider: RuntimeCapabilityProvider;
   merchantAdapter?: X402MerchantAdapter;
+  runtimeStatusProvider?: RuntimeStatusProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -58,12 +71,23 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     });
   }
 
-  app.get('/health', async () => ({
-    status: 'ok',
-    service: 'shipyard402-api-gateway',
-    mainnetWritesEnabled: false,
-    assuranceClaim: 'version-policy-expiry-scoped-execution-evidence',
-  }));
+  app.get('/health', async (_request, reply) => {
+    const runtime = dependencies.runtimeStatusProvider
+      ? await dependencies.runtimeStatusProvider.getRuntimeStatus()
+      : {
+          status: 'ok' as const,
+          environment: 'test' as const,
+          persistence: 'memory' as const,
+          database: 'not_configured' as const,
+          merchantPayments: dependencies.merchantAdapter ? 'configured' as const : 'not_configured' as const,
+        };
+    return reply.code(runtime.status === 'unavailable' ? 503 : 200).send({
+      ...runtime,
+      service: 'shipyard402-api-gateway',
+      mainnetWritesEnabled: false,
+      assuranceClaim: 'version-policy-expiry-scoped-execution-evidence',
+    });
+  });
 
   app.post('/v1/quotes', async (request, reply) => {
     const parsed = quoteRequestSchema.safeParse(request.body);
@@ -71,7 +95,16 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       return reply.code(400).send({ code: 'INVALID_QUOTE_REQUEST', issues: parsed.error.issues });
     }
 
-    const capability = await dependencies.capabilityProvider.getShipyardMerchantCapability();
+    let capability: FlowRuntimeCapability | null;
+    try {
+      capability = await dependencies.capabilityProvider.getShipyardMerchantCapability();
+    } catch (error) {
+      request.log.error({ err: error }, 'GOAT x402 merchant capability discovery failed');
+      return reply.code(503).send({
+        code: 'RUNTIME_PAYMENT_CAPABILITY_UNAVAILABLE',
+        message: 'The reviewed GOAT x402 merchant capability could not be verified.',
+      });
+    }
     if (!capability) {
       return reply.code(503).send({
         code: 'RUNTIME_PAYMENT_CAPABILITY_UNAVAILABLE',
@@ -86,6 +119,12 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     } catch (error) {
       if (error instanceof QuoteBudgetExceededError) {
         return reply.code(422).send({ code: 'CUSTOMER_BUDGET_EXCEEDED', message: error.message });
+      }
+      if (hasErrorCode(error, 'QUOTE_TARGET_NOT_ONBOARDED')) {
+        return reply.code(409).send({
+          code: 'QUOTE_TARGET_NOT_ONBOARDED',
+          message: 'The service release and policy must be onboarded before a durable quote can be created.',
+        });
       }
       throw error;
     }
@@ -190,6 +229,10 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   return app;
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
 
 async function ensurePaymentRequired(
