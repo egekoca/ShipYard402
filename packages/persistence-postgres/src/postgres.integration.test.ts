@@ -5,6 +5,7 @@ import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresQuoteRepository, PostgresRunRepository, type ApiRunRecord } from './api-repositories.js';
+import { PostgresPaymentReconciliationJobQueue } from './payment-job-queue.js';
 import { createShipyardPool } from './pool.js';
 
 const databaseUrl = process.env['TEST_DATABASE_URL'];
@@ -52,6 +53,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
 
   afterAll(async () => {
     if (!pool) return;
+    await pool.query(`DELETE FROM payment_reconciliation_jobs WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM outbox_events WHERE aggregate_id = $1`, [runId]);
     await pool.query(`DELETE FROM run_events WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM runs WHERE id = $1`, [runId]);
@@ -63,7 +65,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
     await pool.end();
   });
 
-  it('persists a catalog-bound quote, idempotent run, domain event, and outbox record', async () => {
+  it('persists a quote and run, then leases its durable payment reconciliation job', async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     const quoteRepository = new PostgresQuoteRepository(pool);
     const firstRunRepository = new PostgresRunRepository(pool);
@@ -129,10 +131,38 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
       quoteId: quote.id,
       requestIdempotencyKey: record.requestIdempotencyKey,
     });
+    if (!recovered) throw new Error('Expected persisted QUOTED run');
+    const paymentRequired = transitionRun(recovered.aggregate, {
+      actor: 'MERCHANT_GATEWAY',
+      expectedRevision: recovered.aggregate.revision,
+      idempotencyKey: `payment-required:${fixtureSuffix}`,
+      occurredAt: new Date(now.getTime() + 1_000).toISOString(),
+      to: 'PAYMENT_REQUIRED',
+    });
+    if (!paymentRequired.event) throw new Error('Expected PAYMENT_REQUIRED domain event');
+    await restartedRepository.save({
+      ...recovered,
+      aggregate: paymentRequired.run,
+      uncommittedEvent: paymentRequired.event,
+    }, recovered.aggregate.revision);
+
+    const queue = new PostgresPaymentReconciliationJobQueue(pool);
+    const firstClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
+    expect(firstClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 8 });
+    await expect(queue.claimNext({
+      workerId: 'competing-worker', leaseDurationSeconds: 30,
+    })).resolves.toBeNull();
+    await queue.markRetry(firstClaim!, 0, 'PAYMENT_NOT_READY');
+    const retryClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
+    expect(retryClaim).toMatchObject({ runId, attempt: 2, maximumAttempts: 8 });
+    await queue.markCompleted(retryClaim!);
+    const completedJob = await queue.findByRunId(runId);
+    expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
+    expect(completedJob).not.toHaveProperty('lastErrorCode');
     await expect(pool.query(
       `SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = $1 AND event_type = 'run.transitioned'`,
       [runId],
-    )).resolves.toMatchObject({ rows: [{ count: 1 }] });
+    )).resolves.toMatchObject({ rows: [{ count: 2 }] });
   });
 });
 

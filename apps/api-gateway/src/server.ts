@@ -2,6 +2,7 @@ import { GoatFlowMerchantAdapter, type ReviewedCapabilitySource } from '@shipyar
 import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import {
   createShipyardPool,
+  assertShipyardSchemaReady,
   PostgresFlowOrderContextStore,
   PostgresQuoteRepository,
   PostgresRunRepository,
@@ -101,6 +102,7 @@ async function start(): Promise<void> {
 
   try {
     await pool.query('SELECT 1');
+    await assertShipyardSchemaReady(pool);
   } catch (error) {
     await pool.end();
     throw new Error('PostgreSQL readiness check failed; API startup was aborted', { cause: error });

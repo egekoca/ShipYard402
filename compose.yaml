@@ -13,7 +13,7 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - shipyard402_postgres_data:/var/lib/postgresql/data
-      - ./infra/migrations:/docker-entrypoint-initdb.d:ro
+      - ./infra/migrations/0001_core.sql:/docker-entrypoint-initdb.d/0001_core.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shipyard -d shipyard"]
       interval: 5s
