@@ -47,6 +47,8 @@ contract ShipyardRunRegistryTest is TestBase {
         ShipyardRunRegistry.RunAttestation memory second = _attestation(bytes32(uint256(4)), bytes32(uint256(13)));
         registry.recordRun(first, _sign(first, ATTESTOR_KEY));
 
+        bytes memory secondSignature = _sign(second, ATTESTOR_KEY);
+
         vm.expectRevert(
             abi.encodeWithSelector(
                 ShipyardRunRegistry.PaymentProofAlreadyUsed.selector,
@@ -54,30 +56,33 @@ contract ShipyardRunRegistryTest is TestBase {
                 first.runId
             )
         );
-        registry.recordRun(second, _sign(second, ATTESTOR_KEY));
+        registry.recordRun(second, secondSignature);
     }
 
     function test_UnauthorizedSignatureReverts() public {
         ShipyardRunRegistry.RunAttestation memory a = _attestation(bytes32(uint256(5)), bytes32(uint256(15)));
         address badSigner = vm.addr(BAD_ATTESTOR_KEY);
+        bytes memory badSignature = _sign(a, BAD_ATTESTOR_KEY);
         vm.expectRevert(abi.encodeWithSelector(ShipyardRunRegistry.UnauthorizedAttestor.selector, badSigner));
-        registry.recordRun(a, _sign(a, BAD_ATTESTOR_KEY));
+        registry.recordRun(a, badSignature);
     }
 
     function test_MissingVersionAndPolicyAreRejected() public {
         ShipyardRunRegistry.RunAttestation memory a = _attestation(bytes32(uint256(6)), bytes32(uint256(16)));
         a.targetVersionHash = bytes32(0);
+        bytes memory missingVersionSignature = _sign(a, ATTESTOR_KEY);
         vm.expectRevert(
             abi.encodeWithSelector(ShipyardRunRegistry.RequiredFieldMissing.selector, bytes32("targetVersionHash"))
         );
-        registry.recordRun(a, _sign(a, ATTESTOR_KEY));
+        registry.recordRun(a, missingVersionSignature);
 
         a = _attestation(bytes32(uint256(7)), bytes32(uint256(17)));
         a.policyHash = bytes32(0);
+        bytes memory missingPolicySignature = _sign(a, ATTESTOR_KEY);
         vm.expectRevert(
             abi.encodeWithSelector(ShipyardRunRegistry.RequiredFieldMissing.selector, bytes32("policyHash"))
         );
-        registry.recordRun(a, _sign(a, ATTESTOR_KEY));
+        registry.recordRun(a, missingPolicySignature);
     }
 
     function test_PauseStopsNewWritesButPreservesOldRecords() public {
@@ -86,8 +91,9 @@ contract ShipyardRunRegistryTest is TestBase {
         registry.pause();
 
         ShipyardRunRegistry.RunAttestation memory second = _attestation(bytes32(uint256(9)), bytes32(uint256(19)));
+        bytes memory secondSignature = _sign(second, ATTESTOR_KEY);
         vm.expectRevert();
-        registry.recordRun(second, _sign(second, ATTESTOR_KEY));
+        registry.recordRun(second, secondSignature);
 
         ShipyardRunRegistry.RunAttestation memory stored = registry.getRun(first.runId);
         assertEq(stored.evidenceRoot, first.evidenceRoot);
@@ -101,6 +107,61 @@ contract ShipyardRunRegistryTest is TestBase {
         vm.prank(address(0xBAD));
         vm.expectRevert();
         registry.pause();
+    }
+
+    function test_ConstructorRejectsZeroOwner() public {
+        vm.expectRevert(abi.encodeWithSignature("OwnableInvalidOwner(address)", address(0)));
+        new ShipyardRunRegistry(address(0));
+    }
+
+    function test_SignatureCannotReplayAcrossRegistryDomains() public {
+        ShipyardRunRegistry.RunAttestation memory a = _attestation(bytes32(uint256(10)), bytes32(uint256(20)));
+        bytes memory signatureForFirstRegistry = _sign(a, ATTESTOR_KEY);
+        ShipyardRunRegistry otherRegistry = new ShipyardRunRegistry(address(this));
+        otherRegistry.setAttestor(attestor, true);
+
+        vm.expectRevert();
+        otherRegistry.recordRun(a, signatureForFirstRegistry);
+    }
+
+    function test_TamperingBoundEvidenceInvalidatesSignature() public {
+        ShipyardRunRegistry.RunAttestation memory a = _attestation(bytes32(uint256(11)), bytes32(uint256(21)));
+        bytes memory signature = _sign(a, ATTESTOR_KEY);
+        a.evidenceRoot = keccak256("tampered-evidence");
+
+        vm.expectRevert();
+        registry.recordRun(a, signature);
+    }
+
+    function test_InvalidTimesAreRejected() public {
+        ShipyardRunRegistry.RunAttestation memory future = _attestation(bytes32(uint256(12)), bytes32(uint256(22)));
+        future.completedAt = uint64(block.timestamp + 1);
+        bytes memory futureSignature = _sign(future, ATTESTOR_KEY);
+        vm.expectRevert(
+            abi.encodeWithSelector(ShipyardRunRegistry.InvalidCompletionTime.selector, future.completedAt)
+        );
+        registry.recordRun(future, futureSignature);
+
+        ShipyardRunRegistry.RunAttestation memory expired = _attestation(bytes32(uint256(13)), bytes32(uint256(23)));
+        expired.expiresAt = uint64(block.timestamp);
+        bytes memory expiredSignature = _sign(expired, ATTESTOR_KEY);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ShipyardRunRegistry.InvalidExpiry.selector,
+                expired.completedAt,
+                expired.expiresAt
+            )
+        );
+        registry.recordRun(expired, expiredSignature);
+    }
+
+    function test_ToolSpendRequiresSeparateTokenIdentity() public {
+        ShipyardRunRegistry.RunAttestation memory a = _attestation(bytes32(uint256(14)), bytes32(uint256(24)));
+        a.toolSpendToken = address(0);
+        bytes memory signature = _sign(a, ATTESTOR_KEY);
+
+        vm.expectRevert(abi.encodeWithSelector(ShipyardRunRegistry.InvalidAddress.selector, bytes32("toolSpendToken")));
+        registry.recordRun(a, signature);
     }
 
     function testFuzz_ValidAttestationCanBeRecorded(

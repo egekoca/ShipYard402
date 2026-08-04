@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo run build",
     "contracts:compile": "solcjs --base-path contracts --include-path node_modules --bin --abi contracts/src/ShipyardRunRegistry.sol -o contracts/out-solc",
+    "contracts:test": "cd contracts && forge test",
     "dev": "turbo run dev --parallel --filter=@shipyard402/api-gateway --filter=@shipyard402/web-dashboard",
     "dev:payment-worker": "turbo run dev --filter=@shipyard402/payment-worker",
     "format:check": "turbo run format:check",
@@ -25,7 +26,7 @@
     "testnet:deploy:registry": "pnpm contracts:compile && node scripts/testnet/deploy-registry.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile"
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile && pnpm contracts:test"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

@@ -13,6 +13,21 @@ remappings = [
   "@openzeppelin/=../node_modules/@openzeppelin/"
 ]
 
+# Matches the solcjs settings used by the 2026-08-04 Testnet3 deployment.
+# Keep this separate from the optimized test/default profile so explorer
+# verification reproduces the already-published bytecode exactly.
+[profile.testnet3_deployment_2026_08_04]
+src = "src"
+out = "out-verification"
+libs = ["../node_modules"]
+solc_version = "0.8.24"
+optimizer = false
+evm_version = "shanghai"
+ffi = false
+remappings = [
+  "@openzeppelin/=../node_modules/@openzeppelin/"
+]
+
 [fuzz]
 runs = 512
 

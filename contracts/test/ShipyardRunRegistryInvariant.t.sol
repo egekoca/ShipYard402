@@ -7,7 +7,9 @@ import {TestBase} from "./TestBase.sol";
 contract ShipyardRunRegistryInvariantTest is TestBase {
     ShipyardRunRegistry internal registry;
     bytes32 internal constant RUN_ID = keccak256("immutable-run");
+    bytes32 internal constant PAYMENT_PROOF_HASH = keccak256("payment");
     bytes32 internal expectedEvidenceRoot;
+    bytes32 internal expectedAttestationHash;
 
     function setUp() public {
         vm.warp(1_800_000_000);
@@ -22,7 +24,7 @@ contract ShipyardRunRegistryInvariantTest is TestBase {
             targetServiceId: keccak256("service"),
             targetVersionHash: keccak256("version"),
             policyHash: keccak256("policy"),
-            customerPaymentProofHash: keccak256("payment"),
+            customerPaymentProofHash: PAYMENT_PROOF_HASH,
             toolReceiptRoot: keccak256("tools"),
             evidenceRoot: expectedEvidenceRoot,
             evidenceURI: "ipfs://immutable",
@@ -36,6 +38,7 @@ contract ShipyardRunRegistryInvariantTest is TestBase {
             expiresAt: uint64(block.timestamp + 30 days),
             result: ShipyardRunRegistry.Result.PASS
         });
+        expectedAttestationHash = keccak256(abi.encode(a));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, registry.hashAttestation(a));
         registry.recordRun(a, abi.encodePacked(r, s, v));
     }
@@ -45,5 +48,10 @@ contract ShipyardRunRegistryInvariantTest is TestBase {
         assertTrue(registry.isRunRecorded(RUN_ID));
         assertEq(stored.evidenceRoot, expectedEvidenceRoot);
         assertEq(stored.runId, RUN_ID);
+        assertEq(keccak256(abi.encode(stored)), expectedAttestationHash);
+    }
+
+    function invariant_PaymentProofBindingRemainsSingleUse() public view {
+        assertEq(registry.paymentProofRun(PAYMENT_PROOF_HASH), RUN_ID);
     }
 }
