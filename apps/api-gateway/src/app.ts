@@ -44,6 +44,19 @@ export interface RuntimeStatusProvider {
   getRuntimeStatus(): Promise<RuntimeStatus>;
 }
 
+export type PublicEvidencePack = Readonly<{
+  runId: string;
+  evidenceRoot: `0x${string}`;
+  toolReceiptRoot: `0x${string}`;
+  contentHash: `0x${string}`;
+  publicManifest: unknown;
+  builtAt: string;
+}>;
+
+export interface EvidencePackProvider {
+  getByRunId(runId: string): Promise<PublicEvidencePack | null>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
@@ -51,6 +64,7 @@ export type AppDependencies = Readonly<{
   capabilityProvider: RuntimeCapabilityProvider;
   merchantAdapter?: X402MerchantAdapter;
   runtimeStatusProvider?: RuntimeStatusProvider;
+  evidencePackProvider?: EvidencePackProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -226,6 +240,20 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     const record = await dependencies.runRepository.findById(params.data.runId);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     return reply.code(200).send(toRunResponse(record));
+  });
+
+  app.get('/v1/runs/:runId/evidence', async (request, reply) => {
+    const params = runParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    if (!dependencies.evidencePackProvider) {
+      return reply.code(503).send({
+        code: 'EVIDENCE_PACK_PROVIDER_UNAVAILABLE',
+        message: 'Evidence pack storage is not configured.',
+      });
+    }
+    const pack = await dependencies.evidencePackProvider.getByRunId(params.data.runId);
+    if (!pack) return reply.code(404).send({ code: 'EVIDENCE_PACK_NOT_FOUND' });
+    return reply.code(200).send(pack);
   });
 
   return app;

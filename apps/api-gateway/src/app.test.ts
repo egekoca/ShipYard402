@@ -2,7 +2,7 @@ import { QuoteEngine } from '@shipyard402/quote-engine';
 import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createApp } from './app.js';
+import { createApp, type EvidencePackProvider } from './app.js';
 import { InMemoryQuoteRepository, InMemoryRunRepository } from './repositories.js';
 
 const capability = {
@@ -63,7 +63,7 @@ const merchantAdapter: X402MerchantAdapter = {
 
 function testApp(
   withCapability = true,
-  overrides: Readonly<{ runRepository?: InMemoryRunRepository }> = {},
+  overrides: Readonly<{ runRepository?: InMemoryRunRepository; evidencePackProvider?: EvidencePackProvider }> = {},
 ): ReturnType<typeof createApp> {
   const app = createApp({
     capabilityProvider: {
@@ -89,6 +89,7 @@ function testApp(
     now: () => new Date('2026-08-04T10:00:00.000Z'),
     idFactory: () => 'run-fixed',
     merchantAdapter,
+    ...(overrides.evidencePackProvider ? { evidencePackProvider: overrides.evidencePackProvider } : {}),
   });
   apps.push(app);
   return app;
@@ -222,5 +223,33 @@ describe('api gateway vertical slice', () => {
       run: { status: 'PAYMENT_REQUIRED', revision: 2 },
       payment: { orderId: 'flow-order-fixed', nextAction: 'PAY_X402_CHALLENGE' },
     });
+  });
+
+  it('fails closed on the evidence route when no evidence store is configured', async () => {
+    const response = await testApp().inject({ method: 'GET', url: '/v1/runs/run_missing/evidence' });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().code).toBe('EVIDENCE_PACK_PROVIDER_UNAVAILABLE');
+  });
+
+  it('returns 404 for a run with no built evidence pack yet', async () => {
+    const app = testApp(true, { evidencePackProvider: { async getByRunId() { return null; } } });
+    const response = await app.inject({ method: 'GET', url: '/v1/runs/run_missing/evidence' });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().code).toBe('EVIDENCE_PACK_NOT_FOUND');
+  });
+
+  it('serves a stored evidence pack publicly', async () => {
+    const pack = {
+      runId: 'run_evidence_1',
+      evidenceRoot: `0x${'aa'.repeat(32)}`,
+      toolReceiptRoot: `0x${'bb'.repeat(32)}`,
+      contentHash: `0x${'cc'.repeat(32)}`,
+      publicManifest: { scenarios: ['payment-proof-replay'], result: 'PASS' },
+      builtAt: '2026-08-05T00:00:00.000Z',
+    } as const;
+    const app = testApp(true, { evidencePackProvider: { async getByRunId() { return pack; } } });
+    const response = await app.inject({ method: 'GET', url: '/v1/runs/run_evidence_1/evidence' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(pack);
   });
 });

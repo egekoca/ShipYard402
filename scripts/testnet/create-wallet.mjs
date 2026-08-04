@@ -3,7 +3,11 @@ import { dirname, resolve } from 'node:path';
 
 import { Wallet } from 'ethers';
 
-const walletPath = resolve('.local/testnet/goat-testnet3-wallet.json');
+const label = process.argv[2];
+if (label !== undefined && !/^[a-z0-9-]{1,64}$/.test(label)) {
+  throw new Error('Wallet label must match [a-z0-9-]{1,64}');
+}
+const walletPath = resolve(`.local/testnet/goat-testnet3-${label ?? 'wallet'}.json`);
 await mkdir(dirname(walletPath), { recursive: true, mode: 0o700 });
 
 let wallet;
@@ -33,5 +37,5 @@ process.stdout.write(JSON.stringify({
   network: 'goat-testnet3',
   chainId: 48816,
   address: wallet.address,
-  signerFile: '.local/testnet/goat-testnet3-wallet.json',
+  signerFile: walletPath,
 }) + '\n');
