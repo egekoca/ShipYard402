@@ -99,6 +99,7 @@ export function ReleaseRunForm() {
         <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
         <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
         <button className="primary-button" disabled={busy} type="submit">
+          {busy && <span className="spinner" aria-hidden="true" />}
           {busy ? 'Checking capability…' : 'Request transparent quote'}
         </button>
       </form>
@@ -106,15 +107,20 @@ export function ReleaseRunForm() {
       <aside className="quote-panel" aria-live="polite">
         <span className="panel-label">ECONOMIC COMMITMENT</span>
         {!quote && !error && (
-          <div className="empty-state">
-            <div className="radar" />
+          <div className="empty-state state-in">
+            <div className="radar"><span className="radar-sweep" /></div>
             <h3>No fabricated quote</h3>
             <p>A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address capability.</p>
           </div>
         )}
-        {error && <div className="error-card"><strong>Request blocked</strong><p>{error}</p></div>}
+        {error && (
+          <div className="error-card state-in" key={error}>
+            <strong>Request blocked</strong>
+            <p>{error}</p>
+          </div>
+        )}
         {quote && (
-          <div className="quote-result">
+          <div className="quote-result state-in" key={quote.id}>
             <div className="quote-status"><span>HYPOTHESIS</span><small>expires {new Date(quote.expiresAt).toLocaleTimeString()}</small></div>
             <p className="amount">{formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)} <small>{quote.capabilitySnapshot.tokenSymbol}</small></p>
             <dl>
@@ -124,10 +130,11 @@ export function ReleaseRunForm() {
               <div><dt>Commitment</dt><dd className="mono">{shortHash(quote.quoteCommitment)}</dd></div>
             </dl>
             <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
+              {busy && <span className="spinner" aria-hidden="true" />}
               {run ? `Run ${run.run.status}` : 'Create idempotent run'}
             </button>
             {run && (
-              <div className="run-created">
+              <div className="run-created state-in">
                 <strong>{run.run.id}</strong>
                 <span>{run.payment.nextAction}</span>
                 {run.payment.orderId && <span>GOAT Flow order: {run.payment.orderId}</span>}
