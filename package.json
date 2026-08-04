@@ -13,6 +13,11 @@
     "dev": "turbo run dev --parallel --filter=@shipyard402/api-gateway --filter=@shipyard402/web-dashboard",
     "dev:payment-worker": "turbo run dev --filter=@shipyard402/payment-worker",
     "format:check": "turbo run format:check",
+    "infra:down": "docker-compose down",
+    "infra:logs": "docker-compose logs -f postgres",
+    "infra:status": "docker-compose ps",
+    "infra:up": "docker-compose up -d --wait postgres",
+    "db:psql": "docker-compose exec postgres psql -U shipyard -d shipyard",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile"

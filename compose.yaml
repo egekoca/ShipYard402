@@ -1,0 +1,28 @@
+name: shipyard402
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shipyard
+      POSTGRES_USER: shipyard
+      POSTGRES_PASSWORD: shipyard
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - shipyard402_postgres_data:/var/lib/postgresql/data
+      - ./infra/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipyard -d shipyard"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 128mb
+
+volumes:
+  shipyard402_postgres_data:
