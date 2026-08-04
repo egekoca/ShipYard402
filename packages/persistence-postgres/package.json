@@ -14,7 +14,7 @@
     "format:check": "tsc -p tsconfig.json --noEmit",
     "migrate": "node scripts/migrate.mjs ../../infra/migrations",
     "test": "vitest run",
-    "test:postgres": "TEST_DATABASE_URL=postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard vitest run src/postgres.integration.test.ts",
+    "test:postgres": "TEST_DATABASE_URL=postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard vitest run --no-file-parallelism src/*.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
