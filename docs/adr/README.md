@@ -11,3 +11,4 @@
 - [ADR-0016](0016-goat-flow-proof-verification.md): provider proof and on-chain settlement verification
 - [ADR-0017](0017-goat-x402-api-origin.md): current official x402 API origins
 - [ADR-0018](0018-postgres-payment-job-leases.md): PostgreSQL payment reconciliation job leases
+- [ADR-0019](0019-goat-flow-current-origins.md): current GOAT Flow environment origins

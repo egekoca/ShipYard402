@@ -1,6 +1,6 @@
 # ADR-0017: Use the current GOAT x402 API origins
 
-Status: accepted, 2026-08-04.
+Status: superseded by ADR-0019, 2026-08-04.
 
 ## Context
 

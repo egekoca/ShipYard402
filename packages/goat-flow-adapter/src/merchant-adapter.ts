@@ -1,4 +1,9 @@
-import { flowRuntimeCapabilitySchema, GOAT_MAINNET, type FlowRuntimeCapability } from '@shipyard402/goat-network-config';
+import {
+  flowRuntimeCapabilitySchema,
+  GOAT_MAINNET,
+  GOAT_TESTNET3,
+  type FlowRuntimeCapability,
+} from '@shipyard402/goat-network-config';
 import type {
   CreateMerchantOrder,
   GoatFlowOrderStatus,
@@ -52,6 +57,7 @@ export interface ReviewedCapabilitySource {
 
 export type GoatFlowAdapterOptions = Readonly<{
   merchantId: string;
+  environment?: 'mainnet' | 'testnet3';
   client: GoatFlowClientPort;
   contextStore: FlowOrderContextStore;
   capabilitySource: ReviewedCapabilitySource;
@@ -67,6 +73,7 @@ export type GoatFlowCredentialOptions = Readonly<{
 
 export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
   readonly #merchantId: string;
+  readonly #environment: 'mainnet' | 'testnet3';
   readonly #client: GoatFlowClientPort;
   readonly #contextStore: FlowOrderContextStore;
   readonly #capabilitySource: ReviewedCapabilitySource;
@@ -74,17 +81,30 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
   constructor(options: GoatFlowAdapterOptions) {
     if (!options.merchantId) throw new Error('GOAT Flow merchant ID is required');
     this.#merchantId = options.merchantId;
+    this.#environment = options.environment ?? 'mainnet';
     this.#client = options.client;
     this.#contextStore = options.contextStore;
     this.#capabilitySource = options.capabilitySource;
   }
 
   static fromMainnetCredentials(options: GoatFlowCredentialOptions): GoatFlowMerchantAdapter {
+    return GoatFlowMerchantAdapter.fromCredentials(options, 'mainnet');
+  }
+
+  static fromTestnet3Credentials(options: GoatFlowCredentialOptions): GoatFlowMerchantAdapter {
+    return GoatFlowMerchantAdapter.fromCredentials(options, 'testnet3');
+  }
+
+  private static fromCredentials(
+    options: GoatFlowCredentialOptions,
+    environment: 'mainnet' | 'testnet3',
+  ): GoatFlowMerchantAdapter {
     if (!options.apiKey || !options.apiSecret) throw new Error('GOAT Flow credentials are required');
     return new GoatFlowMerchantAdapter({
       merchantId: options.merchantId,
+      environment,
       client: new GoatFlowClient({
-        baseUrl: GOAT_MAINNET.x402ApiUrl,
+        baseUrl: environment === 'mainnet' ? GOAT_MAINNET.flowApiUrl : GOAT_TESTNET3.flowApiUrl,
         apiKey: options.apiKey,
         apiSecret: options.apiSecret,
       }),
@@ -103,7 +123,7 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
     return reviewed
       .map((candidate) => flowRuntimeCapabilitySchema.parse(candidate))
       .filter((candidate) =>
-        candidate.environment === 'mainnet' &&
+        candidate.environment === this.#environment &&
         candidate.merchantId === this.#merchantId &&
         candidate.mode === 'ERC20_DIRECT' &&
         merchant.supportedTokens.some((token) =>
@@ -122,8 +142,8 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
       return existing.order;
     }
     const capability = flowRuntimeCapabilitySchema.parse(input.capability);
-    if (capability.environment !== 'mainnet' || capability.merchantId !== this.#merchantId) {
-      throw new Error('Order capability does not belong to the configured mainnet merchant');
+    if (capability.environment !== this.#environment || capability.merchantId !== this.#merchantId) {
+      throw new Error('Order capability does not belong to the configured GOAT merchant environment');
     }
     if (BigInt(input.atomicAmount) < BigInt(capability.minimumAtomicAmount) || BigInt(input.atomicAmount) > BigInt(capability.maximumAtomicAmount)) {
       throw new Error('Order amount is outside the reviewed merchant capability bounds');

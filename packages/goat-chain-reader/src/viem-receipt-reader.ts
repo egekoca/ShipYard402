@@ -1,4 +1,4 @@
-import { GOAT_MAINNET } from '@shipyard402/goat-network-config';
+import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
 import type { ChainReceiptReader } from '@shipyard402/payment-reconciliation';
 import {
   TransactionReceiptNotFoundError,
@@ -25,10 +25,12 @@ export interface GoatReadClient {
 
 export class ViemGoatReceiptReader implements ChainReceiptReader {
   readonly #client: GoatReadClient;
+  readonly #chainId: number;
   #chainVerification?: Promise<void>;
 
-  constructor(client: GoatReadClient) {
+  constructor(client: GoatReadClient, chainId: number = GOAT_MAINNET.chainId) {
     this.#client = client;
+    this.#chainId = chainId;
   }
 
   async getTransactionReceipt(
@@ -36,7 +38,7 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
     transactionHash: `0x${string}`,
     signal?: AbortSignal,
   ) {
-    if (chainId !== GOAT_MAINNET.chainId) throw new Error(`Unsupported receipt chain: ${chainId}`);
+    if (chainId !== this.#chainId) throw new Error(`Unsupported receipt chain: ${chainId}`);
     assertNotAborted(signal);
     this.#chainVerification ??= this.#verifyChain();
     await this.#chainVerification;
@@ -44,7 +46,7 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
       const receipt = await this.#client.getTransactionReceipt({ hash: transactionHash });
       assertNotAborted(signal);
       return {
-        chainId: GOAT_MAINNET.chainId,
+        chainId: this.#chainId,
         transactionHash: receipt.transactionHash,
         status: receipt.status === 'success' ? 1 as const : 0 as const,
         logs: receipt.logs.map((log) => ({
@@ -62,26 +64,39 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
 
   async #verifyChain(): Promise<void> {
     const actual = await this.#client.getChainId();
-    if (actual !== GOAT_MAINNET.chainId) {
-      throw new Error(`RPC chain mismatch: expected ${GOAT_MAINNET.chainId}, received ${actual}`);
+    if (actual !== this.#chainId) {
+      throw new Error(`RPC chain mismatch: expected ${this.#chainId}, received ${actual}`);
     }
   }
 }
 
 export function createGoatMainnetReceiptReader(rpcUrl: string = GOAT_MAINNET.publicRpcUrl): ViemGoatReceiptReader {
-  const parsed = new URL(rpcUrl);
+  return createGoatReceiptReader('mainnet', rpcUrl);
+}
+
+export function createGoatTestnet3ReceiptReader(rpcUrl: string = GOAT_TESTNET3.publicRpcUrl): ViemGoatReceiptReader {
+  return createGoatReceiptReader('testnet3', rpcUrl);
+}
+
+export function createGoatReceiptReader(
+  environment: 'mainnet' | 'testnet3',
+  rpcUrl?: string,
+): ViemGoatReceiptReader {
+  const network = environment === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
+  const selectedRpcUrl = rpcUrl ?? network.publicRpcUrl;
+  const parsed = new URL(selectedRpcUrl);
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
-    throw new Error('GOAT mainnet RPC must be an HTTPS URL without embedded credentials');
+    throw new Error('GOAT RPC must be an HTTPS URL without embedded credentials');
   }
   const chain = defineChain({
-    id: GOAT_MAINNET.chainId,
-    name: GOAT_MAINNET.name,
-    nativeCurrency: GOAT_MAINNET.nativeCurrency,
-    rpcUrls: { default: { http: [rpcUrl] } },
-    blockExplorers: { default: { name: 'GOAT Explorer', url: GOAT_MAINNET.explorerUrl } },
+    id: network.chainId,
+    name: network.name,
+    nativeCurrency: network.nativeCurrency,
+    rpcUrls: { default: { http: [selectedRpcUrl] } },
+    blockExplorers: { default: { name: 'GOAT Explorer', url: network.explorerUrl } },
   });
-  const client = createPublicClient({ chain, transport: http(rpcUrl, { timeout: 15_000, retryCount: 2 }) });
-  return new ViemGoatReceiptReader(client as GoatReadClient);
+  const client = createPublicClient({ chain, transport: http(selectedRpcUrl, { timeout: 15_000, retryCount: 2 }) });
+  return new ViemGoatReceiptReader(client as GoatReadClient, network.chainId);
 }
 
 function assertNotAborted(signal?: AbortSignal): void {

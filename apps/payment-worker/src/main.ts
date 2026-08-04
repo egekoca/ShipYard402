@@ -1,5 +1,5 @@
 import { GoatFlowMerchantAdapter, type ReviewedCapabilitySource } from '@shipyard402/goat-flow-adapter';
-import { createGoatMainnetReceiptReader } from '@shipyard402/goat-chain-reader';
+import { createGoatReceiptReader } from '@shipyard402/goat-chain-reader';
 import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import { PaymentReconciler } from '@shipyard402/payment-reconciliation';
 import {
@@ -34,13 +34,16 @@ async function start(): Promise<void> {
   try {
     await pool.query('SELECT 1');
     await assertShipyardSchemaReady(pool);
-    const adapter = GoatFlowMerchantAdapter.fromMainnetCredentials({
+    const credentials = {
       merchantId: config.merchant.merchantId,
       apiKey: config.merchant.apiKey,
       apiSecret: config.merchant.apiSecret,
       contextStore: new PostgresFlowOrderContextStore(pool),
       capabilitySource: new StaticReviewedCapabilitySource(config.merchant.capability),
-    });
+    };
+    const adapter = config.goatEnvironment === 'mainnet'
+      ? GoatFlowMerchantAdapter.fromMainnetCredentials(credentials)
+      : GoatFlowMerchantAdapter.fromTestnet3Credentials(credentials);
     const verified = await adapter.discoverRuntimeCapabilities();
     if (verified.length !== 1 || !capabilitiesMatch(verified[0]!, config.merchant.capability)) {
       throw new Error('MERCHANT_CAPABILITY_VERIFICATION_FAILED');
@@ -48,7 +51,7 @@ async function start(): Promise<void> {
 
     const handler = new PaymentReconciliationJobHandler(new PaymentReconciler({
       merchantAdapter: adapter,
-      receiptReader: createGoatMainnetReceiptReader(config.rpcUrl),
+      receiptReader: createGoatReceiptReader(config.goatEnvironment, config.rpcUrl),
       store: new PostgresPaymentReconciliationStore(pool),
     }));
     const queue = new PostgresPaymentReconciliationJobQueue(pool);

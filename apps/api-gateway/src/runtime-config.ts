@@ -1,4 +1,9 @@
-import { GOAT_MAINNET, flowRuntimeCapabilitySchema, type FlowRuntimeCapability } from '@shipyard402/goat-network-config';
+import {
+  GOAT_MAINNET,
+  GOAT_TESTNET3,
+  flowRuntimeCapabilitySchema,
+  type FlowRuntimeCapability,
+} from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
 const LOCAL_DATABASE_URL = 'postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard';
@@ -11,6 +16,7 @@ const selectedEnvironmentSchema = z
     WEB_ORIGIN: z.string().optional(),
     DATABASE_URL: z.string().optional(),
     DATABASE_TLS: z.enum(['true', 'false']).optional(),
+    GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('mainnet'),
     GOATX402_API_URL: z.string().url().optional(),
     GOATX402_MERCHANT_ID: z.string().min(1).optional(),
     GOATX402_API_KEY: z.string().min(1).optional(),
@@ -48,6 +54,7 @@ export type MerchantRuntimeConfig = Readonly<{
 
 export type ApiRuntimeConfig = Readonly<{
   environment: 'development' | 'test' | 'production';
+  goatEnvironment: 'mainnet' | 'testnet3';
   host: string;
   port: number;
   allowedWebOrigins: readonly string[];
@@ -90,7 +97,10 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
   }
   assertPostgresUrl(connectionString);
 
-  if (values.GOATX402_API_URL) assertReviewedApiUrl(values.GOATX402_API_URL);
+  if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
+    throw new RuntimeConfigurationError('Production API must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
+  }
+  if (values.GOATX402_API_URL) assertReviewedApiUrl(values.GOATX402_API_URL, values.GOAT_NETWORK_ENVIRONMENT);
 
   const merchant = parseMerchantConfig(values);
   if (values.APP_ENV === 'production' && !merchant) {
@@ -108,6 +118,7 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
 
   return {
     environment: values.APP_ENV,
+    goatEnvironment: values.GOAT_NETWORK_ENVIRONMENT,
     host: values.API_HOST ?? (values.APP_ENV === 'production' ? '0.0.0.0' : '127.0.0.1'),
     port,
     allowedWebOrigins: origins,
@@ -127,6 +138,7 @@ function selectEnvironment(environment: NodeJS.ProcessEnv): Record<string, strin
     WEB_ORIGIN: environment['WEB_ORIGIN'],
     DATABASE_URL: environment['DATABASE_URL'],
     DATABASE_TLS: environment['DATABASE_TLS'],
+    GOAT_NETWORK_ENVIRONMENT: environment['GOAT_NETWORK_ENVIRONMENT'],
     GOATX402_API_URL: environment['GOATX402_API_URL'],
     GOATX402_MERCHANT_ID: environment['GOATX402_MERCHANT_ID'],
     GOATX402_API_KEY: environment['GOATX402_API_KEY'],
@@ -150,11 +162,12 @@ function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig
 
   const required = values as SelectedEnvironment & Record<MerchantFieldName, string>;
   const tokenDecimals = Number(required.GOATX402_TOKEN_DECIMALS);
+  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
   const candidate = flowRuntimeCapabilitySchema.safeParse({
-    environment: 'mainnet',
+    environment: values.GOAT_NETWORK_ENVIRONMENT,
     merchantId: required.GOATX402_MERCHANT_ID,
     mode: 'ERC20_DIRECT',
-    chainId: GOAT_MAINNET.chainId,
+    chainId: network.chainId,
     tokenAddress: required.GOATX402_TOKEN_ADDRESS,
     tokenSymbol: required.GOATX402_TOKEN_SYMBOL,
     tokenDecimals,
@@ -202,16 +215,20 @@ function validateWebOrigin(value: string): string {
   }
 }
 
-function assertReviewedApiUrl(value: string): void {
+function assertReviewedApiUrl(value: string, environment: 'mainnet' | 'testnet3'): void {
   const parsed = new URL(value);
+  const expected = environment === 'mainnet' ? GOAT_MAINNET.flowApiUrl : GOAT_TESTNET3.flowApiUrl;
   if (
-    parsed.origin !== GOAT_MAINNET.x402ApiUrl ||
+    parsed.origin !== expected ||
     parsed.username ||
     parsed.password ||
     !['', '/'].includes(parsed.pathname) ||
     parsed.search ||
     parsed.hash
   ) {
-    throw new RuntimeConfigurationError('GOAT x402 API origin must match the reviewed mainnet origin', ['GOATX402_API_URL']);
+    throw new RuntimeConfigurationError(
+      `GOAT x402 API origin must match the reviewed ${environment} origin`,
+      ['GOATX402_API_URL'],
+    );
   }
 }
