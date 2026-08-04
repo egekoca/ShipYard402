@@ -22,8 +22,11 @@
     "db:psql": "docker-compose exec postgres psql -U shipyard -d shipyard",
     "test:postgres": "pnpm --filter @shipyard402/persistence-postgres test:postgres",
     "testnet:wallet:create": "node scripts/testnet/create-wallet.mjs",
+    "testnet:wallet:create:demo-target": "node scripts/testnet/create-wallet.mjs demo-target",
+    "testnet:wallet:create:tool-receipt-signer": "node scripts/testnet/create-wallet.mjs tool-receipt-signer",
     "testnet:status": "node scripts/testnet/status.mjs",
     "testnet:deploy:registry": "pnpm contracts:compile && node scripts/testnet/deploy-registry.mjs",
+    "testnet:authorize:attestor": "node scripts/testnet/authorize-attestor.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile && pnpm contracts:test"
