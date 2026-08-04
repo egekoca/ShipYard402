@@ -1,0 +1,26 @@
+{
+  "name": "@shipyard402/web-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build && node scripts/prepare-standalone.mjs",
+    "dev": "next dev --port 3000",
+    "format:check": "tsc -p tsconfig.json --noEmit",
+    "start": "node .next/standalone/apps/web-dashboard/server.js",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@shipyard402/public-api-client": "workspace:*",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
