@@ -138,6 +138,7 @@ export function ReleaseRunForm() {
                 <strong>{run.run.id}</strong>
                 <span>{run.payment.nextAction}</span>
                 {run.payment.orderId && <span>GOAT Flow order: {run.payment.orderId}</span>}
+                <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`}>Track this run →</a>
               </div>
             )}
           </div>
