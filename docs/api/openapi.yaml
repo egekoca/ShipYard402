@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: Shipyard402 API
+  version: 0.1.0
+  description: Version-scoped x402 release assurance API. PASS is not a general security certificate.
+servers:
+  - url: https://api.shipyard402.example
+    description: Placeholder; not a deployed production origin
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          description: Process health and safe capability flags
+  /v1/quotes:
+    post:
+      operationId: createQuote
+      description: Requires a verified GOAT Flow runtime capability. Does not create a payment order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+      responses:
+        '201':
+          description: Transparent hypothesis quote
+        '400':
+          description: Invalid request
+        '422':
+          description: Customer maximum budget exceeded
+        '503':
+          description: Runtime merchant capability unavailable
+  /v1/runs:
+    post:
+      operationId: createRun
+      description: Creates an idempotent QUOTED run. Payment order creation is a subsequent merchant-adapter action.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quoteId, idempotencyKey]
+              properties:
+                quoteId:
+                  type: string
+                idempotencyKey:
+                  type: string
+                  minLength: 16
+                  maxLength: 200
+      responses:
+        '201':
+          description: New QUOTED run
+        '200':
+          description: Idempotent replay of existing run
+        '404':
+          description: Quote not found
+        '410':
+          description: Quote expired
+  /v1/runs/{runId}/payment-challenge:
+    post:
+      operationId: createPaymentChallenge
+      description: Creates or replays one adapter-backed GOAT Flow ERC20_DIRECT challenge. A successful challenge is intentionally returned as HTTP 402.
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+      responses:
+        '402':
+          description: Idempotent x402 payment-required challenge and PAYMENT_REQUIRED run state
+        '404':
+          description: Run not found
+        '409':
+          description: Run is not in QUOTED state or its quote binding is missing
+        '410':
+          description: Quote expired
+        '502':
+          description: GOAT Flow order could not be created safely
+        '503':
+          description: Backend merchant adapter unavailable
+  /v1/runs/{runId}:
+    get:
+      operationId: getRun
+      description: Returns the public, redacted run and customer-payment state.
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 200
+      responses:
+        '200':
+          description: Current run state
+        '404':
+          description: Run not found
+components:
+  schemas:
+    QuoteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - organizationId
+        - requesterAddress
+        - targetAgentId
+        - targetServiceId
+        - targetVersionHash
+        - policyHash
+        - x402Endpoint
+        - openApiUrl
+        - maximumCustomerBudgetAtomic
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+        requesterAddress:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+        targetAgentId:
+          type: string
+        targetServiceId:
+          type: string
+        targetVersionHash:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{64}$'
+        previousVersionHash:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{64}$'
+        policyHash:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{64}$'
+        x402Endpoint:
+          type: string
+          format: uri
+        openApiUrl:
+          type: string
+          format: uri
+        maximumCustomerBudgetAtomic:
+          type: string
+          pattern: '^(0|[1-9][0-9]*)$'
