@@ -54,6 +54,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
   afterAll(async () => {
     if (!pool) return;
     for (const runId of runIds) {
+      await pool.query(`DELETE FROM orchestrator_jobs WHERE run_id = $1`, [runId]);
       await pool.query(`DELETE FROM payment_reconciliation_jobs WHERE run_id = $1`, [runId]);
       await pool.query(`DELETE FROM payment_receipts WHERE run_id = $1`, [runId]);
       await pool.query(`DELETE FROM payment_orders WHERE run_id = $1`, [runId]);
@@ -67,6 +68,18 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
     await pool.query(`DELETE FROM policies WHERE id = $1`, [policyId]);
     await pool.query(`DELETE FROM organizations WHERE id = $1`, [organizationId]);
     await pool.end();
+  });
+
+  it('enqueues a pending orchestrator job the moment a run becomes FUNDED', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresPaymentReconciliationStore(pool);
+    const run = await createPaymentRequiredRun(pool, 'orchestrator-trigger');
+
+    await store.commitFundedRun(fundingInput(run, `0x${'a1'.repeat(32)}`, `0x${'a2'.repeat(32)}`, 0));
+
+    await expect(
+      pool.query<{ status: string }>(`SELECT status FROM orchestrator_jobs WHERE run_id = $1`, [run.run.id]),
+    ).resolves.toMatchObject({ rows: [{ status: 'PENDING' }] });
   });
 
   it('rejects funding a second run with a payment proof hash already used by another run', async () => {

@@ -1,10 +1,29 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDemoTargetApp, PAID_RESOURCE_ROUTE } from './app.js';
-import { issueDemoReceipt } from './receipt.js';
+import type { ConfirmedNativeTransfer, NativeTransferReader } from './native-payment-verifier.js';
+import { issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
 
 const SECRET = 'a'.repeat(32);
 const NOW = new Date('2026-08-05T00:00:00.000Z');
+const RECEIVING_ADDRESS = '0x3000000000000000000000000000000000000003' as const;
+const TX_HASH = `0x${'bb'.repeat(32)}` as const;
+
+function fakeTransferReader(transfer: ConfirmedNativeTransfer | null): NativeTransferReader {
+  return { getConfirmedTransfer: async () => transfer };
+}
+
+function confirmedTransfer(overrides: Partial<ConfirmedNativeTransfer> = {}): ConfirmedNativeTransfer {
+  return {
+    transactionHash: TX_HASH,
+    status: 'success',
+    from: '0x2000000000000000000000000000000000000002',
+    to: RECEIVING_ADDRESS,
+    valueWei: 1_000_000_000_000n,
+    confirmations: 3n,
+    ...overrides,
+  };
+}
 
 describe('x402 demo target app', () => {
   let app: ReturnType<typeof createDemoTargetApp> | undefined;
@@ -92,5 +111,132 @@ describe('x402 demo target app', () => {
     const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
     expect(response.statusCode).toBe(402);
     expect(response.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
+  });
+
+  describe('POST /purchase', () => {
+    it('returns 503 when purchase is not configured', async () => {
+      app = createDemoTargetApp({ mode: 'V2_PROTECTED', receiptSecret: SECRET, now: () => NOW });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.statusCode).toBe(503);
+    });
+
+    it('issues a spendable receipt for a confirmed, correctly addressed, sufficiently funded transfer', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer()),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1_000_000_000_000n,
+          minimumConfirmations: 1,
+        },
+      });
+
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.statusCode).toBe(200);
+      const { receipt } = response.json() as { receipt: string };
+      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH, resource: PAID_RESOURCE_ROUTE });
+    });
+
+    it('rejects a transaction that cannot be found on-chain', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(null),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.statusCode).toBe(402);
+      expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_NOT_FOUND' });
+    });
+
+    it('rejects a reverted transaction', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer({ status: 'reverted' })),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_REVERTED' });
+    });
+
+    it('rejects an underconfirmed transaction', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer({ confirmations: 0n })),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 2,
+        },
+      });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.json()).toMatchObject({ error: 'PAYMENT_NOT_YET_CONFIRMED' });
+    });
+
+    it('rejects a transfer paid to the wrong address', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer({ to: '0x9999999999999999999999999999999999999a' })),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.json()).toMatchObject({ error: 'PAYMENT_WRONG_RECIPIENT' });
+    });
+
+    it('rejects an underpaid transfer', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer({ valueWei: 1n })),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1_000_000_000_000n,
+          minimumConfirmations: 1,
+        },
+      });
+      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(response.json()).toMatchObject({ error: 'PAYMENT_INSUFFICIENT_AMOUNT' });
+    });
+
+    it('rejects reusing the same payment transaction for a second receipt', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer()),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const first = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(first.statusCode).toBe(200);
+      const second = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      expect(second.statusCode).toBe(409);
+      expect(second.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_ALREADY_CLAIMED' });
+    });
   });
 });

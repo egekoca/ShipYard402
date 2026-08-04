@@ -2,4 +2,7 @@ export * from './flow-order-context-store.js';
 export * from './api-repositories.js';
 export * from './payment-reconciliation-store.js';
 export * from './payment-job-queue.js';
+export * from './orchestrator-job-queue.js';
+export * from './evidence-pack-store.js';
+export * from './attestation-store.js';
 export * from './pool.js';

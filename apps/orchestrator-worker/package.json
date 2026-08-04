@@ -1,5 +1,5 @@
 {
-  "name": "@shipyard402/payment-worker",
+  "name": "@shipyard402/orchestrator-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@shipyard402/goat-chain-reader": "workspace:*",
-    "@shipyard402/goat-flow-adapter": "workspace:*",
+    "@shipyard402/evidence-sdk": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
-    "@shipyard402/payment-reconciliation": "workspace:*",
     "@shipyard402/persistence-postgres": "workspace:*",
+    "@shipyard402/policy-engine": "workspace:*",
+    "@shipyard402/protected-delivery-runner": "workspace:*",
+    "@shipyard402/quote-engine": "workspace:*",
+    "@shipyard402/risk-classifier": "workspace:*",
+    "@shipyard402/run-domain": "workspace:*",
+    "ethers": "6.17.0",
+    "openai": "7.4.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
