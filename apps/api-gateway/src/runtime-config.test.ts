@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRuntimeConfig, RuntimeConfigurationError } from './runtime-config.js';
 
 const completeMerchantEnvironment = {
-  GOATX402_API_URL: GOAT_MAINNET.x402ApiUrl,
+  GOATX402_API_URL: GOAT_MAINNET.flowApiUrl,
   GOATX402_MERCHANT_ID: 'merchant-reviewed',
   GOATX402_API_KEY: 'api-key',
   GOATX402_API_SECRET: 'api-secret',
@@ -65,5 +65,26 @@ describe('API runtime configuration', () => {
       mode: 'ERC20_DIRECT',
       source: 'PORTAL_REVIEW',
     });
+  });
+
+  it('creates a Testnet3-scoped capability only when development selects Testnet3', () => {
+    const config = parseRuntimeConfig({
+      APP_ENV: 'development',
+      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+      ...completeMerchantEnvironment,
+      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+    });
+    expect(config.goatEnvironment).toBe('testnet3');
+    expect(config.merchant?.capability).toMatchObject({ environment: 'testnet3', chainId: 48816 });
+  });
+
+  it('refuses to start the production API against Testnet3', () => {
+    expect(() => parseRuntimeConfig({
+      APP_ENV: 'production',
+      DATABASE_URL: 'postgresql://database.example/shipyard',
+      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+      ...completeMerchantEnvironment,
+      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+    })).toThrowError(/Production API must use GOAT mainnet/);
   });
 });

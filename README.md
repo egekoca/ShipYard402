@@ -16,6 +16,8 @@ The repository now has independently deployable frontend and backend boundaries:
 
 The API gateway now uses PostgreSQL for catalog-bound quotes, idempotent run state, payment-order context, domain events, and transactional outbox records. Development defaults to the local Compose database. Production startup fails closed unless an explicit PostgreSQL URL and a complete reviewed GOAT x402 merchant configuration are present. Unit/integration mocks never represent mainnet evidence, and signer/attestor processes remain deliberately separate.
 
+A first GOAT Testnet3 smoke run is public: the isolated test signer received native faucet gas and deployed the append-only registry. The [evidence record](./docs/evidence/testnet3-smoke-2026-08-04.md) includes explorer transactions, bytecode hash, cost, and current limitations. It is deliberately not labeled as x402 payment evidence, customer traction, revenue, or mainnet proof.
+
 ## Application boundaries
 
 ```text
@@ -50,3 +52,15 @@ The local PostgreSQL service uses a digest-pinned official `postgres:17.10-alpin
 Without GOAT merchant credentials the local API starts in a visible `degraded` state: PostgreSQL is available, but quote creation and payment challenge procurement fail closed with `503`. No token, recipient, or merchant capability is fabricated for local development. `GET http://127.0.0.1:3001/health` reports these boundaries explicitly.
 
 Never put private keys, GOAT Flow API secrets, webhook secrets, authorization payloads, or payment proofs in the repository, logs, prompts, or public evidence.
+
+## GOAT Testnet3 smoke commands
+
+These commands use an isolated disposable signer under the ignored `.local/testnet` directory. The signer file is testnet-only and must not be copied into a deployed environment.
+
+```bash
+corepack pnpm testnet:wallet:create
+corepack pnpm testnet:status
+corepack pnpm testnet:deploy:registry
+```
+
+The official faucet requires an interactive anti-bot challenge at `https://bridge.testnet3.goat.network/faucet`; scripts do not bypass it. Faucet BTC is native gas, not proof that an ERC-20 x402 payment asset is available.

@@ -1,11 +1,18 @@
-import { GOAT_MAINNET, flowRuntimeCapabilitySchema, type FlowRuntimeCapability } from '@shipyard402/goat-network-config';
+import {
+  GOAT_MAINNET,
+  GOAT_TESTNET3,
+  flowRuntimeCapabilitySchema,
+  type FlowRuntimeCapability,
+} from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
 const environmentSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('mainnet'),
   DATABASE_URL: z.string().optional(),
   DATABASE_TLS: z.enum(['true', 'false']).optional(),
   GOAT_MAINNET_RPC_URL: z.string().url().optional(),
+  GOAT_TESTNET_RPC_URL: z.string().url().optional(),
   GOATX402_API_URL: z.string().url().optional(),
   GOATX402_MERCHANT_ID: z.string().min(1),
   GOATX402_API_KEY: z.string().min(1),
@@ -22,7 +29,8 @@ const environmentSchema = z.object({
 }).strict();
 
 const selectedNames = [
-  'APP_ENV', 'DATABASE_URL', 'DATABASE_TLS', 'GOAT_MAINNET_RPC_URL', 'GOATX402_API_URL',
+  'APP_ENV', 'GOAT_NETWORK_ENVIRONMENT', 'DATABASE_URL', 'DATABASE_TLS',
+  'GOAT_MAINNET_RPC_URL', 'GOAT_TESTNET_RPC_URL', 'GOATX402_API_URL',
   'GOATX402_MERCHANT_ID', 'GOATX402_API_KEY', 'GOATX402_API_SECRET',
   'GOATX402_TOKEN_ADDRESS', 'GOATX402_TOKEN_SYMBOL', 'GOATX402_TOKEN_DECIMALS',
   'GOATX402_RECEIVING_ADDRESS', 'GOATX402_MINIMUM_ATOMIC_AMOUNT', 'GOATX402_MAXIMUM_ATOMIC_AMOUNT',
@@ -31,6 +39,7 @@ const selectedNames = [
 
 export type PaymentWorkerRuntimeConfig = Readonly<{
   database: Readonly<{ connectionString: string; useTls: boolean }>;
+  goatEnvironment: 'mainnet' | 'testnet3';
   rpcUrl: string;
   workerId: string;
   pollIntervalMilliseconds: number;
@@ -70,9 +79,16 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     throw new PaymentWorkerConfigurationError('Production payment worker requires PostgreSQL', ['DATABASE_URL']);
   }
   assertPostgresUrl(connectionString);
-  const rpcUrl = values.GOAT_MAINNET_RPC_URL ?? GOAT_MAINNET.publicRpcUrl;
-  assertExactUrl(rpcUrl, GOAT_MAINNET.publicRpcUrl, 'GOAT_MAINNET_RPC_URL');
-  if (values.GOATX402_API_URL) assertExactUrl(values.GOATX402_API_URL, GOAT_MAINNET.x402ApiUrl, 'GOATX402_API_URL');
+  if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
+    throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
+  }
+  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
+  const rpcField = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? 'GOAT_MAINNET_RPC_URL' : 'GOAT_TESTNET_RPC_URL';
+  const rpcUrl = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet'
+    ? values.GOAT_MAINNET_RPC_URL ?? network.publicRpcUrl
+    : values.GOAT_TESTNET_RPC_URL ?? network.publicRpcUrl;
+  assertExactUrl(rpcUrl, network.publicRpcUrl, rpcField);
+  if (values.GOATX402_API_URL) assertExactUrl(values.GOATX402_API_URL, network.flowApiUrl, 'GOATX402_API_URL');
 
   const pollIntervalMilliseconds = Number(values.PAYMENT_POLL_INTERVAL_MS ?? '2000');
   if (!Number.isSafeInteger(pollIntervalMilliseconds) || pollIntervalMilliseconds < 250 || pollIntervalMilliseconds > 60_000) {
@@ -84,10 +100,10 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
   }
 
   const capability = flowRuntimeCapabilitySchema.safeParse({
-    environment: 'mainnet',
+    environment: values.GOAT_NETWORK_ENVIRONMENT,
     merchantId: values.GOATX402_MERCHANT_ID,
     mode: 'ERC20_DIRECT',
-    chainId: GOAT_MAINNET.chainId,
+    chainId: network.chainId,
     tokenAddress: values.GOATX402_TOKEN_ADDRESS,
     tokenSymbol: values.GOATX402_TOKEN_SYMBOL,
     tokenDecimals: Number(values.GOATX402_TOKEN_DECIMALS),
@@ -109,6 +125,7 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
       connectionString,
       useTls: values.DATABASE_TLS ? values.DATABASE_TLS === 'true' : values.APP_ENV === 'production',
     },
+    goatEnvironment: values.GOAT_NETWORK_ENVIRONMENT,
     rpcUrl,
     workerId: values.PAYMENT_WORKER_ID ?? `payment-worker:${process.pid}`,
     pollIntervalMilliseconds,

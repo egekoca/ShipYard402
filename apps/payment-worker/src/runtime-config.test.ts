@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parsePaymentWorkerRuntimeConfig, PaymentWorkerConfigurationError } from './runtime-config.js';
 
 const completeEnvironment = {
-  GOATX402_API_URL: GOAT_MAINNET.x402ApiUrl,
+  GOATX402_API_URL: GOAT_MAINNET.flowApiUrl,
   GOATX402_MERCHANT_ID: 'reviewed-merchant',
   GOATX402_API_KEY: 'test-api-key',
   GOATX402_API_SECRET: 'test-api-secret',
@@ -69,5 +69,29 @@ describe('payment worker runtime configuration', () => {
       DATABASE_URL: 'postgresql://database.example/shipyard',
     });
     expect(config.database.useTls).toBe(true);
+  });
+
+  it('uses isolated Testnet3 RPC, Flow API, and chain capability in development', () => {
+    const config = parsePaymentWorkerRuntimeConfig({
+      ...completeEnvironment,
+      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+      GOAT_TESTNET_RPC_URL: 'https://rpc.testnet3.goat.network',
+    });
+    expect(config).toMatchObject({
+      goatEnvironment: 'testnet3',
+      rpcUrl: 'https://rpc.testnet3.goat.network',
+      merchant: { capability: { environment: 'testnet3', chainId: 48816 } },
+    });
+  });
+
+  it('refuses to start the production payment worker against Testnet3', () => {
+    expect(() => parsePaymentWorkerRuntimeConfig({
+      ...completeEnvironment,
+      APP_ENV: 'production',
+      DATABASE_URL: 'postgresql://database.example/shipyard',
+      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+    })).toThrowError(/Production payment worker must use GOAT mainnet/);
   });
 });

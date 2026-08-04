@@ -8,7 +8,7 @@ export const GOAT_MAINNET = Object.freeze({
   publicRpcUrl: 'https://rpc.goat.network',
   backupRpcUrl: 'https://rpc.ankr.com/goat_mainnet',
   explorerUrl: 'https://explorer.goat.network',
-  x402ApiUrl: 'https://x402-api.goat.network',
+  flowApiUrl: 'https://flow-api.goat.network',
   flowMerchantUrl: 'https://flow-merchant.goat.network',
   flowQuickPayUrl: 'https://flow-quickpay.goat.network',
 });
@@ -20,7 +20,7 @@ export const GOAT_TESTNET3 = Object.freeze({
   nativeCurrency: Object.freeze({ name: 'Bitcoin', symbol: 'BTC', decimals: 18 }),
   publicRpcUrl: 'https://rpc.testnet3.goat.network',
   explorerUrl: 'https://explorer.testnet3.goat.network',
-  x402ApiUrl: 'https://x402-api-lx58aabp0r.testnet3.goat.network',
+  flowApiUrl: 'https://flow-api.testnet3.goat.network',
   flowMerchantUrl: 'https://flow-merchant.testnet3.goat.network',
   flowQuickPayUrl: 'https://flow-quickpay.testnet3.goat.network',
 });

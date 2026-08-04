@@ -20,12 +20,16 @@
     "db:migrate": "pnpm --filter @shipyard402/persistence-postgres migrate",
     "db:psql": "docker-compose exec postgres psql -U shipyard -d shipyard",
     "test:postgres": "pnpm --filter @shipyard402/persistence-postgres test:postgres",
+    "testnet:wallet:create": "node scripts/testnet/create-wallet.mjs",
+    "testnet:status": "node scripts/testnet/status.mjs",
+    "testnet:deploy:registry": "pnpm contracts:compile && node scripts/testnet/deploy-registry.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
+    "ethers": "6.17.0",
     "solc": "0.8.24",
     "@openzeppelin/contracts": "5.4.0",
     "turbo": "2.5.6",

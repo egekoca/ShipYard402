@@ -75,6 +75,32 @@ describe('GOAT Flow merchant adapter', () => {
     await expect(adapter().discoverRuntimeCapabilities()).resolves.toEqual([capability]);
   });
 
+  it('keeps Testnet3 capability discovery isolated from mainnet', async () => {
+    const testnetCapability: FlowRuntimeCapability = {
+      ...capability,
+      environment: 'testnet3',
+      chainId: 48816,
+    };
+    const testnetClient = client({
+      async getMerchant() { return {
+        merchantId: 'merchant-1', name: 'Shipyard402 Testnet', receiveType: 'DIRECT',
+        supportedTokens: [{
+          chainId: 48816, symbol: testnetCapability.tokenSymbol,
+          tokenContract: testnetCapability.tokenAddress,
+        }],
+      }; },
+    });
+    const subject = new GoatFlowMerchantAdapter({
+      merchantId: 'merchant-1',
+      environment: 'testnet3',
+      client: testnetClient,
+      contextStore: new InMemoryFlowOrderContextStore(),
+      capabilitySource: { async loadReviewedCapabilities() { return [capability, testnetCapability]; } },
+    });
+
+    await expect(subject.discoverRuntimeCapabilities()).resolves.toEqual([testnetCapability]);
+  });
+
   it('creates and retains an exact DIRECT order context for later reconciliation', async () => {
     const subject = adapter();
     const created = await subject.createOrder(createInput);

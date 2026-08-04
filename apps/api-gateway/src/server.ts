@@ -112,13 +112,21 @@ async function start(): Promise<void> {
   const runRepository = new PostgresRunRepository(pool);
   const merchantConfig = config.merchant;
   const merchantAdapter = merchantConfig
-    ? GoatFlowMerchantAdapter.fromMainnetCredentials({
+    ? (config.goatEnvironment === 'mainnet'
+      ? GoatFlowMerchantAdapter.fromMainnetCredentials({
         merchantId: merchantConfig.merchantId,
         apiKey: merchantConfig.apiKey,
         apiSecret: merchantConfig.apiSecret,
         contextStore: new PostgresFlowOrderContextStore(pool),
         capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
       })
+      : GoatFlowMerchantAdapter.fromTestnet3Credentials({
+        merchantId: merchantConfig.merchantId,
+        apiKey: merchantConfig.apiKey,
+        apiSecret: merchantConfig.apiSecret,
+        contextStore: new PostgresFlowOrderContextStore(pool),
+        capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
+      }))
     : undefined;
 
   const capabilityProvider = merchantAdapter && merchantConfig

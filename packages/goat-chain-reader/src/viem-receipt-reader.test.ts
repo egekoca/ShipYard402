@@ -32,4 +32,14 @@ describe('Viem GOAT receipt reader', () => {
   it('rejects an RPC endpoint serving a different chain', async () => {
     await expect(new ViemGoatReceiptReader(client(1)).getTransactionReceipt(2345, txHash)).rejects.toThrow('RPC chain mismatch');
   });
+
+  it('normalizes Testnet3 receipts only when explicitly scoped to chain 48816', async () => {
+    await expect(new ViemGoatReceiptReader(client(48816), 48816).getTransactionReceipt(48816, txHash)).resolves.toMatchObject({
+      chainId: 48816,
+      status: 1,
+    });
+    await expect(new ViemGoatReceiptReader(client(48816), 48816).getTransactionReceipt(2345, txHash)).rejects.toThrow(
+      'Unsupported receipt chain',
+    );
+  });
 });
