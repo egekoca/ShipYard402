@@ -1,0 +1,28 @@
+{
+  "name": "shipyard402",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous Release Assurance & Runtime Sentinel for x402 Services",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "contracts:compile": "solcjs --base-path contracts --include-path node_modules --bin --abi contracts/src/ShipyardRunRegistry.sol -o contracts/out-solc",
+    "dev": "turbo run dev --parallel",
+    "format:check": "turbo run format:check",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "solc": "0.8.24",
+    "@openzeppelin/contracts": "5.4.0",
+    "turbo": "2.5.6",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
