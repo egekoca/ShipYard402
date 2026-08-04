@@ -82,6 +82,58 @@ export type RunResponse = Readonly<{
   }>;
 }>;
 
+export type ToolReceipt = Readonly<{
+  receiptVersion: '1.0';
+  runId: string;
+  toolAgentId: string;
+  targetAgentId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  scenarioId: string;
+  requestHash: `0x${string}`;
+  responseHash: `0x${string}`;
+  paymentProofHash: `0x${string}`;
+  chainTransactionHash: `0x${string}`;
+  chainId: number;
+  startedAt: number;
+  completedAt: number;
+  result: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+  failureCode: string;
+  toolVersion: string;
+  signatureScheme: 'EIP712';
+  signature: `0x${string}`;
+}>;
+
+export type EvidencePublicManifest = Readonly<{
+  runId: string;
+  targetServiceId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  riskLevel: string;
+  scenarios: readonly string[];
+  result: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+  toolReceipts: readonly ToolReceipt[];
+}>;
+
+export type EvidenceResponse = Readonly<{
+  runId: string;
+  evidenceRoot: `0x${string}`;
+  toolReceiptRoot: `0x${string}`;
+  contentHash: `0x${string}`;
+  publicManifest: EvidencePublicManifest;
+  builtAt: string;
+}>;
+
+export type AttestationResponse = Readonly<{
+  runId: string;
+  registryAddress: `0x${string}`;
+  chainId: number;
+  transactionHash: `0x${string}`;
+  attestor: `0x${string}`;
+  expiresAt: string;
+  submittedAt: string;
+}>;
+
 export class ShipyardApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -131,6 +183,26 @@ export class ShipyardApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  async getEvidence(runId: string, signal?: AbortSignal): Promise<EvidenceResponse | null> {
+    return this.#getOrNull<EvidenceResponse>(`/v1/runs/${encodeURIComponent(runId)}/evidence`, signal);
+  }
+
+  async getAttestation(runId: string, signal?: AbortSignal): Promise<AttestationResponse | null> {
+    return this.#getOrNull<AttestationResponse>(`/v1/runs/${encodeURIComponent(runId)}/attestation`, signal);
+  }
+
+  async #getOrNull<T>(path: string, signal?: AbortSignal): Promise<T | null> {
+    try {
+      return await this.#request<T>(path, {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (error instanceof ShipyardApiError && error.status === 404) return null;
+      throw error;
+    }
   }
 
   async getHealth(signal?: AbortSignal): Promise<Readonly<Record<string, unknown>>> {

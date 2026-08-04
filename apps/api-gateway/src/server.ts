@@ -3,6 +3,7 @@ import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import {
   createShipyardPool,
   assertShipyardSchemaReady,
+  PostgresAttestationStore,
   PostgresEvidencePackStore,
   PostgresFlowOrderContextStore,
   PostgresQuoteRepository,
@@ -150,6 +151,7 @@ async function start(): Promise<void> {
     quoteRepository,
     runRepository,
     evidencePackProvider: new PostgresEvidencePackStore(pool),
+    attestationProvider: new PostgresAttestationStore(pool),
     runtimeStatusProvider: new PostgresRuntimeStatusProvider(
       pool,
       config.environment,

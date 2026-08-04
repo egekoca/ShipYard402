@@ -57,6 +57,20 @@ export interface EvidencePackProvider {
   getByRunId(runId: string): Promise<PublicEvidencePack | null>;
 }
 
+export type PublicAttestation = Readonly<{
+  runId: string;
+  registryAddress: `0x${string}`;
+  chainId: number;
+  transactionHash: `0x${string}`;
+  attestor: `0x${string}`;
+  expiresAt: string;
+  submittedAt: string;
+}>;
+
+export interface AttestationProvider {
+  getByRunId(runId: string): Promise<PublicAttestation | null>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
@@ -65,6 +79,7 @@ export type AppDependencies = Readonly<{
   merchantAdapter?: X402MerchantAdapter;
   runtimeStatusProvider?: RuntimeStatusProvider;
   evidencePackProvider?: EvidencePackProvider;
+  attestationProvider?: AttestationProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -254,6 +269,20 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     const pack = await dependencies.evidencePackProvider.getByRunId(params.data.runId);
     if (!pack) return reply.code(404).send({ code: 'EVIDENCE_PACK_NOT_FOUND' });
     return reply.code(200).send(pack);
+  });
+
+  app.get('/v1/runs/:runId/attestation', async (request, reply) => {
+    const params = runParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    if (!dependencies.attestationProvider) {
+      return reply.code(503).send({
+        code: 'ATTESTATION_PROVIDER_UNAVAILABLE',
+        message: 'Attestation storage is not configured.',
+      });
+    }
+    const attestation = await dependencies.attestationProvider.getByRunId(params.data.runId);
+    if (!attestation) return reply.code(404).send({ code: 'ATTESTATION_NOT_FOUND' });
+    return reply.code(200).send(attestation);
   });
 
   return app;

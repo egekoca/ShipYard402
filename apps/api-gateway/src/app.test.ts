@@ -2,7 +2,7 @@ import { QuoteEngine } from '@shipyard402/quote-engine';
 import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createApp, type EvidencePackProvider } from './app.js';
+import { createApp, type AttestationProvider, type EvidencePackProvider } from './app.js';
 import { InMemoryQuoteRepository, InMemoryRunRepository } from './repositories.js';
 
 const capability = {
@@ -63,7 +63,11 @@ const merchantAdapter: X402MerchantAdapter = {
 
 function testApp(
   withCapability = true,
-  overrides: Readonly<{ runRepository?: InMemoryRunRepository; evidencePackProvider?: EvidencePackProvider }> = {},
+  overrides: Readonly<{
+    runRepository?: InMemoryRunRepository;
+    evidencePackProvider?: EvidencePackProvider;
+    attestationProvider?: AttestationProvider;
+  }> = {},
 ): ReturnType<typeof createApp> {
   const app = createApp({
     capabilityProvider: {
@@ -90,6 +94,7 @@ function testApp(
     idFactory: () => 'run-fixed',
     merchantAdapter,
     ...(overrides.evidencePackProvider ? { evidencePackProvider: overrides.evidencePackProvider } : {}),
+    ...(overrides.attestationProvider ? { attestationProvider: overrides.attestationProvider } : {}),
   });
   apps.push(app);
   return app;
@@ -251,5 +256,34 @@ describe('api gateway vertical slice', () => {
     const response = await app.inject({ method: 'GET', url: '/v1/runs/run_evidence_1/evidence' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(pack);
+  });
+
+  it('fails closed on the attestation route when no attestation store is configured', async () => {
+    const response = await testApp().inject({ method: 'GET', url: '/v1/runs/run_missing/attestation' });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().code).toBe('ATTESTATION_PROVIDER_UNAVAILABLE');
+  });
+
+  it('returns 404 for a run with no attestation yet', async () => {
+    const app = testApp(true, { attestationProvider: { async getByRunId() { return null; } } });
+    const response = await app.inject({ method: 'GET', url: '/v1/runs/run_missing/attestation' });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().code).toBe('ATTESTATION_NOT_FOUND');
+  });
+
+  it('serves a stored attestation publicly', async () => {
+    const attestation = {
+      runId: 'run_attest_1',
+      registryAddress: '0x07f6a55Fb88DD29e9A10802ce8d706dA26db8ddd',
+      chainId: 48816,
+      transactionHash: `0x${'dd'.repeat(32)}`,
+      attestor: '0x8eb7E837242d6eE3Baa274F1750C644bF3E08c10',
+      expiresAt: '2026-09-04T00:00:00.000Z',
+      submittedAt: '2026-08-05T00:00:00.000Z',
+    } as const;
+    const app = testApp(true, { attestationProvider: { async getByRunId() { return attestation; } } });
+    const response = await app.inject({ method: 'GET', url: '/v1/runs/run_attest_1/attestation' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(attestation);
   });
 });
