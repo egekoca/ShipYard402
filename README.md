@@ -13,6 +13,7 @@ The repository now has independently deployable frontend and backend boundaries:
 - `apps/payment-worker`: separate read-only backend worker for durable leased payment polling, deterministic settlement rejection, bounded retry, and dead-letter behavior.
 - backend packages: GOAT Flow merchant adapter, deterministic settlement reconciliation, read-only GOAT receipt reader, protected-delivery replay runner, PostgreSQL receipt/order stores, policy engine, evidence SDK, and run domain.
 - `contracts`: append-only `ShipyardRunRegistry` and Foundry test suite.
+- `apps/x402-demo-target`: a controlled demo paid resource with two selectable modes — `V1_VULNERABLE` accepts a payment receipt more than once, `V2_PROTECTED` rejects a replayed receipt with `409`. It uses a synthetic HMAC-signed receipt, not a real GOAT Flow payment proof, so `@shipyard402/protected-delivery-runner` can demonstrate a FAIL-then-PASS result deterministically without a merchant account. Real GOAT Flow-funded runs against it are still blocked on Testnet3 merchant onboarding.
 
 The API gateway now uses PostgreSQL for catalog-bound quotes, idempotent run state, payment-order context, domain events, and transactional outbox records. Development defaults to the local Compose database. Production startup fails closed unless an explicit PostgreSQL URL and a complete reviewed GOAT x402 merchant configuration are present. Unit/integration mocks never represent mainnet evidence, and signer/attestor processes remain deliberately separate.
 
