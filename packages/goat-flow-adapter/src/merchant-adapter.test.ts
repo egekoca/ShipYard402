@@ -98,6 +98,27 @@ describe('GOAT Flow merchant adapter', () => {
     });
     await expect(adapter(wrongRecipientClient).createOrder(createInput)).rejects.toThrow('recipient');
   });
+
+  it('does not retain a conflicting order after an idempotency rejection', async () => {
+    const store = new InMemoryFlowOrderContextStore();
+    const subject = new GoatFlowMerchantAdapter({
+      merchantId: 'merchant-1',
+      client: client(),
+      contextStore: store,
+      capabilitySource: { async loadReviewedCapabilities() { return [capability]; } },
+    });
+    const first = await subject.createOrder(createInput);
+    const conflicting = {
+      order: { ...first, orderId: 'flow-order-conflict' },
+      capability,
+    };
+
+    await expect(store.put(conflicting)).rejects.toThrow('DApp order ID');
+    await expect(store.get('flow-order-conflict')).resolves.toBeNull();
+    await expect(store.getByDappOrderId('run-1')).resolves.toMatchObject({
+      order: { orderId: 'flow-order-1' },
+    });
+  });
 });
 
 function paymentRequired(recipient: string): X402PaymentRequired {

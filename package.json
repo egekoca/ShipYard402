@@ -10,7 +10,8 @@
   "scripts": {
     "build": "turbo run build",
     "contracts:compile": "solcjs --base-path contracts --include-path node_modules --bin --abi contracts/src/ShipyardRunRegistry.sol -o contracts/out-solc",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=@shipyard402/api-gateway --filter=@shipyard402/web-dashboard",
+    "dev:payment-worker": "turbo run dev --filter=@shipyard402/payment-worker",
     "format:check": "turbo run format:check",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",

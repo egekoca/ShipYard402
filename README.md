@@ -40,4 +40,6 @@ corepack pnpm verify
 cd contracts && forge test
 ```
 
+`corepack pnpm dev` starts only the browser-facing dashboard and API gateway. The payment worker is intentionally excluded from the default development command because it must never make economic actions without durable PostgreSQL/queue wiring and reviewed GOAT credentials. Its explicit command is `corepack pnpm dev:payment-worker`; it currently fails closed until that wiring is configured.
+
 Never put private keys, GOAT Flow API secrets, webhook secrets, authorization payloads, or payment proofs in the repository, logs, prompts, or public evidence.

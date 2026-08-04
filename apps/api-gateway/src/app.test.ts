@@ -61,7 +61,10 @@ const merchantAdapter: X402MerchantAdapter = {
   async getOrderProof() { throw new Error('Not used in API tests'); },
 };
 
-function testApp(withCapability = true): ReturnType<typeof createApp> {
+function testApp(
+  withCapability = true,
+  overrides: Readonly<{ runRepository?: InMemoryRunRepository }> = {},
+): ReturnType<typeof createApp> {
   const app = createApp({
     capabilityProvider: {
       async getShipyardMerchantCapability() {
@@ -82,7 +85,7 @@ function testApp(withCapability = true): ReturnType<typeof createApp> {
       () => 'quote-fixed',
     ),
     quoteRepository: new InMemoryQuoteRepository(),
-    runRepository: new InMemoryRunRepository(),
+    runRepository: overrides.runRepository ?? new InMemoryRunRepository(),
     now: () => new Date('2026-08-04T10:00:00.000Z'),
     idFactory: () => 'run-fixed',
     merchantAdapter,
@@ -156,5 +159,34 @@ describe('api gateway vertical slice', () => {
     const read = await app.inject({ method: 'GET', url: `/v1/runs/${runId}` });
     expect(read.statusCode).toBe(200);
     expect(read.json()).toEqual(first.json());
+  });
+
+  it('recovers an order persisted before the PAYMENT_REQUIRED transition', async () => {
+    const runRepository = new InMemoryRunRepository();
+    const app = testApp(true, { runRepository });
+    const quoteResponse = await app.inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody });
+    const quote = quoteResponse.json();
+    const runResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/runs',
+      payload: { quoteId: quote.id, idempotencyKey: 'orphaned-payment-order-0001' },
+    });
+    const runId = runResponse.json().run.id as string;
+    const record = await runRepository.findById(runId);
+    expect(record).not.toBeNull();
+    const paymentOrder = await merchantAdapter.createOrder({
+      dappOrderId: runId,
+      payerAddress: quoteBody.requesterAddress,
+      atomicAmount: quote.totalAtomicAmount,
+      capability,
+    });
+    await runRepository.save({ ...record!, paymentOrder }, record!.aggregate.revision);
+
+    const recovered = await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge` });
+    expect(recovered.statusCode).toBe(402);
+    expect(recovered.json()).toMatchObject({
+      run: { status: 'PAYMENT_REQUIRED', revision: 2 },
+      payment: { orderId: 'flow-order-fixed', nextAction: 'PAY_X402_CHALLENGE' },
+    });
   });
 });

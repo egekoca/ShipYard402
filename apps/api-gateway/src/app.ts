@@ -145,7 +145,8 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     const record = await dependencies.runRepository.findById(params.data.runId);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     if (record.paymentOrder) {
-      return reply.code(paymentChallengeHttpStatus(record)).send(toRunResponse(record));
+      const recovered = await ensurePaymentRequired(record, dependencies.runRepository, now);
+      return reply.code(paymentChallengeHttpStatus(recovered)).send(toRunResponse(recovered));
     }
     if (record.aggregate.status !== 'QUOTED') {
       return reply.code(409).send({ code: 'RUN_NOT_QUOTED', status: record.aggregate.status });
@@ -163,22 +164,12 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
         atomicAmount: quote.totalAtomicAmount,
         capability: quote.capabilitySnapshot,
       });
-      const transition = transitionRun(record.aggregate, {
-        actor: 'MERCHANT_GATEWAY',
-        expectedRevision: record.aggregate.revision,
-        idempotencyKey: `payment-order:${order.orderId}`,
-        occurredAt: now().toISOString(),
-        to: 'PAYMENT_REQUIRED',
-      });
-      if (!transition.event) throw new Error('Payment-required transition produced no event');
-      const updated: RunRecord = {
+      const orderBoundRecord: RunRecord = {
         ...record,
-        aggregate: transition.run,
         paymentOrder: order,
-        uncommittedEvent: transition.event,
       };
-      await dependencies.runRepository.save(updated, record.aggregate.revision);
-      return reply.code(402).send(toRunResponse(updated));
+      const updated = await ensurePaymentRequired(orderBoundRecord, dependencies.runRepository, now);
+      return reply.code(paymentChallengeHttpStatus(updated)).send(toRunResponse(updated));
     } catch (error) {
       const current = await dependencies.runRepository.findById(record.aggregate.id);
       if (current?.paymentOrder) return reply.code(paymentChallengeHttpStatus(current)).send(toRunResponse(current));
@@ -199,6 +190,37 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   return app;
+}
+
+async function ensurePaymentRequired(
+  record: RunRecord,
+  repository: RunRepository,
+  now: () => Date,
+): Promise<RunRecord> {
+  if (!record.paymentOrder || record.aggregate.status !== 'QUOTED') return record;
+
+  const transition = transitionRun(record.aggregate, {
+    actor: 'MERCHANT_GATEWAY',
+    expectedRevision: record.aggregate.revision,
+    idempotencyKey: `payment-order:${record.paymentOrder.orderId}`,
+    occurredAt: now().toISOString(),
+    to: 'PAYMENT_REQUIRED',
+  });
+  if (!transition.event) throw new Error('Payment-required transition produced no event');
+  const updated: RunRecord = {
+    ...record,
+    aggregate: transition.run,
+    uncommittedEvent: transition.event,
+  };
+
+  try {
+    await repository.save(updated, record.aggregate.revision);
+    return updated;
+  } catch (error) {
+    const current = await repository.findById(record.aggregate.id);
+    if (current?.paymentOrder && current.aggregate.status !== 'QUOTED') return current;
+    throw error;
+  }
 }
 
 function toQuoteResponse(quote: Quote): object {

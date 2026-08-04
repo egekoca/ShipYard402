@@ -69,7 +69,12 @@ class MemoryStore implements PaymentReconciliationStore {
     if (input.previousRevision !== this.context.run.revision) throw new Error('revision conflict');
     if (this.proofHashes.has(input.payment.proofHash)) throw new Error('payment proof replay');
     this.proofHashes.add(input.payment.proofHash);
-    this.context = { ...this.context, run: input.run, customerPaymentProofHash: input.payment.proofHash };
+    this.context = {
+      ...this.context,
+      run: input.run,
+      customerPaymentProofHash: input.payment.proofHash,
+      customerPayment: input.payment,
+    };
     this.committed = input.payment;
   }
 }
@@ -100,6 +105,33 @@ describe('payment reconciler', () => {
     await expect(reconciler.reconcile('run-1')).resolves.toMatchObject({ runId: 'run-1', proof: { transactionHash: txHash } });
     expect(store.context.run).toMatchObject({ status: 'FUNDED', revision: 3 });
     expect(store.committed?.proofHash).toMatch(/^0x[a-f0-9]{64}$/);
+  });
+
+  it('returns the immutable verified payment when a post-commit job is retried', async () => {
+    const store = new MemoryStore();
+    let providerCalls = 0;
+    const adapter = merchantAdapter();
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: {
+        ...adapter,
+        async getOrderStatus(orderId, signal) {
+          providerCalls += 1;
+          return adapter.getOrderStatus(orderId, signal);
+        },
+      },
+      store,
+      now: () => new Date('2026-08-04T10:01:00.000Z'),
+      receiptReader: { async getTransactionReceipt() { return {
+        chainId: 2345, transactionHash: txHash, status: 1,
+        logs: [encodeTransferLog(token, payer, recipient, '600', 4)],
+      }; } },
+    });
+
+    const first = await reconciler.reconcile('run-1');
+    const replay = await reconciler.reconcile('run-1');
+    expect(replay).toEqual(first);
+    expect(providerCalls).toBe(1);
+    expect(store.context.run).toMatchObject({ status: 'FUNDED', revision: 3 });
   });
 
   it('refuses a provider-confirmed payment when the on-chain recipient differs', async () => {

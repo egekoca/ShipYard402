@@ -14,6 +14,7 @@ export type FundableRun = Readonly<{
   quote: Quote;
   paymentOrder: MerchantOrder;
   customerPaymentProofHash?: `0x${string}`;
+  customerPayment?: VerifiedCustomerPayment;
 }>;
 
 export type VerifiedCustomerPayment = Readonly<{
@@ -82,7 +83,10 @@ export class PaymentReconciler {
     const context = await this.#store.loadFundableRun(runId);
     if (!context) throw new Error(`Fundable run not found: ${runId}`);
     if (context.run.status === 'FUNDED' && context.customerPaymentProofHash) {
-      throw new Error('Funded run replay requires loading the immutable stored receipt');
+      if (context.customerPayment?.proofHash.toLowerCase() === context.customerPaymentProofHash.toLowerCase()) {
+        return context.customerPayment;
+      }
+      throw new Error('Funded run is missing its immutable verified customer payment');
     }
     if (context.run.status !== 'PAYMENT_REQUIRED') {
       throw new Error(`Run ${runId} is not awaiting payment`);

@@ -16,7 +16,7 @@
       "dependsOn": ["^build"]
     },
     "typecheck": {
-      "dependsOn": ["^build", "^typecheck"],
+      "dependsOn": ["build", "^typecheck"],
       "outputs": []
     }
   }

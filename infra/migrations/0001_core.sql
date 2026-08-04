@@ -293,6 +293,8 @@ CREATE INDEX run_events_run_idx ON run_events(run_id, revision);
 CREATE INDEX payment_orders_status_idx ON payment_orders(status, updated_at);
 CREATE INDEX tool_purchases_run_idx ON tool_purchases(run_id, status);
 CREATE INDEX payment_receipts_run_idx ON payment_receipts(run_id, direction);
+CREATE UNIQUE INDEX payment_receipts_customer_run_unique
+  ON payment_receipts(run_id) WHERE direction = 'CUSTOMER_IN';
 CREATE INDEX revenue_ledger_run_idx ON revenue_ledger(run_id, category);
 CREATE INDEX sentinel_due_idx ON sentinel_subscriptions(next_run_at) WHERE active;
 CREATE INDEX outbox_unpublished_idx ON outbox_events(created_at) WHERE published_at IS NULL;

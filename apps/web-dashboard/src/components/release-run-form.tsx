@@ -38,6 +38,7 @@ export function ReleaseRunForm() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [run, setRun] = useState<RunResponse | null>(null);
+  const [runRequestKey, setRunRequestKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const client = useMemo(
@@ -47,15 +48,23 @@ export function ReleaseRunForm() {
 
   function update(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    setQuote(null);
+    setRun(null);
+    setRunRequestKey(null);
+    setError(null);
   }
 
   async function requestQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    setQuote(null);
     setRun(null);
+    setRunRequestKey(null);
     try {
-      setQuote(await client.createQuote(form as QuoteRequest));
+      const created = await client.createQuote(form as QuoteRequest);
+      setQuote(created);
+      setRunRequestKey(`web-${globalThis.crypto.randomUUID()}`);
     } catch (caught) {
       setError(formatError(caught));
     } finally {
@@ -64,12 +73,11 @@ export function ReleaseRunForm() {
   }
 
   async function createRun() {
-    if (!quote) return;
+    if (!quote || !runRequestKey) return;
     setBusy(true);
     setError(null);
     try {
-      const requestKey = globalThis.crypto.randomUUID();
-      const created = await client.createRun(quote.id, `web-${requestKey}`);
+      const created = await client.createRun(quote.id, runRequestKey);
       setRun(await client.requestPaymentChallenge(created.run.id));
     } catch (caught) {
       setError(formatError(caught));

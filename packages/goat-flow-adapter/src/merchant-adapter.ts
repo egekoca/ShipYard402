@@ -214,11 +214,11 @@ export class InMemoryFlowOrderContextStore implements FlowOrderContextStore {
     if (current && current.order.dappOrderId !== context.order.dappOrderId) {
       throw new Error('GOAT Flow order ID is already bound to another DApp order');
     }
-    this.#records.set(context.order.orderId, context);
     const currentOrderId = this.#orderIdsByDappOrderId.get(context.order.dappOrderId);
     if (currentOrderId && currentOrderId !== context.order.orderId) {
       throw new Error('DApp order ID is already bound to another GOAT Flow order');
     }
+    this.#records.set(context.order.orderId, context);
     this.#orderIdsByDappOrderId.set(context.order.dappOrderId, context.order.orderId);
   }
 
