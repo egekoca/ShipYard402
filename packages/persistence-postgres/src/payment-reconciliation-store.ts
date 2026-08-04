@@ -1,6 +1,7 @@
 import type {
   FundableRun,
   PaymentReconciliationStore,
+  VerifiedCustomerPayment,
 } from '@shipyard402/payment-reconciliation';
 import { quoteSchema, type Quote } from '@shipyard402/quote-engine';
 import {
@@ -10,8 +11,13 @@ import {
   type RunResult,
   type RunStatus,
 } from '@shipyard402/run-domain';
-import type { MerchantOrder } from '@shipyard402/x402-payments';
+import type {
+  MerchantOrder,
+  MerchantPaymentProof,
+  NormalizedTransactionReceipt,
+} from '@shipyard402/x402-payments';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import { z } from 'zod';
 
 import { PostgresFlowOrderContextStore } from './flow-order-context-store.js';
 
@@ -35,7 +41,41 @@ type FundableRow = QueryResultRow & {
   quote_expires_at: Date | string;
   quote_commitment: Buffer;
   order_snapshot: unknown;
+  receipt_order_id: string | null;
+  receipt_chain_id: string | null;
+  receipt_payer: Buffer | null;
+  receipt_recipient: Buffer | null;
+  receipt_atomic_amount: string | null;
+  receipt_transaction_hash: Buffer | null;
+  receipt_log_index: number | null;
+  receipt_proof_hash: Buffer | null;
+  receipt_provider_payload: unknown;
+  receipt_verified_at: Date | string | null;
 };
+
+const persistedPaymentPayloadSchema = z.object({
+  proof: z.object({
+    orderId: z.string().min(1),
+    transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+    logIndex: z.number().int().nonnegative(),
+    fromAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
+    chainId: z.number().int().positive(),
+    providerDigest: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  }).strict(),
+  receipt: z.object({
+    chainId: z.number().int().positive(),
+    transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+    status: z.union([z.literal(0), z.literal(1)]),
+    logs: z.array(z.object({
+      address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      topics: z.array(z.string().regex(/^0x[a-fA-F0-9]*$/)),
+      data: z.string().regex(/^0x[a-fA-F0-9]*$/),
+      index: z.number().int().nonnegative(),
+    }).strict()),
+  }).strict(),
+}).passthrough();
 
 export class PostgresPaymentReconciliationStore implements PaymentReconciliationStore {
   readonly #pool: Pool;
@@ -55,10 +95,17 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
         q.id AS quote_id, q.request_snapshot, q.capability_snapshot, q.line_items, q.pricing_status,
         q.total_atomic_amount::text, q.refundable_tool_budget_atomic::text,
         q.created_at AS quote_created_at, q.expires_at AS quote_expires_at, q.quote_commitment,
-        po.order_snapshot
+        po.order_snapshot,
+        pr.order_id AS receipt_order_id, pr.chain_id::text AS receipt_chain_id,
+        pr.payer AS receipt_payer, pr.recipient AS receipt_recipient,
+        pr.atomic_amount::text AS receipt_atomic_amount,
+        pr.transaction_hash AS receipt_transaction_hash, pr.log_index AS receipt_log_index,
+        pr.proof_hash AS receipt_proof_hash, pr.provider_payload AS receipt_provider_payload,
+        pr.verified_at AS receipt_verified_at
       FROM runs r
       JOIN quotes q ON q.id = r.quote_id
       JOIN payment_orders po ON po.run_id = r.id
+      LEFT JOIN payment_receipts pr ON pr.run_id = r.id AND pr.direction = 'CUSTOMER_IN'
       WHERE r.id = $1`,
       [runId],
     );
@@ -67,6 +114,7 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
     const context = await this.#orderStore.getByDappOrderId(row.run_id);
     if (!context) throw new Error('Payment order context disappeared during reconciliation load');
 
+    const customerPayment = parseCustomerPayment(row, context.order);
     return {
       run: parseRun(row),
       quote: parseQuote(row),
@@ -74,6 +122,7 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
       ...(row.customer_payment_proof_hash
         ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) }
         : {}),
+      ...(customerPayment ? { customerPayment } : {}),
     };
   }
 
@@ -178,10 +227,50 @@ async function insertReceipt(
         providerDigest: payment.proof.providerDigest ?? null,
         providerOrderStatus: payment.order.status,
         onChainReceiptStatus: payment.receipt.status,
+        proof: payment.proof,
+        receipt: payment.receipt,
       }),
       payment.verifiedAt,
     ],
   );
+}
+
+function parseCustomerPayment(row: FundableRow, order: MerchantOrder): VerifiedCustomerPayment | undefined {
+  if (!row.receipt_proof_hash) return undefined;
+  if (
+    !row.receipt_order_id || !row.receipt_chain_id || !row.receipt_payer || !row.receipt_recipient ||
+    !row.receipt_atomic_amount || !row.receipt_transaction_hash || row.receipt_log_index === null ||
+    row.receipt_verified_at === null
+  ) {
+    throw new Error('Stored customer payment receipt is incomplete');
+  }
+
+  const payload = persistedPaymentPayloadSchema.parse(row.receipt_provider_payload);
+  const proof = payload.proof as MerchantPaymentProof;
+  const receipt = payload.receipt as NormalizedTransactionReceipt;
+  const transactionHash = bufferToHex(row.receipt_transaction_hash);
+  if (
+    proof.orderId !== row.receipt_order_id ||
+    proof.chainId !== Number(row.receipt_chain_id) ||
+    proof.transactionHash.toLowerCase() !== transactionHash.toLowerCase() ||
+    proof.logIndex !== row.receipt_log_index ||
+    proof.fromAddress.toLowerCase() !== bufferToHex(row.receipt_payer).toLowerCase() ||
+    proof.toAddress.toLowerCase() !== bufferToHex(row.receipt_recipient).toLowerCase() ||
+    proof.atomicAmount !== row.receipt_atomic_amount ||
+    receipt.chainId !== proof.chainId ||
+    receipt.transactionHash.toLowerCase() !== transactionHash.toLowerCase()
+  ) {
+    throw new Error('Stored customer payment payload conflicts with indexed receipt columns');
+  }
+
+  return {
+    runId: row.run_id,
+    order,
+    proof,
+    receipt,
+    proofHash: bufferToHex(row.receipt_proof_hash),
+    verifiedAt: toIso(row.receipt_verified_at),
+  };
 }
 
 function parseStatus(value: string): RunStatus {
