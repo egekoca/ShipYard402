@@ -11,7 +11,7 @@ The repository now has independently deployable frontend and backend boundaries:
 - `apps/web-dashboard`: Next.js public UI. It can import only the public API client and has no merchant, database, signer, or chain-write dependencies.
 - `apps/api-gateway`: Fastify backend for capability-bound quotes, idempotent runs, and adapter-backed HTTP 402 challenges.
 - `apps/payment-worker`: separate read-only backend worker for durable leased payment polling, deterministic settlement rejection, bounded retry, and dead-letter behavior.
-- backend packages: GOAT Flow merchant adapter, deterministic settlement reconciliation, read-only GOAT receipt reader, PostgreSQL receipt/order stores, policy engine, evidence SDK, and run domain.
+- backend packages: GOAT Flow merchant adapter, deterministic settlement reconciliation, read-only GOAT receipt reader, protected-delivery replay runner, PostgreSQL receipt/order stores, policy engine, evidence SDK, and run domain.
 - `contracts`: append-only `ShipyardRunRegistry` and Foundry test suite.
 
 The API gateway now uses PostgreSQL for catalog-bound quotes, idempotent run state, payment-order context, domain events, and transactional outbox records. Development defaults to the local Compose database. Production startup fails closed unless an explicit PostgreSQL URL and a complete reviewed GOAT x402 merchant configuration are present. Unit/integration mocks never represent mainnet evidence, and signer/attestor processes remain deliberately separate.
