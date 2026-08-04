@@ -20,6 +20,8 @@ The API gateway now uses PostgreSQL for catalog-bound quotes, idempotent run sta
 
 A first GOAT Testnet3 smoke run is public: the isolated test signer received native faucet gas and deployed the append-only registry. The [evidence record](./docs/evidence/testnet3-smoke-2026-08-04.md) includes explorer transactions, bytecode hash, cost, and current limitations. It is deliberately not labeled as x402 payment evidence, customer traction, revenue, or mainnet proof.
 
+A second Testnet3 record verifies the orchestrator mechanism itself: a real OpenAI risk-classification call, a real on-chain procurement payment independently verified by `x402-demo-target`, a real execution of the payment-proof replay check, a real EIP-712-signed tool receipt, and a real EIP-712-signed attestation submitted to and read back from the registry. See the [evidence record](./docs/evidence/testnet3-orchestrator-run-2026-08-05.md) for exact transaction hashes, what was simulated (only the customer-payment leg, still blocked on GOAT Flow merchant onboarding), and a disclosed sandbox limitation that prevented running the fully automated single-command worker end-to-end.
+
 ## Application boundaries
 
 ```text
