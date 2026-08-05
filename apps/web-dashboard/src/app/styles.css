@@ -68,10 +68,13 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .pipeline { position: relative; }
 .pipeline-rail { position: relative; height: 2px; margin: 0 7px 54px; background: var(--line); }
 .pipeline-rail-fill { position: absolute; inset: 0; width: 0%; background: linear-gradient(90deg, var(--gold), #fff0b3); box-shadow: 0 0 18px 1px rgba(240, 196, 25, .45); transition: width 2s linear; }
-/* Background/border-color intentionally lag behind via transition-delay, not duration -- the dot
-   should stay unlit until the rail fill (width 2s linear) visually arrives at it, then flip to
-   gold quickly, instead of blending color the whole time and looking "done" before the line gets there. */
-.pipeline-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); transition: background .3s linear 1.7s, border-color .3s linear 1.7s, box-shadow .4s ease; }
+/* Background/border-color intentionally lag behind via transition-delay, not duration. Each dot
+   sits at the MIDPOINT of the rail segment its step's width transition covers (from N/5 to
+   (N+1)/5), so the fill's leading edge reaches a dot's x-position at the transition's halfway
+   point -- 1s into the 2s width transition, not at the end of it. Delay is set to land the color
+   flip there too, instead of blending color the whole time and looking "done" before the line
+   visually gets there (or the reverse: staying dark after the line has already passed under it). */
+.pipeline-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); transition: background .3s linear .7s, border-color .3s linear .7s, box-shadow .4s ease; }
 .pipeline-dot.is-done { background: var(--gold); border-color: var(--gold); }
 .pipeline-dot.is-active { background: var(--gold); border-color: var(--gold); animation: dot-pulse 1.6s ease-in-out infinite; }
 .pipeline-labels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
