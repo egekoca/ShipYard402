@@ -8,7 +8,7 @@ import {
   type ReplayEvidence,
   type ReplayScenario,
 } from '@shipyard402/protected-delivery-runner';
-import { compileTestPlan, type CompiledTestPlan, type RiskClassifier } from '@shipyard402/risk-classifier';
+import { compileTestPlan, type CompiledTestPlan, type RiskClassification, type RiskClassifier } from '@shipyard402/risk-classifier';
 import { transitionRun, type RunActor, type RunStatus } from '@shipyard402/run-domain';
 import { keccak256, toUtf8Bytes } from 'ethers';
 
@@ -284,8 +284,9 @@ export async function runOrchestratorPipeline(
     // ANALYZING
     await advance('ORCHESTRATOR', 'ANALYZING');
     let plan = checkpoint.plan as CompiledTestPlan | undefined;
+    let proposal = checkpoint.proposal as RiskClassification | undefined;
     if (!plan) {
-      const proposal = await deps.riskClassifier.classify({
+      proposal = await deps.riskClassifier.classify({
         targetServiceId: quote.request.targetServiceId,
         targetVersionHash,
         x402Endpoint: quote.request.x402Endpoint,
@@ -296,7 +297,9 @@ export async function runOrchestratorPipeline(
         maximumToolBudgetAtomic: quote.refundableToolBudgetAtomic,
       });
       plan = compileTestPlan(proposal, deps.mandatoryScenarios, quote.refundableToolBudgetAtomic);
-      await deps.checkpointStore.merge(runId, { plan });
+      // proposal is kept only for the evidence pack's transparency fields (see AiRiskProposal) --
+      // plan above is the sole authority the rest of this pipeline ever reads from.
+      await deps.checkpointStore.merge(runId, { plan, proposal });
     }
 
     // PLAN_COMPILED
@@ -426,7 +429,23 @@ export async function runOrchestratorPipeline(
       targetVersionHash,
       policyHash,
       riskLevel: plan.riskLevel,
+      rationale: plan.rationale,
+      toolBudgetAtomic: plan.toolBudgetAtomic,
+      ...(proposal
+        ? {
+            aiProposal: {
+              riskLevel: proposal.riskLevel,
+              proposedScenarios: proposal.proposedScenarios,
+              proposedToolBudgetAtomic: proposal.proposedToolBudgetAtomic,
+              rationale: proposal.rationale,
+            },
+          }
+        : {}),
       scenarios: scenarioResults.map((result) => result.evidence.scenarioId),
+      scenarioTraces: scenarioResults.map((result) => ({
+        scenarioId: result.evidence.scenarioId,
+        attempts: result.evidence.attempts,
+      })),
       result: overallResult,
       toolReceipts,
     });

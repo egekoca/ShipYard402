@@ -42,13 +42,38 @@ export function buildUnsignedToolReceipt(evidence: ReplayEvidence, input: ToolRe
   };
 }
 
+/** The AI's raw, pre-compilation proposal -- advisory only, see compileTestPlan in risk-classifier. */
+export type AiRiskProposal = Readonly<{
+  riskLevel: string;
+  proposedScenarios: readonly string[];
+  proposedToolBudgetAtomic: string;
+  rationale: string;
+}>;
+
+/** One tool-agent-to-target-agent exchange per scenario probe, already-hashed (no raw bodies). */
+export type ScenarioTrace = Readonly<{
+  scenarioId: string;
+  attempts: readonly Readonly<{
+    phase: 'INITIAL' | 'REPLAY';
+    requestHash: `0x${string}`;
+    responseHash?: `0x${string}`;
+    statusCode?: number;
+    deliveryConfirmed?: boolean;
+  }>[];
+}>;
+
 export type EvidencePackContent = Readonly<{
   runId: string;
   targetServiceId: string;
   targetVersionHash: `0x${string}`;
   policyHash: `0x${string}`;
   riskLevel: string;
+  rationale: string;
+  toolBudgetAtomic: string;
+  /** Absent when resumed from a checkpoint written before this field existed. */
+  aiProposal?: AiRiskProposal;
   scenarios: readonly string[];
+  scenarioTraces: readonly ScenarioTrace[];
   result: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
   toolReceipts: readonly ToolReceipt[];
 }>;

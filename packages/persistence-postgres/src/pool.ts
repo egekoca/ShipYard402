@@ -1,6 +1,6 @@
 import { Pool, type PoolConfig } from 'pg';
 
-export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0005_orchestrator_refund_checkpoint.sql';
+export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0006_orchestrator_checkpoint_ai_proposal.sql';
 
 export type ShipyardPoolOptions = Readonly<{
   connectionString: string;

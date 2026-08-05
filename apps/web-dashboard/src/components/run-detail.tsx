@@ -140,12 +140,44 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               )}
             </div>
 
+            <div className="run-detail-panel state-in" data-state={manifest ? 'ready' : 'pending'} style={{ animationDelay: '90ms' }}>
+              <span className="panel-label"><i>[02]</i> AI RISK PLAN</span>
+              {!manifest && (
+                <div className="panel-empty">
+                  <RadarMark className="panel-empty-icon" />
+                  <p>Not available yet — the AI&apos;s proposal and the compiled plan appear once the run reaches EVIDENCE_BUILDING.</p>
+                </div>
+              )}
+              {manifest && (
+                <>
+                  <dl>
+                    <div><dt>Risk level (compiled)</dt><dd>{manifest.riskLevel}</dd></div>
+                    <div><dt>Tool budget (compiled)</dt><dd className="mono">{manifest.toolBudgetAtomic}</dd></div>
+                    <div><dt>Scenarios run</dt><dd>{manifest.scenarios.join(', ')}</dd></div>
+                  </dl>
+                  <p className="ai-rationale">{manifest.rationale}</p>
+                  {manifest.aiProposal ? (
+                    <div className="ai-proposal-diff">
+                      <span className="panel-sublabel">AI PROPOSED THIS (ADVISORY, NOT BINDING)</span>
+                      <dl>
+                        <div><dt>Risk level</dt><dd>{manifest.aiProposal.riskLevel}</dd></div>
+                        <div><dt>Scenarios</dt><dd>{manifest.aiProposal.proposedScenarios.join(', ')}</dd></div>
+                        <div><dt>Budget</dt><dd className="mono">{manifest.aiProposal.proposedToolBudgetAtomic}</dd></div>
+                      </dl>
+                    </div>
+                  ) : (
+                    <p className="ai-rationale">AI proposal not recorded for this run (resumed from an older checkpoint).</p>
+                  )}
+                </>
+              )}
+            </div>
+
             <div
               className="run-detail-panel state-in"
               data-state={!evidence ? 'pending' : evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready'}
-              style={{ animationDelay: '90ms' }}
+              style={{ animationDelay: '135ms' }}
             >
-              <span className="panel-label"><i>[02]</i> EVIDENCE</span>
+              <span className="panel-label"><i>[03]</i> EVIDENCE</span>
               {!evidence && (
                 <div className="panel-empty">
                   <RadarMark className="panel-empty-icon" />
@@ -155,7 +187,6 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               {evidence && (
                 <>
                   <dl>
-                    <div><dt>Risk level</dt><dd>{evidence.publicManifest.riskLevel}</dd></div>
                     <div><dt>Result</dt><dd>{evidence.publicManifest.result}</dd></div>
                     <div><dt>Evidence root</dt><dd className="mono">{shortHash(evidence.evidenceRoot)}</dd></div>
                     <div>
@@ -168,27 +199,47 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
                     </div>
                   </dl>
                   <ul className="run-detail-receipts">
-                    {evidence.publicManifest.toolReceipts.map((receipt) => (
-                      <li key={receipt.scenarioId}>
-                        <span className={`receipt-result receipt-result--${receipt.result.toLowerCase()}`}>{receipt.result}</span>
-                        <span className="mono">{receipt.scenarioId}</span>
-                        <a
-                          className="explorer-link"
-                          href={explorerTxUrl(receipt.chainId, receipt.chainTransactionHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          payment tx ↗
-                        </a>
-                      </li>
-                    ))}
+                    {evidence.publicManifest.toolReceipts.map((receipt) => {
+                      const trace = manifest?.scenarioTraces?.find((candidate) => candidate.scenarioId === receipt.scenarioId);
+                      return (
+                        <li key={receipt.scenarioId}>
+                          <div className="receipt-row">
+                            <span className={`receipt-result receipt-result--${receipt.result.toLowerCase()}`}>{receipt.result}</span>
+                            <span className="mono">{receipt.scenarioId}</span>
+                            <a
+                              className="explorer-link"
+                              href={explorerTxUrl(receipt.chainId, receipt.chainTransactionHash)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              payment tx ↗
+                            </a>
+                          </div>
+                          {trace && trace.attempts.length > 0 && (
+                            <ol className="scenario-trace">
+                              {trace.attempts.map((attempt, index) => (
+                                <li key={`${attempt.phase}-${index}`}>
+                                  <span className="trace-phase mono">{attempt.phase}</span>
+                                  <span>tool agent → target agent, {attempt.statusCode ?? 'no response'}</span>
+                                  {attempt.deliveryConfirmed !== undefined && (
+                                    <span>{attempt.deliveryConfirmed ? 'delivery confirmed' : 'delivery rejected'}</span>
+                                  )}
+                                  <span className="mono">req {shortHash(attempt.requestHash)}</span>
+                                  {attempt.responseHash && <span className="mono">res {shortHash(attempt.responseHash)}</span>}
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </>
               )}
             </div>
 
             <div className="run-detail-panel state-in" data-state={attestation ? 'ready' : 'pending'} style={{ animationDelay: '180ms' }}>
-              <span className="panel-label"><i>[03]</i> ON-CHAIN ATTESTATION</span>
+              <span className="panel-label"><i>[04]</i> ON-CHAIN ATTESTATION</span>
               {!attestation && (
                 <div className="panel-empty">
                   <RadarMark className="panel-empty-icon" />

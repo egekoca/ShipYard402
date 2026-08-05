@@ -181,7 +181,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .run-verdict--cancelled .run-verdict-label,
 .run-verdict--expired .run-verdict-label { background: var(--line); color: var(--ink); }
 .run-verdict p { position: relative; margin: 0; max-width: 640px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.run-detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 30px 36px 0; background: var(--line); border: 1px solid var(--line); }
+.run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; margin: 30px 36px 0; background: var(--line); border: 1px solid var(--line); }
 .run-detail-panel { padding: 24px; background: var(--surface); border-top: 3px solid var(--line); transition: transform .3s cubic-bezier(.16,1,.3,1), box-shadow .3s ease, border-color .4s ease; }
 .run-detail-panel:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -20px rgba(240, 196, 25, .3); }
 .run-detail-panel[data-state="ready"] { border-top-color: var(--gold); }
@@ -199,6 +199,14 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .receipt-result--pass { background: var(--gold); color: var(--gold-ink); }
 .receipt-result--fail { background: var(--danger); color: var(--white); }
 .receipt-result--inconclusive { background: var(--line); color: var(--ink); }
+.panel-sublabel { display: block; margin: 20px 0 8px; color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .14em; }
+.ai-rationale { margin: 14px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink); }
+.ai-proposal-diff dl div { padding: 8px 0; font-size: 11px; }
+.run-detail-receipts li { flex-direction: column; align-items: stretch; }
+.receipt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.scenario-trace { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px dashed var(--line); list-style: none; }
+.scenario-trace li { display: flex; flex-wrap: wrap; gap: 10px; font-size: 10px; color: var(--muted); }
+.scenario-trace .trace-phase { color: var(--ink); font-weight: 800; min-width: 52px; }
 .explorer-link { color: var(--gold); font-weight: 800; text-decoration: none; }
 .explorer-link:hover { text-decoration: underline; }
 
