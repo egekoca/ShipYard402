@@ -7,6 +7,12 @@ export type OrchestratorRunCheckpoint = Readonly<{
     toolBudgetAtomic: string;
     rationale: string;
   }>;
+  /**
+   * The AI's raw, pre-compilation proposal -- kept only for transparency (surfaced in evidence
+   * pack manifests), never re-read as an input to pipeline logic. `plan` above is the sole
+   * authority for what actually runs.
+   */
+  proposal?: unknown;
   paymentTransactionHash?: `0x${string}`;
   purchaseReceipt?: string;
   evidence?: unknown;
@@ -26,6 +32,7 @@ type CheckpointRow = QueryResultRow & {
   scenarios: unknown;
   tool_budget_atomic: string | null;
   rationale: string | null;
+  ai_proposal: unknown;
   payment_transaction_hash: Buffer | null;
   purchase_receipt: string | null;
   evidence: unknown;
@@ -46,7 +53,7 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
 
   async load(runId: string): Promise<OrchestratorRunCheckpoint> {
     const result = await this.#pool.query<CheckpointRow>(
-      `SELECT risk_level, scenarios, tool_budget_atomic, rationale, payment_transaction_hash,
+      `SELECT risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal, payment_transaction_hash,
               purchase_receipt, evidence, started_at, completed_at, attestation_transaction_hash,
               refund_transaction_hash
        FROM orchestrator_run_checkpoints WHERE run_id = $1`,
@@ -59,15 +66,16 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
   async merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<void> {
     await this.#pool.query(
       `INSERT INTO orchestrator_run_checkpoints (
-         run_id, risk_level, scenarios, tool_budget_atomic, rationale,
+         run_id, risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal,
          payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
          attestation_transaction_hash, refund_transaction_hash
-       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12)
+       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10, $11, $12, $13)
        ON CONFLICT (run_id) DO UPDATE SET
          risk_level = COALESCE(orchestrator_run_checkpoints.risk_level, EXCLUDED.risk_level),
          scenarios = COALESCE(orchestrator_run_checkpoints.scenarios, EXCLUDED.scenarios),
          tool_budget_atomic = COALESCE(orchestrator_run_checkpoints.tool_budget_atomic, EXCLUDED.tool_budget_atomic),
          rationale = COALESCE(orchestrator_run_checkpoints.rationale, EXCLUDED.rationale),
+         ai_proposal = COALESCE(orchestrator_run_checkpoints.ai_proposal, EXCLUDED.ai_proposal),
          payment_transaction_hash = COALESCE(orchestrator_run_checkpoints.payment_transaction_hash, EXCLUDED.payment_transaction_hash),
          purchase_receipt = COALESCE(orchestrator_run_checkpoints.purchase_receipt, EXCLUDED.purchase_receipt),
          evidence = COALESCE(orchestrator_run_checkpoints.evidence, EXCLUDED.evidence),
@@ -82,6 +90,7 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
         patch.plan ? JSON.stringify(patch.plan.scenarios) : null,
         patch.plan?.toolBudgetAtomic ?? null,
         patch.plan?.rationale ?? null,
+        patch.proposal !== undefined ? JSON.stringify(patch.proposal) : null,
         patch.paymentTransactionHash ? hexToBuffer(patch.paymentTransactionHash) : null,
         patch.purchaseReceipt ?? null,
         patch.evidence !== undefined ? JSON.stringify(patch.evidence) : null,
@@ -106,6 +115,7 @@ function parseRow(row: CheckpointRow): OrchestratorRunCheckpoint {
           },
         }
       : {}),
+    ...(row.ai_proposal !== null && row.ai_proposal !== undefined ? { proposal: row.ai_proposal } : {}),
     ...(row.payment_transaction_hash ? { paymentTransactionHash: bufferToHex(row.payment_transaction_hash) } : {}),
     ...(row.purchase_receipt ? { purchaseReceipt: row.purchase_receipt } : {}),
     ...(row.evidence !== null && row.evidence !== undefined ? { evidence: row.evidence } : {}),
