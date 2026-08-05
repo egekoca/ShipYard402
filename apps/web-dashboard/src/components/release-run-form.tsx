@@ -172,6 +172,7 @@ export function ReleaseRunForm() {
                     challenge={run.payment.paymentRequired.accepts[0]}
                     tokenSymbol={quote.capabilitySnapshot.tokenSymbol}
                     tokenDecimals={quote.capabilitySnapshot.tokenDecimals}
+                    connectedAddress={form.requesterAddress as `0x${string}`}
                   />
                 )}
                 <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`}>Track this run →</a>
