@@ -24,6 +24,9 @@ export type GoatChainConfig = Readonly<{
   blockExplorerUrls: readonly string[];
 }>;
 
+/** The only chain this app targets while GOAT Flow Mainnet merchant onboarding is still pending. */
+export const GOAT_TESTNET3_CHAIN_ID = 48816;
+
 export const GOAT_CHAINS: Readonly<Record<number, GoatChainConfig>> = {
   2345: {
     chainIdHex: '0x929',
