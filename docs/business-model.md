@@ -26,7 +26,7 @@ Shipyard402 sells a single, narrow product: **version-scoped, policy-scoped, exp
 | `chainStorageReserveAtomic` | 150,000 | Covers attestation-transaction gas |
 | `riskSupportReserveAtomic` | 400,000 | Contingency buffer |
 
-`mandatoryToolBudgetAtomic + dynamicToolBudgetAtomic` is reported back to the customer as `refundableToolBudgetAtomic` — the ceiling of what *could* be spent testing the target, not what necessarily will be. The `runs` table already tracks `actual_tool_spend_atomic` against that ceiling, which is the bookkeeping a real refund needs — but no code path today actually transfers the unspent difference back to the customer. That gap is disclosed explicitly in **Known gaps** below rather than assumed away.
+`mandatoryToolBudgetAtomic + dynamicToolBudgetAtomic` is reported back to the customer as `refundableToolBudgetAtomic` — the ceiling of what *could* be spent testing the target, not what necessarily will be. Once procurement spends its (typically much smaller) fixed amount, `apps/orchestrator-worker` sends the unspent difference back to the requester as a real ERC20 transfer, checkpointed the same way as the procurement payment and attestation so a resumed run never double-refunds. This is wired but disabled by default (`ORCHESTRATOR_REFUNDS_ENABLED=false`) — see **Known gaps** for why.
 
 Real launch pricing (token, decimals, and actual atomic amounts) is not yet fixed, because it depends on the settlement token GOAT Flow merchant onboarding resolves to.
 
@@ -56,12 +56,12 @@ Split by what is actually autonomous today versus what still needs a human:
 | Fee computation | Real — implemented, unit-tested, exercised through the frontend quote form |
 | Autonomous run execution once funded | Real — proven end-to-end against GOAT Testnet3 (`docs/evidence/testnet3-orchestrator-run-2026-08-05.md`) |
 | Real customer payment collection | **Not yet live** — blocked on GOAT Flow Testnet3 merchant onboarding, an external step outside this codebase |
-| Refund of unspent tool budget | **Not implemented** — tracked in the schema, no transfer executed |
+| Refund of unspent tool budget | Real ERC20 transfer implemented and checkpointed — **disabled by default** (`ORCHESTRATOR_REFUNDS_ENABLED=false`) since the signer holds no real customer balance to refund from until GOAT Flow merchant onboarding is real |
 | Revenue collected to date | **$0.** One real run exists; it is first-party (Shipyard's own verification run) and is explicitly excluded from counting as revenue or traction, consistent with the self-dealing disclosure in `docs/threat-model.md` |
 
 ## Path to first real dollar
 
 1. Complete GOAT Flow Testnet3 (then Mainnet) merchant onboarding — human action, outside this codebase.
 2. Replace the `HYPOTHESIS` pricing constants with real numbers denominated in whatever token that onboarding resolves to.
-3. Implement the actual refund transfer for `refundableToolBudgetAtomic - actual_tool_spend_atomic`, or drop the "refundable" framing until it is.
+3. Flip `ORCHESTRATOR_REFUNDS_ENABLED=true` once the signer wallet actually custodies real customer funds to refund from.
 4. Find one design-partner customer — a real x402 service operator willing to pay for a real run — before claiming any traction.

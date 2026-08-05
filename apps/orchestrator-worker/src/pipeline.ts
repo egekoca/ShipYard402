@@ -1,6 +1,12 @@
 import type { AttestationRecord, EvidencePack, OrchestratorRunCheckpoint } from '@shipyard402/persistence-postgres';
 import { authorizePurchase, type PurchaseContext, type PurchaseIntent } from '@shipyard402/policy-engine';
-import { ProtectedDeliveryReplayRunner, type ProtectedDeliveryClient, type ReplayEvidence, type ReplayScenario } from '@shipyard402/protected-delivery-runner';
+import {
+  ProtectedDeliveryReplayRunner,
+  UnpaidAccessDenialRunner,
+  type ProtectedDeliveryClient,
+  type ReplayEvidence,
+  type ReplayScenario,
+} from '@shipyard402/protected-delivery-runner';
 import { compileTestPlan, type CompiledTestPlan, type RiskClassifier } from '@shipyard402/risk-classifier';
 import { transitionRun, type RunActor, type RunStatus } from '@shipyard402/run-domain';
 import { keccak256, toUtf8Bytes } from 'ethers';
@@ -13,6 +19,7 @@ import type {
   NativePaymentSender,
   PurchaseClient,
   QuoteRepositoryPort,
+  RefundSender,
   RegistryAttestor,
   RunRepositoryPort,
   ToolReceiptSigner,
@@ -20,6 +27,60 @@ import type {
 
 const PAID_RESOURCE_ROUTE = '/paid/resource';
 const MANDATE_VALIDITY_SECONDS = 900;
+const ZERO_CHAIN_TRANSACTION_HASH = `0x${'0'.repeat(64)}` as const;
+
+type ScenarioExecutionContext = Readonly<{
+  targetServiceId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  paymentReceipt: string;
+  paymentTransactionHash: `0x${string}`;
+  deliveryClient: ProtectedDeliveryClient;
+}>;
+
+type ScenarioResult = Readonly<{ evidence: ReplayEvidence; chainTransactionHash: `0x${string}` }>;
+
+/**
+ * What the pipeline can actually run, keyed by scenario ID. compileTestPlan's output can contain
+ * IDs beyond this set (the AI proposes freely, see risk-classifier's availableScenarios prompt
+ * field) -- those are skipped, not executed, since there is nothing registered to run them.
+ */
+const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecutionContext) => Promise<ScenarioResult>>> = {
+  'payment-proof-replay': async (ctx) => {
+    const scenario: ReplayScenario = {
+      scenarioId: 'payment-proof-replay',
+      targetServiceId: ctx.targetServiceId,
+      targetVersionHash: ctx.targetVersionHash,
+      policyHash: ctx.policyHash,
+      method: 'GET',
+      route: PAID_RESOURCE_ROUTE,
+      paymentReceipt: ctx.paymentReceipt,
+      paymentProofHash: keccak256(toUtf8Bytes(ctx.paymentTransactionHash)) as `0x${string}`,
+    };
+    return {
+      evidence: await new ProtectedDeliveryReplayRunner(ctx.deliveryClient).run(scenario),
+      chainTransactionHash: ctx.paymentTransactionHash,
+    };
+  },
+  'unpaid-access-denial': async (ctx) => ({
+    evidence: await new UnpaidAccessDenialRunner(ctx.deliveryClient).run({
+      scenarioId: 'unpaid-access-denial',
+      targetServiceId: ctx.targetServiceId,
+      targetVersionHash: ctx.targetVersionHash,
+      policyHash: ctx.policyHash,
+      method: 'GET',
+      route: PAID_RESOURCE_ROUTE,
+    }),
+    // No payment happens in this scenario, so there is no real transaction to attach the receipt to.
+    chainTransactionHash: ZERO_CHAIN_TRANSACTION_HASH,
+  }),
+};
+
+function aggregateScenarioResult(results: readonly ReplayEvidence[]): 'PASS' | 'FAIL' | 'INCONCLUSIVE' {
+  if (results.some((result) => result.result === 'FAIL')) return 'FAIL';
+  if (results.some((result) => result.result === 'INCONCLUSIVE')) return 'INCONCLUSIVE';
+  return 'PASS';
+}
 
 /**
  * Statuses this pipeline can (re)enter and drive forward. A job may be re-claimed after a crash
@@ -69,6 +130,13 @@ export type OrchestratorPipelineDependencies = Readonly<{
   demoTarget: DemoTargetConfig;
   deliveryClient: ProtectedDeliveryClient;
   paymentSender: NativePaymentSender;
+  /**
+   * Undefined until real customer funds exist to refund from -- GOAT Flow merchant onboarding is
+   * still simulated (see docs/business-model.md), so there is nothing to send back yet. Wiring
+   * this in is what activates the refund step below; leaving it unset is a deliberate no-op, not
+   * a silent failure.
+   */
+  refundSender?: RefundSender;
   purchaseClient: PurchaseClient;
   toolReceiptSigner: ToolReceiptSigner;
   evidencePackStore: EvidencePackStorePort;
@@ -175,6 +243,7 @@ export async function runOrchestratorPipeline(
         openApiUrl: quote.request.openApiUrl,
         serviceSummary: `Controlled demo x402 paid resource used to prove payment-proof replay handling for ${quote.request.targetServiceId}.`,
         mandatoryScenarios: deps.mandatoryScenarios,
+        availableScenarios: Object.keys(SCENARIO_EXECUTORS),
         maximumToolBudgetAtomic: quote.refundableToolBudgetAtomic,
       });
       plan = compileTestPlan(proposal, deps.mandatoryScenarios, quote.refundableToolBudgetAtomic);
@@ -235,48 +304,71 @@ export async function runOrchestratorPipeline(
       await deps.checkpointStore.merge(runId, { purchaseReceipt });
     }
 
+    // Refund: the customer prepaid up to refundableToolBudgetAtomic; procurement above only
+    // actually spent purchaseAmount. Same spend-once shape as the payment/attestation sends, so
+    // it is checkpointed the same way -- a resumed attempt reuses the tx instead of double-paying.
+    if (deps.refundSender) {
+      const refundAmount = BigInt(quote.refundableToolBudgetAtomic) - purchaseAmount;
+      if (refundAmount > 0n && !checkpoint.refundTransactionHash) {
+        const refundTransactionHash = await deps.refundSender.sendRefund({
+          tokenAddress: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
+          toAddress: quote.request.requesterAddress as `0x${string}`,
+          valueAtomic: refundAmount,
+        });
+        await deps.checkpointStore.merge(runId, { refundTransactionHash });
+      }
+    }
+
     // EXECUTING
     await advance('PROCUREMENT_WORKER', 'EXECUTING');
-    // The replay probe itself spends the receipt (that is the point of the test) — re-running it
-    // on resume would present an already-spent receipt and record a false replay-rejection, so
-    // its result is checkpointed the same way as the payment above.
-    let evidence = checkpoint.evidence as ReplayEvidence | undefined;
+    // Each scenario probe consumes something spend-once (the replay check spends the receipt;
+    // future scenarios may spend other one-shot state) — re-running the whole batch on resume
+    // would record false results, so the full set is checkpointed together like the payment above.
+    let scenarioResults = checkpoint.evidence as readonly ScenarioResult[] | undefined;
     let startedAt = checkpoint.startedAt;
     let completedAt = checkpoint.completedAt;
-    if (!evidence || startedAt === undefined || completedAt === undefined) {
+    if (!scenarioResults || startedAt === undefined || completedAt === undefined) {
       startedAt = Math.floor(now().getTime() / 1_000);
-      const scenario: ReplayScenario = {
-        scenarioId: 'payment-proof-replay',
+      const context: ScenarioExecutionContext = {
         targetServiceId: quote.request.targetServiceId,
         targetVersionHash,
         policyHash,
-        method: 'GET',
-        route: PAID_RESOURCE_ROUTE,
         paymentReceipt: purchaseReceipt,
-        paymentProofHash: keccak256(toUtf8Bytes(paymentTransactionHash)) as `0x${string}`,
+        paymentTransactionHash,
+        deliveryClient: deps.deliveryClient,
       };
-      const runner = new ProtectedDeliveryReplayRunner(deps.deliveryClient);
-      evidence = await runner.run(scenario);
+      const results: ScenarioResult[] = [];
+      for (const scenarioId of plan.scenarios) {
+        const executor = SCENARIO_EXECUTORS[scenarioId];
+        if (!executor) continue;
+        results.push(await executor(context));
+      }
+      if (results.length === 0) throw new Error('No scenario in the compiled plan has a registered executor');
+      scenarioResults = results;
       completedAt = Math.floor(now().getTime() / 1_000);
-      await deps.checkpointStore.merge(runId, { evidence, startedAt, completedAt });
+      await deps.checkpointStore.merge(runId, { evidence: scenarioResults, startedAt, completedAt });
     }
 
     // EVIDENCE_BUILDING
     await advance('EXECUTION_WORKER', 'EVIDENCE_BUILDING');
-    const unsignedReceipt = buildUnsignedToolReceipt(evidence, {
-      runId,
-      toolAgentId: deps.demoTarget.toolAgentId,
-      targetAgentId: quote.request.targetAgentId,
-      targetVersionHash,
-      policyHash,
-      chainTransactionHash: paymentTransactionHash,
-      chainId: deps.demoTarget.chainId,
-      startedAt,
-      completedAt,
-      toolVersion: deps.demoTarget.toolVersion,
-    });
-    const signature = await deps.toolReceiptSigner.sign(unsignedReceipt);
-    const toolReceipt = { ...unsignedReceipt, signature };
+    const toolReceipts = [];
+    for (const scenarioResult of scenarioResults) {
+      const unsignedReceipt = buildUnsignedToolReceipt(scenarioResult.evidence, {
+        runId,
+        toolAgentId: deps.demoTarget.toolAgentId,
+        targetAgentId: quote.request.targetAgentId,
+        targetVersionHash,
+        policyHash,
+        chainTransactionHash: scenarioResult.chainTransactionHash,
+        chainId: deps.demoTarget.chainId,
+        startedAt,
+        completedAt,
+        toolVersion: deps.demoTarget.toolVersion,
+      });
+      const signature = await deps.toolReceiptSigner.sign(unsignedReceipt);
+      toolReceipts.push({ ...unsignedReceipt, signature });
+    }
+    const overallResult = aggregateScenarioResult(scenarioResults.map((result) => result.evidence));
 
     const evidencePack = buildEvidencePack({
       runId,
@@ -284,9 +376,9 @@ export async function runOrchestratorPipeline(
       targetVersionHash,
       policyHash,
       riskLevel: plan.riskLevel,
-      scenarios: plan.scenarios,
-      result: evidence.result,
-      toolReceipts: [toolReceipt],
+      scenarios: scenarioResults.map((result) => result.evidence.scenarioId),
+      result: overallResult,
+      toolReceipts,
     });
     // Content-addressed and idempotent -- a resumed attempt republishing the same bytes gets the
     // same CID back, so this needs no checkpoint guard (unlike the payment and attestation sends).
@@ -321,7 +413,7 @@ export async function runOrchestratorPipeline(
       toolSpendAtomic: purchaseAmount,
       customerPaymentAtomic: BigInt(customerPaymentAtomic),
       completedAt,
-      result: evidence.result,
+      result: overallResult,
     });
     // The registry is append-only and will revert a second attestation for the same run, so a
     // resumed attempt must reuse a checkpointed submission rather than resubmitting.
@@ -343,9 +435,9 @@ export async function runOrchestratorPipeline(
     }
 
     // DELIVERED_*
-    const finalStatus: RunStatus = evidence.result === 'PASS'
+    const finalStatus: RunStatus = overallResult === 'PASS'
       ? 'DELIVERED_PASS'
-      : evidence.result === 'FAIL'
+      : overallResult === 'FAIL'
         ? 'DELIVERED_FAIL'
         : 'DELIVERED_INCONCLUSIVE';
     if (current.status !== finalStatus) {

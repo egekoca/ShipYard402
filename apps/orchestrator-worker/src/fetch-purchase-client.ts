@@ -1,9 +1,13 @@
+import { createEgressSafeFetch } from '@shipyard402/policy-engine';
+
 import type { PurchaseClient } from './ports.js';
+
+const egressSafeFetch = createEgressSafeFetch();
 
 export function createFetchPurchaseClient(baseUrl: string): PurchaseClient {
   return {
     async purchase(transactionHash) {
-      const response = await fetch(new URL('/purchase', baseUrl), {
+      const response = await egressSafeFetch(new URL('/purchase', baseUrl), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ transactionHash }),

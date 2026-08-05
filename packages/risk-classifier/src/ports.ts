@@ -26,6 +26,12 @@ export type RiskClassificationInput = Readonly<{
   openApiUrl: string;
   serviceSummary: string;
   mandatoryScenarios: readonly string[];
+  /**
+   * Scenario IDs the pipeline actually has an executor for. Proposing anything outside this list
+   * is harmless but pointless: the deterministic compiler will include it in the plan, but the
+   * pipeline's scenario registry has nothing to run it with, so it is silently skipped.
+   */
+  availableScenarios: readonly string[];
   maximumToolBudgetAtomic: string;
 }>;
 

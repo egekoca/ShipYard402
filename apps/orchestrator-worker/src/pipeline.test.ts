@@ -270,6 +270,152 @@ describe('runOrchestratorPipeline', () => {
     expect(result.finalStatus).toBe('DELIVERED_FAIL');
   });
 
+  it('executes every AI-proposed scenario that has a registered executor, and silently skips ones that do not', async () => {
+    const evidencePackStore = fakeEvidencePackStore();
+    const deps = baseDeps({
+      riskClassifier: {
+        async classify() {
+          return {
+            riskLevel: 'MEDIUM',
+            proposedScenarios: ['unpaid-access-denial', 'schema-drift-nobody-implements'],
+            proposedToolBudgetAtomic: '150',
+            rationale: 'test',
+          };
+        },
+      },
+      deliveryClient: {
+        async execute(input) {
+          // unpaid-access-denial presents no receipt at all; payment-proof-replay presents one.
+          if (input.paymentReceipt === '') {
+            return { statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'ee'.repeat(32)}` };
+          }
+          return {
+            statusCode: input.idempotencyKey.endsWith(':replay') ? 409 : 200,
+            deliveryConfirmed: !input.idempotencyKey.endsWith(':replay'),
+            responseBodyHash: `0x${'44'.repeat(32)}`,
+          };
+        },
+      },
+      evidencePackStore,
+    });
+
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_PASS');
+    const stored = evidencePackStore.puts[0];
+    expect(stored?.publicManifest).toMatchObject({
+      scenarios: expect.arrayContaining(['payment-proof-replay', 'unpaid-access-denial']),
+    });
+    expect((stored?.publicManifest as { toolReceipts: readonly unknown[] }).toolReceipts).toHaveLength(2);
+  });
+
+  it('aggregates to DELIVERED_FAIL if any executed scenario fails, even when others pass', async () => {
+    const deps = baseDeps({
+      riskClassifier: {
+        async classify() {
+          return {
+            riskLevel: 'MEDIUM',
+            proposedScenarios: ['unpaid-access-denial'],
+            proposedToolBudgetAtomic: '150',
+            rationale: 'test',
+          };
+        },
+      },
+      deliveryClient: {
+        async execute(input) {
+          // unpaid-access-denial: target wrongly serves content with no receipt -> FAIL.
+          if (input.paymentReceipt === '') {
+            return { statusCode: 200, deliveryConfirmed: true, responseBodyHash: `0x${'ee'.repeat(32)}` };
+          }
+          // payment-proof-replay still passes on its own.
+          return {
+            statusCode: input.idempotencyKey.endsWith(':replay') ? 409 : 200,
+            deliveryConfirmed: !input.idempotencyKey.endsWith(':replay'),
+            responseBodyHash: `0x${'44'.repeat(32)}`,
+          };
+        },
+      },
+    });
+
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_FAIL');
+  });
+
+  it('refunds the unspent tool budget when a refund sender is configured', async () => {
+    const refundCalls: Array<{ tokenAddress: string; toAddress: string; valueAtomic: bigint }> = [];
+    const deps = baseDeps({
+      refundSender: {
+        async sendRefund(input) {
+          refundCalls.push(input);
+          return `0x${'88'.repeat(32)}`;
+        },
+      },
+    });
+
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_PASS');
+    // refundableToolBudgetAtomic (200) - demoTarget.minimumAtomicAmount (100) = 100 unspent
+    expect(refundCalls).toEqual([{
+      tokenAddress: '0x1000000000000000000000000000000000000001',
+      toAddress: '0x2000000000000000000000000000000000000002',
+      valueAtomic: 100n,
+    }]);
+  });
+
+  it('never sends a refund when no refund sender is configured (still the default)', async () => {
+    const deps = baseDeps();
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+    // baseDeps() has no refundSender -- nothing to assert a call against, this just documents
+    // that leaving it unset must not throw or block the run.
+  });
+
+  it('does not resend a refund that was already checkpointed on a resumed attempt', async () => {
+    let refundCalls = 0;
+    const deps = baseDeps({
+      runRepository: fakeRunRepository(runAtStatus('PROCURING')),
+      checkpointStore: fakeCheckpointStore({
+        plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+        paymentTransactionHash: `0x${'55'.repeat(32)}`,
+        purchaseReceipt: 'fake-earned-receipt-token',
+        refundTransactionHash: `0x${'88'.repeat(32)}`,
+      }),
+      refundSender: {
+        async sendRefund() {
+          refundCalls += 1;
+          return `0x${'99'.repeat(32)}`;
+        },
+      },
+    });
+
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+    expect(refundCalls).toBe(0);
+  });
+
+  it('sends no refund when procurement spent exactly the refundable budget', async () => {
+    const refundCalls: unknown[] = [];
+    const deps = baseDeps({
+      demoTarget: { ...baseDeps().demoTarget, minimumAtomicAmount: '200' },
+      riskClassifier: {
+        async classify() {
+          return {
+            riskLevel: 'MEDIUM',
+            proposedScenarios: ['payment-proof-replay'],
+            proposedToolBudgetAtomic: '200',
+            rationale: 'test',
+          };
+        },
+      },
+      refundSender: {
+        async sendRefund(input) {
+          refundCalls.push(input);
+          return `0x${'88'.repeat(32)}`;
+        },
+      },
+    });
+
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+    expect(refundCalls).toHaveLength(0);
+  });
+
   it('rejects a run that is not FUNDED without mutating anything', async () => {
     const deps = baseDeps({ runRepository: fakeRunRepository(createDraftRun(RUN_ID, NOW.toISOString())) });
     await expect(runOrchestratorPipeline(RUN_ID, deps)).rejects.toThrow(RunNotReadyForOrchestrationError);
@@ -344,7 +490,7 @@ describe('runOrchestratorPipeline', () => {
         plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
         paymentTransactionHash: `0x${'55'.repeat(32)}`,
         purchaseReceipt: 'fake-earned-receipt-token',
-        evidence,
+        evidence: [{ evidence, chainTransactionHash: `0x${'55'.repeat(32)}` }],
         startedAt: 1_000,
         completedAt: 1_010,
       }),
@@ -378,19 +524,22 @@ describe('runOrchestratorPipeline', () => {
         plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
         paymentTransactionHash: `0x${'55'.repeat(32)}`,
         purchaseReceipt: 'fake-earned-receipt-token',
-        evidence: {
-          scenarioId: 'payment-proof-replay',
-          targetServiceId: 'service:demo',
-          targetVersionHash: `0x${'11'.repeat(32)}`,
-          policyHash: `0x${'22'.repeat(32)}`,
-          paymentProofHash: `0x${'99'.repeat(32)}`,
-          presentedReceiptHash: `0x${'aa'.repeat(32)}`,
-          result: 'PASS',
-          attempts: [
-            { phase: 'INITIAL', requestHash: `0x${'bb'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 200, deliveryConfirmed: true },
-            { phase: 'REPLAY', requestHash: `0x${'cc'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 409, deliveryConfirmed: false },
-          ],
-        },
+        evidence: [{
+          evidence: {
+            scenarioId: 'payment-proof-replay',
+            targetServiceId: 'service:demo',
+            targetVersionHash: `0x${'11'.repeat(32)}`,
+            policyHash: `0x${'22'.repeat(32)}`,
+            paymentProofHash: `0x${'99'.repeat(32)}`,
+            presentedReceiptHash: `0x${'aa'.repeat(32)}`,
+            result: 'PASS',
+            attempts: [
+              { phase: 'INITIAL', requestHash: `0x${'bb'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 200, deliveryConfirmed: true },
+              { phase: 'REPLAY', requestHash: `0x${'cc'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 409, deliveryConfirmed: false },
+            ],
+          },
+          chainTransactionHash: `0x${'55'.repeat(32)}`,
+        }],
         startedAt: 1_000,
         completedAt: 1_010,
         attestationTransactionHash: `0x${'77'.repeat(32)}`,
