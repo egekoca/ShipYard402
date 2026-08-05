@@ -92,7 +92,8 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
     <main className="run-detail">
       <header className="nav-shell">
         <a className="brand" href="/" aria-label="Shipyard402 home">
-          <span className="brand-mark"><RadarMark className="brand-mark-icon" /></span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no next/image config needed for a 42px mark */}
+          <span className="brand-mark"><img src="/logo-mark.png" alt="" className="brand-mark-icon" /></span>
           <span>SHIPYARD402</span>
         </a>
         <div className="network-pill"><span /> GOAT TESTNET3</div>
