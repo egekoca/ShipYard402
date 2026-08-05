@@ -9,7 +9,7 @@ import {
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { LogoMark } from './logo';
+import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
 
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
@@ -87,7 +87,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
     <main className="run-detail">
       <header className="nav-shell">
         <a className="brand" href="/" aria-label="Shipyard402 home">
-          <span className="brand-mark"><LogoMark className="brand-mark-icon" /></span>
+          <span className="brand-mark"><RadarMark className="brand-mark-icon" /></span>
           <span>SHIPYARD402</span>
         </a>
         <div className="network-pill"><span /> GOAT TESTNET3</div>
