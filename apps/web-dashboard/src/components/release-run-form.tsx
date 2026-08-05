@@ -10,7 +10,7 @@ import {
 import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useMemo, useState } from 'react';
 
-import { connectWallet, formatWalletError } from '../lib/goat-wallet';
+import { connectWallet, ensureChain, formatWalletError, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { WalletPayPanel } from './wallet-pay-panel';
 
 type FormState = Readonly<{
@@ -63,6 +63,15 @@ export function ReleaseRunForm() {
     try {
       const address = await connectWallet();
       update('requesterAddress', address);
+      // Add/switch to GOAT Testnet3 immediately -- don't wait for a quote+run to exist first, so
+      // the wallet is already on the right network well before Pay is ever clicked. A failure
+      // here (e.g. the add-network prompt was dismissed) still leaves the address connected;
+      // WalletPayPanel retries the same call later.
+      try {
+        await ensureChain(GOAT_TESTNET3_CHAIN_ID);
+      } catch (chainError) {
+        setError(formatWalletError(chainError));
+      }
     } catch (caught) {
       setError(formatWalletError(caught));
     } finally {

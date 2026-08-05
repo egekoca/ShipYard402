@@ -9,6 +9,7 @@ import {
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
 import { WalletPayPanel } from './wallet-pay-panel';
@@ -137,7 +138,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
                 {run.payment.orderId && <div><dt>GOAT Flow order</dt><dd className="mono">{run.payment.orderId}</dd></div>}
               </dl>
               {run.payment.paymentRequired?.accepts[0] && (
-                <WalletPayPanel chainId={48816} challenge={run.payment.paymentRequired.accepts[0]} />
+                <WalletPayPanel chainId={GOAT_TESTNET3_CHAIN_ID} challenge={run.payment.paymentRequired.accepts[0]} />
               )}
             </div>
 
