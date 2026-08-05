@@ -28,6 +28,8 @@
     "testnet:deploy:registry": "pnpm contracts:compile && node scripts/testnet/deploy-registry.mjs",
     "testnet:authorize:attestor": "node scripts/testnet/authorize-attestor.mjs",
     "testnet:wallet:encrypt": "node scripts/testnet/encrypt-keystore.mjs",
+    "testnet:deploy:test-token": "node scripts/testnet/deploy-test-token.mjs",
+    "testnet:mint:test-token": "node scripts/testnet/mint-test-token.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile && pnpm contracts:test"
