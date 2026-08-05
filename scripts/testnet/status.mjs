@@ -6,6 +6,7 @@ import { Contract, JsonRpcProvider, formatEther, formatUnits, getAddress } from 
 const RPC_URL = 'https://rpc.testnet3.goat.network';
 const EXPECTED_CHAIN_ID = 48816n;
 const GOAT_TOKEN = '0xbC10000000000000000000000000000000000001';
+const testTokenDeployment = await readJsonIfExists(resolve('.local/testnet/shipyard-test-token.json'));
 const stored = JSON.parse(await readFile(resolve('.local/testnet/goat-testnet3-wallet.json'), 'utf8'));
 if (stored.network !== 'goat-testnet3-only' || stored.chainId !== Number(EXPECTED_CHAIN_ID)) {
   throw new Error('Refusing to use a signer file not explicitly scoped to GOAT Testnet3');
@@ -40,6 +41,27 @@ try {
   goatToken = { available: false, address: GOAT_TOKEN };
 }
 
+let testToken = { available: false };
+if (testTokenDeployment) {
+  const contract = new Contract(testTokenDeployment.contractAddress, [
+    'function symbol() view returns (string)',
+    'function decimals() view returns (uint8)',
+    'function balanceOf(address) view returns (uint256)',
+  ], provider);
+  const [symbol, decimals, balance] = await Promise.all([
+    contract.symbol(), contract.decimals(), contract.balanceOf(address),
+  ]);
+  testToken = {
+    available: true,
+    address: testTokenDeployment.contractAddress,
+    symbol,
+    decimals: Number(decimals),
+    balanceAtomic: balance.toString(),
+    balance: formatUnits(balance, decimals),
+    warning: 'TESTNET ONLY. No value. Not the real GOAT Flow settlement asset.',
+  };
+}
+
 process.stdout.write(JSON.stringify({
   network: 'goat-testnet3',
   chainId: Number(network.chainId),
@@ -51,4 +73,14 @@ process.stdout.write(JSON.stringify({
     balance: formatEther(nativeBalance),
   },
   goatToken,
+  testToken,
 }, null, 2) + '\n');
+
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
