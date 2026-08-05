@@ -15,6 +15,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "ethers": "6.17.0"
+  },
   "devDependencies": {
     "@types/node": "24.3.0",
     "typescript": "5.9.3",

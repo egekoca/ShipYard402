@@ -1,5 +1,8 @@
 import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+
+import { EncryptedKeystoreKeySource, RawEnvKeySource, type SignerKeySource } from './signer-key-source.js';
 
 const hexKeySchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
@@ -12,8 +15,12 @@ const environmentSchema = z.object({
   GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('testnet3'),
   GOAT_MAINNET_RPC_URL: z.string().url().optional(),
   GOAT_TESTNET_RPC_URL: z.string().url().optional(),
-  ORCHESTRATOR_SIGNER_PRIVATE_KEY: hexKeySchema,
-  ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: hexKeySchema,
+  ORCHESTRATOR_SIGNER_PRIVATE_KEY: hexKeySchema.optional(),
+  ORCHESTRATOR_SIGNER_KEYSTORE_PATH: z.string().min(1).optional(),
+  ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD: z.string().min(1).optional(),
+  ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: hexKeySchema.optional(),
+  ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PATH: z.string().min(1).optional(),
+  ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PASSWORD: z.string().min(1).optional(),
   ORCHESTRATOR_MAX_PROCUREMENT_SPEND_ATOMIC: atomicAmountSchema,
   SHIPYARD_RUN_REGISTRY_ADDRESS: addressSchema,
   SHIPYARD_AGENT_ID: z.string().min(1).max(256),
@@ -25,6 +32,7 @@ const environmentSchema = z.object({
   DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT: atomicAmountSchema,
   DEMO_TARGET_MINIMUM_CONFIRMATIONS: z.string().regex(/^\d+$/).default('1'),
   DEMO_TARGET_TOOL_VERSION: z.string().min(1).default('x402-demo-target@0.1.0'),
+  DEMO_TARGET_PROVIDER_SIGNER_ADDRESS: addressSchema.optional(),
   IPFS_API_URL: z.string().url(),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
@@ -37,11 +45,13 @@ const environmentSchema = z.object({
 const selectedNames = [
   'APP_ENV', 'DATABASE_URL', 'DATABASE_TLS', 'GOAT_NETWORK_ENVIRONMENT',
   'GOAT_MAINNET_RPC_URL', 'GOAT_TESTNET_RPC_URL',
-  'ORCHESTRATOR_SIGNER_PRIVATE_KEY', 'ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY',
+  'ORCHESTRATOR_SIGNER_PRIVATE_KEY', 'ORCHESTRATOR_SIGNER_KEYSTORE_PATH', 'ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD',
+  'ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY', 'ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PATH',
+  'ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PASSWORD',
   'ORCHESTRATOR_MAX_PROCUREMENT_SPEND_ATOMIC', 'SHIPYARD_RUN_REGISTRY_ADDRESS', 'SHIPYARD_AGENT_ID',
   'ORCHESTRATOR_MANDATORY_SCENARIOS', 'DEMO_TARGET_BASE_URL', 'DEMO_TARGET_HOST',
   'DEMO_TARGET_TOOL_AGENT_ID', 'DEMO_TARGET_RECEIVING_ADDRESS', 'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT',
-  'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'DEMO_TARGET_TOOL_VERSION', 'IPFS_API_URL',
+  'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'DEMO_TARGET_TOOL_VERSION', 'DEMO_TARGET_PROVIDER_SIGNER_ADDRESS', 'IPFS_API_URL',
   'OPENAI_API_KEY', 'OPENAI_MODEL', 'ORCHESTRATOR_WORKER_ID', 'ORCHESTRATOR_POLL_INTERVAL_MS',
   'ORCHESTRATOR_LEASE_SECONDS', 'ORCHESTRATOR_REFUNDS_ENABLED',
 ] as const;
@@ -51,8 +61,8 @@ export type OrchestratorWorkerRuntimeConfig = Readonly<{
   goatEnvironment: 'mainnet' | 'testnet3';
   rpcUrl: string;
   chainId: number;
-  signerPrivateKey: `0x${string}`;
-  toolReceiptSignerPrivateKey: `0x${string}`;
+  signerKeySource: SignerKeySource;
+  toolReceiptSignerKeySource: SignerKeySource;
   maximumProcurementSpendAtomic: string;
   registryAddress: `0x${string}`;
   shipyardAgentId: string;
@@ -65,6 +75,7 @@ export type OrchestratorWorkerRuntimeConfig = Readonly<{
     minimumAtomicAmount: string;
     minimumConfirmations: number;
     toolVersion: string;
+    providerSignerAddress?: `0x${string}`;
   }>;
   ipfsApiUrl: string;
   /**
@@ -123,6 +134,18 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
     throw new OrchestratorConfigurationError('Orchestrator lease must be between 5 and 600 seconds', ['ORCHESTRATOR_LEASE_SECONDS']);
   }
 
+  const isProduction = values.APP_ENV === 'production';
+  const signerKeySource = resolveSignerKeySource('ORCHESTRATOR_SIGNER', {
+    rawKey: values.ORCHESTRATOR_SIGNER_PRIVATE_KEY,
+    keystorePath: values.ORCHESTRATOR_SIGNER_KEYSTORE_PATH,
+    keystorePassword: values.ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD,
+  }, isProduction);
+  const toolReceiptSignerKeySource = resolveSignerKeySource('ORCHESTRATOR_TOOL_RECEIPT_SIGNER', {
+    rawKey: values.ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY,
+    keystorePath: values.ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PATH,
+    keystorePassword: values.ORCHESTRATOR_TOOL_RECEIPT_SIGNER_KEYSTORE_PASSWORD,
+  }, isProduction);
+
   return {
     database: {
       connectionString,
@@ -131,8 +154,8 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
     goatEnvironment: values.GOAT_NETWORK_ENVIRONMENT,
     rpcUrl,
     chainId: network.chainId,
-    signerPrivateKey: values.ORCHESTRATOR_SIGNER_PRIVATE_KEY as `0x${string}`,
-    toolReceiptSignerPrivateKey: values.ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY as `0x${string}`,
+    signerKeySource,
+    toolReceiptSignerKeySource,
     maximumProcurementSpendAtomic: values.ORCHESTRATOR_MAX_PROCUREMENT_SPEND_ATOMIC,
     registryAddress: values.SHIPYARD_RUN_REGISTRY_ADDRESS as `0x${string}`,
     shipyardAgentId: values.SHIPYARD_AGENT_ID,
@@ -145,6 +168,7 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
       minimumAtomicAmount: values.DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT,
       minimumConfirmations: Number(values.DEMO_TARGET_MINIMUM_CONFIRMATIONS),
       toolVersion: values.DEMO_TARGET_TOOL_VERSION,
+      ...(values.DEMO_TARGET_PROVIDER_SIGNER_ADDRESS ? { providerSignerAddress: values.DEMO_TARGET_PROVIDER_SIGNER_ADDRESS as `0x${string}` } : {}),
     },
     ipfsApiUrl: values.IPFS_API_URL,
     refundsEnabled: values.ORCHESTRATOR_REFUNDS_ENABLED === 'true',
@@ -153,6 +177,56 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
     pollIntervalMilliseconds: poll,
     leaseDurationSeconds: lease,
   };
+}
+
+function resolveSignerKeySource(
+  fieldPrefix: string,
+  input: Readonly<{ rawKey: string | undefined; keystorePath: string | undefined; keystorePassword: string | undefined }>,
+  isProduction: boolean,
+): SignerKeySource {
+  const hasRaw = input.rawKey !== undefined;
+  const hasKeystorePath = input.keystorePath !== undefined;
+  const hasKeystorePassword = input.keystorePassword !== undefined;
+
+  if (hasRaw && (hasKeystorePath || hasKeystorePassword)) {
+    throw new OrchestratorConfigurationError(
+      `${fieldPrefix}: configure either a raw private key or an encrypted keystore, not both`,
+      [`${fieldPrefix}_PRIVATE_KEY`],
+    );
+  }
+
+  if (hasKeystorePath || hasKeystorePassword) {
+    if (!hasKeystorePath || !hasKeystorePassword) {
+      throw new OrchestratorConfigurationError(
+        `${fieldPrefix}: an encrypted keystore requires both a path and a password`,
+        [`${fieldPrefix}_KEYSTORE_PATH`, `${fieldPrefix}_KEYSTORE_PASSWORD`],
+      );
+    }
+    let keystoreJson: string;
+    try {
+      keystoreJson = readFileSync(input.keystorePath!, 'utf8');
+    } catch {
+      throw new OrchestratorConfigurationError(
+        `${fieldPrefix}: could not read the keystore file at ${input.keystorePath}`,
+        [`${fieldPrefix}_KEYSTORE_PATH`],
+      );
+    }
+    return new EncryptedKeystoreKeySource(keystoreJson, input.keystorePassword!);
+  }
+
+  if (!hasRaw) {
+    throw new OrchestratorConfigurationError(
+      `${fieldPrefix}: either a raw private key or an encrypted keystore is required`,
+      [`${fieldPrefix}_PRIVATE_KEY`],
+    );
+  }
+  if (isProduction) {
+    throw new OrchestratorConfigurationError(
+      `${fieldPrefix}: production must use an encrypted keystore, not a raw private key in an environment variable`,
+      [`${fieldPrefix}_PRIVATE_KEY`],
+    );
+  }
+  return new RawEnvKeySource(input.rawKey as `0x${string}`);
 }
 
 function assertPostgresUrl(value: string): void {

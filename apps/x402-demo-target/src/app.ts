@@ -1,13 +1,15 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { z } from 'zod';
 
 import type { NativeTransferReader } from './native-payment-verifier.js';
+import { createProviderSigner, signResponseBody } from './provider-signing.js';
 import { DemoReceiptInvalidError, issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
 
 export type DemoTargetMode = 'V1_VULNERABLE' | 'V2_PROTECTED';
 
 const PAID_RESOURCE_ROUTE = '/paid/resource';
 const RECEIPT_HEADER = 'x-payment-receipt';
+const PROVIDER_SIGNATURE_HEADER = 'x-provider-signature';
 const transactionHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const purchaseRequestSchema = z.object({ transactionHash: transactionHashSchema }).strict();
 
@@ -57,13 +59,24 @@ export type DemoTargetOptions = Readonly<{
   redemptionStore?: RedemptionStore;
   now?: () => Date;
   purchase?: PurchaseOptions;
+  /** When set, every /paid/resource response carries an x-provider-signature header. */
+  providerSignerPrivateKey?: `0x${string}`;
 }>;
 
 export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance {
   const redemptionStore = options.redemptionStore ?? new InMemoryRedemptionStore();
   const purchaseLedger = options.purchase?.purchaseLedger ?? new InMemoryPurchaseLedger();
   const now = options.now ?? (() => new Date());
+  const providerSigner = options.providerSignerPrivateKey ? createProviderSigner(options.providerSignerPrivateKey) : undefined;
   const app = Fastify({ logger: false });
+
+  async function sendPaidResourceReply(reply: FastifyReply, statusCode: number, payload: unknown): Promise<void> {
+    const bodyText = JSON.stringify(payload);
+    if (providerSigner) {
+      reply.header(PROVIDER_SIGNATURE_HEADER, await signResponseBody(providerSigner, bodyText));
+    }
+    await reply.status(statusCode).type('application/json').send(bodyText);
+  }
 
   app.get('/health', async () => ({ status: 'ok', mode: options.mode }));
 
@@ -112,7 +125,7 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
       const header = request.headers[RECEIPT_HEADER];
       const token = Array.isArray(header) ? header[0] : header;
       if (!token) {
-        return reply.status(402).send({ error: 'PAYMENT_RECEIPT_REQUIRED' });
+        return sendPaidResourceReply(reply, 402, { error: 'PAYMENT_RECEIPT_REQUIRED' });
       }
 
       let receipt;
@@ -120,23 +133,23 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
         receipt = verifyDemoReceipt(token, options.receiptSecret, now());
       } catch (error) {
         if (error instanceof DemoReceiptInvalidError) {
-          return reply.status(402).send({ error: 'INVALID_PAYMENT_RECEIPT', reason: error.message });
+          return sendPaidResourceReply(reply, 402, { error: 'INVALID_PAYMENT_RECEIPT', reason: error.message });
         }
         throw error;
       }
 
       if (receipt.resource !== PAID_RESOURCE_ROUTE) {
-        return reply.status(402).send({ error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
+        return sendPaidResourceReply(reply, 402, { error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
       }
 
       if (options.mode === 'V2_PROTECTED') {
         const firstRedemption = await redemptionStore.tryRedeem(receipt.orderId);
         if (!firstRedemption) {
-          return reply.status(409).send({ error: 'PAYMENT_RECEIPT_ALREADY_REDEEMED' });
+          return sendPaidResourceReply(reply, 409, { error: 'PAYMENT_RECEIPT_ALREADY_REDEEMED' });
         }
       }
 
-      return reply.status(200).send({
+      return sendPaidResourceReply(reply, 200, {
         deliveryConfirmed: true,
         resource: receipt.resource,
         orderId: receipt.orderId,

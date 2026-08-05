@@ -8,7 +8,7 @@ import {
   assertShipyardSchemaReady,
   createShipyardPool,
 } from '@shipyard402/persistence-postgres';
-import { JsonRpcProvider, Wallet } from 'ethers';
+import { JsonRpcProvider } from 'ethers';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import OpenAI from 'openai';
@@ -33,8 +33,8 @@ async function start(): Promise<void> {
     const network = await provider.getNetwork();
     if (network.chainId !== BigInt(config.chainId)) throw new Error(`RPC chain mismatch: ${network.chainId}`);
 
-    const signerWallet = new Wallet(config.signerPrivateKey, provider);
-    const toolReceiptSignerWallet = new Wallet(config.toolReceiptSignerPrivateKey, provider);
+    const signerWallet = await config.signerKeySource.loadWallet(provider);
+    const toolReceiptSignerWallet = await config.toolReceiptSignerKeySource.loadWallet(provider);
     const registryAbi = JSON.parse(await readFile(
       resolve('contracts/out-solc/src_ShipyardRunRegistry_sol_ShipyardRunRegistry.abi'),
       'utf8',

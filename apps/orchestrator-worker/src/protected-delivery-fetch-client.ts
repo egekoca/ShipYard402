@@ -18,11 +18,13 @@ export function createFetchProtectedDeliveryClient(baseUrl: string): ProtectedDe
         ...(input.signal ? { signal: input.signal } : {}),
       });
       const bodyText = await response.text();
+      const providerSignature = response.headers.get('x-provider-signature');
 
       return {
         statusCode: response.status,
         deliveryConfirmed: response.ok && parseDeliveryConfirmed(bodyText),
         responseBodyHash: `0x${createHash('sha256').update(bodyText).digest('hex')}`,
+        ...(providerSignature ? { providerSignature: providerSignature as `0x${string}` } : {}),
       };
     },
   };

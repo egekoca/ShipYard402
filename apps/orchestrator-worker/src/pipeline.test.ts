@@ -1,6 +1,7 @@
 import type { AttestationRecord, EvidencePack, OrchestratorRunCheckpoint } from '@shipyard402/persistence-postgres';
 import type { RunAggregate, RunStatus, RunTransitionedEvent } from '@shipyard402/run-domain';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
+import { getBytes, Wallet } from 'ethers';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
@@ -308,6 +309,44 @@ describe('runOrchestratorPipeline', () => {
     expect((stored?.publicManifest as { toolReceipts: readonly unknown[] }).toolReceipts).toHaveLength(2);
   });
 
+  it('presents a deliberately corrupted receipt for tampered-receipt-rejection, not the real one', async () => {
+    let sawTamperedReceipt = false;
+    let sawRealReceiptOutsideItsOwnScenario = false;
+    const deps = baseDeps({
+      riskClassifier: {
+        async classify() {
+          return {
+            riskLevel: 'MEDIUM',
+            proposedScenarios: ['tampered-receipt-rejection'],
+            proposedToolBudgetAtomic: '150',
+            rationale: 'test',
+          };
+        },
+      },
+      deliveryClient: {
+        async execute(input) {
+          if (input.paymentReceipt === 'fake-earned-receipt-token-tampered') {
+            sawTamperedReceipt = true;
+            return { statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'ee'.repeat(32)}` };
+          }
+          if (input.paymentReceipt === 'fake-earned-receipt-token' && !input.idempotencyKey.startsWith('payment-proof-replay:')) {
+            sawRealReceiptOutsideItsOwnScenario = true;
+          }
+          return {
+            statusCode: input.idempotencyKey.endsWith(':replay') ? 409 : 200,
+            deliveryConfirmed: !input.idempotencyKey.endsWith(':replay'),
+            responseBodyHash: `0x${'44'.repeat(32)}`,
+          };
+        },
+      },
+    });
+
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_PASS');
+    expect(sawTamperedReceipt).toBe(true);
+    expect(sawRealReceiptOutsideItsOwnScenario).toBe(false);
+  });
+
   it('aggregates to DELIVERED_FAIL if any executed scenario fails, even when others pass', async () => {
     const deps = baseDeps({
       riskClassifier: {
@@ -338,6 +377,56 @@ describe('runOrchestratorPipeline', () => {
 
     const result = await runOrchestratorPipeline(RUN_ID, deps);
     expect(result.finalStatus).toBe('DELIVERED_FAIL');
+  });
+
+  describe('provider signature verification (opt-in via demoTarget.providerSignerAddress)', () => {
+    const providerWallet = new Wallet(`0x${'55'.repeat(32)}`);
+    const providerAddress = providerWallet.address as `0x${string}`;
+    const responseHash = `0x${'44'.repeat(32)}` as const;
+
+    async function signedDeliveryClient(hash: `0x${string}`, signer: Wallet | null) {
+      const signature = signer ? await signer.signMessage(getBytes(hash)) as `0x${string}` : undefined;
+      return {
+        async execute(input: { idempotencyKey: string }) {
+          return {
+            statusCode: input.idempotencyKey.endsWith(':replay') ? 409 : 200,
+            deliveryConfirmed: !input.idempotencyKey.endsWith(':replay'),
+            responseBodyHash: hash,
+            ...(signature ? { providerSignature: signature } : {}),
+          };
+        },
+      };
+    }
+
+    it('keeps PASS when every response is validly signed by the registered provider', async () => {
+      const deps = baseDeps({
+        demoTarget: { ...baseDeps().demoTarget, providerSignerAddress: providerAddress },
+        deliveryClient: await signedDeliveryClient(responseHash, providerWallet),
+      });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+    });
+
+    it('downgrades PASS to INCONCLUSIVE when a registered signer is expected but no signature is present', async () => {
+      const deps = baseDeps({
+        demoTarget: { ...baseDeps().demoTarget, providerSignerAddress: providerAddress },
+        deliveryClient: await signedDeliveryClient(responseHash, null),
+      });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_INCONCLUSIVE' });
+    });
+
+    it('downgrades PASS to INCONCLUSIVE when the signature is real but from the wrong signer', async () => {
+      const impostorWallet = new Wallet(`0x${'66'.repeat(32)}`);
+      const deps = baseDeps({
+        demoTarget: { ...baseDeps().demoTarget, providerSignerAddress: providerAddress },
+        deliveryClient: await signedDeliveryClient(responseHash, impostorWallet),
+      });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_INCONCLUSIVE' });
+    });
+
+    it('does not check signatures at all when no provider signer is registered (default)', async () => {
+      const deps = baseDeps({ deliveryClient: await signedDeliveryClient(responseHash, null) });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+    });
   });
 
   it('refunds the unspent tool budget when a refund sender is configured', async () => {

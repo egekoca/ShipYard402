@@ -6,6 +6,12 @@ export type ProtectedDeliveryAttempt = Readonly<{
   statusCode: number;
   deliveryConfirmed: boolean;
   responseBodyHash: `0x${string}`;
+  /**
+   * A signature the provider itself produced over responseBodyHash, if it signs its responses
+   * (see provider-signature.ts). Absent for providers that don't -- verification is opt-in,
+   * driven by whether the caller configured an expected signer address.
+   */
+  providerSignature?: `0x${string}`;
 }>;
 
 export interface ProtectedDeliveryClient {
@@ -36,8 +42,9 @@ export type ReplayFailureCode =
   | 'INITIAL_PROTECTED_DELIVERY_FAILED'
   | 'PAYMENT_PROOF_REPLAY_ACCEPTED'
   | 'REPLAY_PROBE_INCONCLUSIVE'
-  | 'UNPAID_ACCESS_ACCEPTED'
-  | 'UNPAID_ACCESS_PROBE_INCONCLUSIVE';
+  | 'INVALID_CREDENTIAL_ACCEPTED'
+  | 'INVALID_CREDENTIAL_PROBE_INCONCLUSIVE'
+  | 'PROVIDER_SIGNATURE_INVALID';
 
 export type ReplayEvidence = Readonly<{
   scenarioId: string;
@@ -54,6 +61,7 @@ export type ReplayEvidence = Readonly<{
     responseHash?: `0x${string}`;
     statusCode?: number;
     deliveryConfirmed?: boolean;
+    providerSignature?: `0x${string}`;
   }>[];
 }>;
 
@@ -132,6 +140,7 @@ export class ProtectedDeliveryReplayRunner {
           responseHash: response.responseBodyHash,
           statusCode: response.statusCode,
           deliveryConfirmed: response.deliveryConfirmed,
+          ...(response.providerSignature ? { providerSignature: response.providerSignature } : {}),
         },
       };
     } catch {

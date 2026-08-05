@@ -12,12 +12,13 @@ const environmentSchema = z.object({
   DEMO_TARGET_RECEIVING_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT: z.string().regex(/^(0|[1-9]\d*)$/).optional(),
   DEMO_TARGET_MINIMUM_CONFIRMATIONS: z.string().regex(/^\d+$/).default('1'),
+  PROVIDER_SIGNER_PRIVATE_KEY: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
 }).strict();
 
 const selectedNames = [
   'HOST', 'PORT', 'DEMO_MODE', 'DEMO_RECEIPT_SECRET', 'GOAT_NETWORK_ENVIRONMENT',
   'GOAT_MAINNET_RPC_URL', 'GOAT_TESTNET_RPC_URL', 'DEMO_TARGET_RECEIVING_ADDRESS',
-  'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT', 'DEMO_TARGET_MINIMUM_CONFIRMATIONS',
+  'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT', 'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'PROVIDER_SIGNER_PRIVATE_KEY',
 ] as const;
 
 export type DemoTargetRuntimeConfig = Readonly<{
@@ -25,6 +26,7 @@ export type DemoTargetRuntimeConfig = Readonly<{
   port: number;
   mode: 'V1_VULNERABLE' | 'V2_PROTECTED';
   receiptSecret: string;
+  providerSignerPrivateKey?: `0x${string}`;
   purchase?: Readonly<{
     goatEnvironment: 'mainnet' | 'testnet3';
     rpcUrl: string;
@@ -60,6 +62,7 @@ export function parseDemoTargetRuntimeConfig(environment: NodeJS.ProcessEnv): De
     port: Number(values.PORT),
     mode: values.DEMO_MODE,
     receiptSecret: values.DEMO_RECEIPT_SECRET,
+    ...(values.PROVIDER_SIGNER_PRIVATE_KEY ? { providerSignerPrivateKey: values.PROVIDER_SIGNER_PRIVATE_KEY as `0x${string}` } : {}),
   };
 
   if (!values.DEMO_TARGET_RECEIVING_ADDRESS) return base;
