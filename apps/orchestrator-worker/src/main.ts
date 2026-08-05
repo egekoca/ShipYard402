@@ -16,6 +16,7 @@ import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
 import { EthersNativePaymentSender, EthersRegistryAttestor, EthersToolReceiptSigner } from './ethers-adapters.js';
 import { createFetchPurchaseClient } from './fetch-purchase-client.js';
+import { createKuboEvidencePublisher } from './ipfs-publisher.js';
 import { createFetchProtectedDeliveryClient } from './protected-delivery-fetch-client.js';
 import { parseOrchestratorWorkerRuntimeConfig } from './runtime-config.js';
 import { OrchestratorJobHandler, processNextOrchestratorJob } from './worker.js';
@@ -55,7 +56,7 @@ async function start(): Promise<void> {
       purchaseClient: createFetchPurchaseClient(config.demoTarget.baseUrl),
       toolReceiptSigner: new EthersToolReceiptSigner(toolReceiptSignerWallet),
       evidencePackStore: new PostgresEvidencePackStore(pool),
-      evidencePublicBaseUrl: config.evidencePublicBaseUrl,
+      evidencePublisher: createKuboEvidencePublisher(config.ipfsApiUrl),
       attestor: new EthersRegistryAttestor(signerWallet, config.registryAddress, config.chainId, registryAbi),
       attestationStore: new PostgresAttestationStore(pool),
       checkpointStore: new PostgresOrchestratorCheckpointStore(pool),

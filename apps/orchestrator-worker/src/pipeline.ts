@@ -6,7 +6,8 @@ import { transitionRun, type RunActor, type RunStatus } from '@shipyard402/run-d
 import { keccak256, toUtf8Bytes } from 'ethers';
 
 import { buildAttestationInput } from './attestation-builder.js';
-import { buildEvidencePack, buildUnsignedToolReceipt } from './evidence-builder.js';
+import { buildEvidencePack, buildUnsignedToolReceipt, canonicalEvidencePackContent } from './evidence-builder.js';
+import type { EvidencePublisherPort } from './ipfs-publisher.js';
 import { buildMandate } from './mandate-builder.js';
 import type {
   NativePaymentSender,
@@ -71,7 +72,7 @@ export type OrchestratorPipelineDependencies = Readonly<{
   purchaseClient: PurchaseClient;
   toolReceiptSigner: ToolReceiptSigner;
   evidencePackStore: EvidencePackStorePort;
-  evidencePublicBaseUrl: string;
+  evidencePublisher: EvidencePublisherPort;
   attestor: RegistryAttestor;
   attestationStore: AttestationStorePort;
   checkpointStore: CheckpointStorePort;
@@ -287,7 +288,9 @@ export async function runOrchestratorPipeline(
       result: evidence.result,
       toolReceipts: [toolReceipt],
     });
-    const evidenceURI = new URL(`/v1/runs/${runId}/evidence`, deps.evidencePublicBaseUrl).toString();
+    // Content-addressed and idempotent -- a resumed attempt republishing the same bytes gets the
+    // same CID back, so this needs no checkpoint guard (unlike the payment and attestation sends).
+    const evidenceURI = await deps.evidencePublisher.publish(canonicalEvidencePackContent(evidencePack.publicManifest));
     if (!(await deps.evidencePackStore.getByRunId(runId))) {
       await deps.evidencePackStore.put({
         runId,

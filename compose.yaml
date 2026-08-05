@@ -24,5 +24,30 @@ services:
       - no-new-privileges:true
     shm_size: 128mb
 
+  ipfs:
+    image: ipfs/kubo:v0.35.0@sha256:6b59935acc23eed3181a0d4684e51e0d59597f028d593cdfe1cd1ed694d53fa6
+    restart: unless-stopped
+    ports:
+      # Swarm (P2P/DHT) stays open on all interfaces so this node genuinely joins the public IPFS
+      # network and published evidence is fetchable through any public gateway, not just locally.
+      - "4001:4001"
+      - "4001:4001/udp"
+      # The HTTP API grants full node control (arbitrary read/write/pin) and is unauthenticated by
+      # default -- it must never be reachable outside localhost. The read-only gateway is loopback
+      # only too; it is a local convenience mirror, not how the public reaches this content.
+      - "127.0.0.1:5001:5001"
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - shipyard402_ipfs_data:/data/ipfs
+    healthcheck:
+      test: ["CMD-SHELL", "ipfs id"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   shipyard402_postgres_data:
+  shipyard402_ipfs_data:

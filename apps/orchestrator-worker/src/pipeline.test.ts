@@ -1,6 +1,7 @@
 import type { AttestationRecord, EvidencePack, OrchestratorRunCheckpoint } from '@shipyard402/persistence-postgres';
 import type { RunAggregate, RunStatus, RunTransitionedEvent } from '@shipyard402/run-domain';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -227,7 +228,11 @@ function baseDeps(overrides: Partial<OrchestratorPipelineDependencies> = {}): Or
       },
     },
     evidencePackStore: fakeEvidencePackStore(),
-    evidencePublicBaseUrl: 'https://api.example',
+    evidencePublisher: {
+      async publish(content) {
+        return `ipfs://bafkfake${createHash('sha256').update(content).digest('hex').slice(0, 40)}`;
+      },
+    },
     attestor: {
       address: '0x7000000000000000000000000000000000000007',
       registryAddress: '0x07f6a55Fb88DD29e9A10802ce8d706dA26db8ddd',
@@ -361,7 +366,7 @@ describe('runOrchestratorPipeline', () => {
       runId: RUN_ID,
       evidenceRoot: `0x${'dd'.repeat(32)}`,
       toolReceiptRoot: `0x${'ee'.repeat(32)}`,
-      uri: `https://api.example/v1/runs/${RUN_ID}/evidence`,
+      uri: `ipfs://bafkfaketestfixture${RUN_ID}`,
       contentHash: `0x${'ff'.repeat(32)}`,
       publicManifest: { scenarios: ['payment-proof-replay'], result: 'PASS' },
       builtAt: NOW.toISOString(),

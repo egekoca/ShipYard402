@@ -76,6 +76,14 @@ export function buildEvidencePack(content: EvidencePackContent): BuiltEvidencePa
   return { evidenceRoot, toolReceiptRoot, contentHash, publicManifest: content };
 }
 
+/**
+ * The exact bytes contentHash is computed over -- publishing this to IPFS means anyone can
+ * fetch the content, canonicalize it the same way, and check it against the on-chain contentHash.
+ */
+export function canonicalEvidencePackContent(content: EvidencePackContent): string {
+  return canonicalJson(content);
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;

@@ -25,7 +25,7 @@ const environmentSchema = z.object({
   DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT: atomicAmountSchema,
   DEMO_TARGET_MINIMUM_CONFIRMATIONS: z.string().regex(/^\d+$/).default('1'),
   DEMO_TARGET_TOOL_VERSION: z.string().min(1).default('x402-demo-target@0.1.0'),
-  EVIDENCE_PUBLIC_BASE_URL: z.string().url(),
+  IPFS_API_URL: z.string().url(),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
   ORCHESTRATOR_WORKER_ID: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional(),
@@ -40,7 +40,7 @@ const selectedNames = [
   'ORCHESTRATOR_MAX_PROCUREMENT_SPEND_ATOMIC', 'SHIPYARD_RUN_REGISTRY_ADDRESS', 'SHIPYARD_AGENT_ID',
   'ORCHESTRATOR_MANDATORY_SCENARIOS', 'DEMO_TARGET_BASE_URL', 'DEMO_TARGET_HOST',
   'DEMO_TARGET_TOOL_AGENT_ID', 'DEMO_TARGET_RECEIVING_ADDRESS', 'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT',
-  'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'DEMO_TARGET_TOOL_VERSION', 'EVIDENCE_PUBLIC_BASE_URL',
+  'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'DEMO_TARGET_TOOL_VERSION', 'IPFS_API_URL',
   'OPENAI_API_KEY', 'OPENAI_MODEL', 'ORCHESTRATOR_WORKER_ID', 'ORCHESTRATOR_POLL_INTERVAL_MS',
   'ORCHESTRATOR_LEASE_SECONDS',
 ] as const;
@@ -65,7 +65,7 @@ export type OrchestratorWorkerRuntimeConfig = Readonly<{
     minimumConfirmations: number;
     toolVersion: string;
   }>;
-  evidencePublicBaseUrl: string;
+  ipfsApiUrl: string;
   openAi: Readonly<{ apiKey: string; model: string }>;
   workerId: string;
   pollIntervalMilliseconds: number;
@@ -140,7 +140,7 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
       minimumConfirmations: Number(values.DEMO_TARGET_MINIMUM_CONFIRMATIONS),
       toolVersion: values.DEMO_TARGET_TOOL_VERSION,
     },
-    evidencePublicBaseUrl: values.EVIDENCE_PUBLIC_BASE_URL,
+    ipfsApiUrl: values.IPFS_API_URL,
     openAi: { apiKey: values.OPENAI_API_KEY, model: values.OPENAI_MODEL },
     workerId: values.ORCHESTRATOR_WORKER_ID ?? `orchestrator-worker:${process.pid}`,
     pollIntervalMilliseconds: poll,
