@@ -1,7 +1,7 @@
 import { HASH_PATTERN, hashCanonical, hashText, isSuccess, type JsonValue } from './scenario-shared.js';
 import type { ProtectedDeliveryAttempt, ProtectedDeliveryClient, ReplayEvidence } from './replay-runner.js';
 
-export type UnpaidAccessScenario = Readonly<{
+export type InvalidCredentialScenario = Readonly<{
   scenarioId: string;
   targetServiceId: string;
   targetVersionHash: `0x${string}`;
@@ -9,24 +9,28 @@ export type UnpaidAccessScenario = Readonly<{
   method: 'GET' | 'POST';
   route: string;
   requestBody?: JsonValue;
+  /** What to present instead of a real receipt. Empty string ('') means no receipt at all. */
+  presentedReceipt?: string;
 }>;
 
 /**
- * Complements the replay check: replay proves a spent receipt can't be reused, this proves the
- * route can't be reached with no receipt at all. No payment happens in this scenario, so
- * paymentProofHash/presentedReceiptHash are the zero hash / hash of empty string rather than
- * derived from a real payment — there is none to derive them from.
+ * Complements the replay check (a spent receipt can't be reused) by proving the route rejects a
+ * receipt that was never valid in the first place -- either absent (presentedReceipt: '') or a
+ * tampered/malformed token that fails the target's own integrity check. No real payment happens
+ * in either case, so paymentProofHash/presentedReceiptHash reflect that: the zero hash and a hash
+ * of whatever bogus value was actually presented, never a real payment's proof.
  */
-export class UnpaidAccessDenialRunner {
+export class InvalidCredentialRejectionRunner {
   readonly #client: ProtectedDeliveryClient;
 
   constructor(client: ProtectedDeliveryClient) {
     this.#client = client;
   }
 
-  async run(scenario: UnpaidAccessScenario, signal?: AbortSignal): Promise<ReplayEvidence> {
+  async run(scenario: InvalidCredentialScenario, signal?: AbortSignal): Promise<ReplayEvidence> {
     validateScenario(scenario);
-    const idempotencyKey = `${scenario.scenarioId}:unpaid`;
+    const presentedReceipt = scenario.presentedReceipt ?? '';
+    const idempotencyKey = `${scenario.scenarioId}:invalid-credential`;
     const requestHash = hashCanonical({
       method: scenario.method,
       route: scenario.route,
@@ -40,13 +44,13 @@ export class UnpaidAccessDenialRunner {
         method: scenario.method,
         route: scenario.route,
         ...(scenario.requestBody === undefined ? {} : { requestBody: scenario.requestBody }),
-        paymentReceipt: '',
+        paymentReceipt: presentedReceipt,
         idempotencyKey,
         ...(signal ? { signal } : {}),
       });
       validateAttempt(response);
     } catch {
-      return evidence(scenario, 'INCONCLUSIVE', 'UNPAID_ACCESS_PROBE_INCONCLUSIVE', [{ phase: 'INITIAL', requestHash }]);
+      return evidence(scenario, presentedReceipt, 'INCONCLUSIVE', 'INVALID_CREDENTIAL_PROBE_INCONCLUSIVE', [{ phase: 'INITIAL', requestHash }]);
     }
 
     const attempt = {
@@ -55,22 +59,24 @@ export class UnpaidAccessDenialRunner {
       responseHash: response.responseBodyHash,
       statusCode: response.statusCode,
       deliveryConfirmed: response.deliveryConfirmed,
+      ...(response.providerSignature ? { providerSignature: response.providerSignature } : {}),
     };
 
     if (isSuccess(response.statusCode) && response.deliveryConfirmed) {
-      return evidence(scenario, 'FAIL', 'UNPAID_ACCESS_ACCEPTED', [attempt]);
+      return evidence(scenario, presentedReceipt, 'FAIL', 'INVALID_CREDENTIAL_ACCEPTED', [attempt]);
     }
     if (response.statusCode >= 400 && response.statusCode < 500) {
-      return evidence(scenario, 'PASS', undefined, [attempt]);
+      return evidence(scenario, presentedReceipt, 'PASS', undefined, [attempt]);
     }
-    return evidence(scenario, 'INCONCLUSIVE', 'UNPAID_ACCESS_PROBE_INCONCLUSIVE', [attempt]);
+    return evidence(scenario, presentedReceipt, 'INCONCLUSIVE', 'INVALID_CREDENTIAL_PROBE_INCONCLUSIVE', [attempt]);
   }
 }
 
 const ZERO_HASH = `0x${'0'.repeat(64)}` as const;
 
 function evidence(
-  scenario: UnpaidAccessScenario,
+  scenario: InvalidCredentialScenario,
+  presentedReceipt: string,
   result: ReplayEvidence['result'],
   failureCode: ReplayEvidence['failureCode'],
   attempts: ReplayEvidence['attempts'],
@@ -81,15 +87,15 @@ function evidence(
     targetVersionHash: scenario.targetVersionHash,
     policyHash: scenario.policyHash,
     paymentProofHash: ZERO_HASH,
-    presentedReceiptHash: hashText(''),
+    presentedReceiptHash: hashText(presentedReceipt),
     result,
     ...(failureCode ? { failureCode } : {}),
     attempts,
   };
 }
 
-function validateScenario(scenario: UnpaidAccessScenario): void {
-  if (!scenario.scenarioId || !scenario.targetServiceId) throw new Error('Unpaid-access scenario identity is required');
+function validateScenario(scenario: InvalidCredentialScenario): void {
+  if (!scenario.scenarioId || !scenario.targetServiceId) throw new Error('Invalid-credential scenario identity is required');
   const routeBase = 'https://protected-target.invalid';
   const parsedRoute = new URL(scenario.route, routeBase);
   if (
@@ -98,7 +104,7 @@ function validateScenario(scenario: UnpaidAccessScenario): void {
     parsedRoute.hash ||
     /\\|%5c/i.test(scenario.route)
   ) {
-    throw new Error('Unpaid-access route must be an origin-relative path');
+    throw new Error('Invalid-credential route must be an origin-relative path');
   }
   for (const [field, value] of [
     ['targetVersionHash', scenario.targetVersionHash],

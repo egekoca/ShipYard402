@@ -23,7 +23,7 @@
 | Forged GOAT proof | Independent chain/tx/log/token/payer/recipient/amount verification | Run not funded |
 | Frontend secret exposure | Separately deployed public package graph; server SDK, DB and signers are backend-only | Build/release blocked |
 | Cross-chain RPC confusion | RPC `eth_chainId` must equal 2345 before receipt use | Receipt rejected |
-| Malicious provider | EIP-712 ToolReceipt, expected signer, on-chain payment linkage, deterministic local cross-check | Provider result rejected |
+| Malicious provider | EIP-712 ToolReceipt, expected signer, on-chain payment linkage, deterministic local cross-check; opt-in independent provider response signing verified against a registered signer address (`packages/protected-delivery-runner/src/provider-signature.ts`) | Provider result rejected; a PASS whose response can't be verified against the registered signer downgrades to INCONCLUSIVE |
 | Webhook replay | Raw-body signature verification, timestamp/nonce, durable idempotency | Duplicate ignored |
 | RPC outage/disagreement | Pinned chain ID, dedicated + secondary RPC, finality policy | INCONCLUSIVE, never PASS |
 | Target changes during run | Version/manifest snapshots and start/end drift checks | INCONCLUSIVE or new run |
@@ -35,5 +35,5 @@
 ## Known incomplete controls
 
 - GOAT Flow webhook signing is deployment-specific and is not implemented until the active Mainnet contract is verified.
-- Signer service/KMS integration and the production worker bootstrap are not implemented; production boot is disabled.
-- External provider independence and receipt signer registration are not yet established.
+- Orchestrator signer keys can now be loaded from a real encrypted (V3) keystore instead of a plaintext env var, and `APP_ENV=production` refuses to boot with a raw key at all (`apps/orchestrator-worker/src/signer-key-source.ts`). This is a real step up, not a full remote KMS/HSM -- the decrypted key still lives in the worker process's memory for its lifetime, and secret rotation is still manual.
+- Provider response signing and its expected-signer registration (`DEMO_TARGET_PROVIDER_SIGNER_ADDRESS`) are implemented and opt-in, disabled by default. `apps/x402-demo-target` is a first-party demo service, so this doesn't yet demonstrate independence from a genuinely separate operator -- the value today is limited to detecting a compromised or buggy orchestrator fetch client fabricating a result, not a dishonest third-party provider.

@@ -1,3 +1,6 @@
+import { verifyResponseSignature } from '@shipyard402/protected-delivery-runner';
+import { createHash } from 'node:crypto';
+import { privateKeyToAccount } from 'viem/accounts';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDemoTargetApp, PAID_RESOURCE_ROUTE } from './app.js';
@@ -111,6 +114,51 @@ describe('x402 demo target app', () => {
     const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
     expect(response.statusCode).toBe(402);
     expect(response.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
+  });
+
+  describe('provider response signing', () => {
+    const providerKey = `0x${'33'.repeat(32)}` as const;
+    const providerAddress = privateKeyToAccount(providerKey).address;
+
+    it('carries no signature header when no provider signer is configured', async () => {
+      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW });
+      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
+      expect(response.headers['x-provider-signature']).toBeUndefined();
+    });
+
+    it('signs a successful delivery response with the configured provider key', async () => {
+      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      const token = issueDemoReceipt(
+        { orderId: 'signed-order', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
+        SECRET,
+        NOW,
+      );
+      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+      expect(response.statusCode).toBe(200);
+      const signature = response.headers['x-provider-signature'] as `0x${string}`;
+      expect(signature).toBeDefined();
+
+      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
+      expect(verifyResponseSignature(bodyHash, signature, providerAddress as `0x${string}`)).toBe(true);
+    });
+
+    it('signs a rejection response too, not only successful deliveries', async () => {
+      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
+      expect(response.statusCode).toBe(402);
+      const signature = response.headers['x-provider-signature'] as `0x${string}`;
+      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
+      expect(verifyResponseSignature(bodyHash, signature, providerAddress as `0x${string}`)).toBe(true);
+    });
+
+    it('does not verify against a signer address other than the one actually configured', async () => {
+      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
+      const signature = response.headers['x-provider-signature'] as `0x${string}`;
+      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
+      const someoneElse = '0x9999999999999999999999999999999999999a' as const;
+      expect(verifyResponseSignature(bodyHash, signature, someoneElse)).toBe(false);
+    });
   });
 
   describe('POST /purchase', () => {

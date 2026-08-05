@@ -7,6 +7,7 @@ async function start(): Promise<void> {
   const app = createDemoTargetApp({
     mode: config.mode,
     receiptSecret: config.receiptSecret,
+    ...(config.providerSignerPrivateKey ? { providerSignerPrivateKey: config.providerSignerPrivateKey } : {}),
     ...(config.purchase
       ? {
         purchase: {

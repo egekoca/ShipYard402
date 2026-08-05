@@ -1,8 +1,9 @@
 import type { AttestationRecord, EvidencePack, OrchestratorRunCheckpoint } from '@shipyard402/persistence-postgres';
 import { authorizePurchase, type PurchaseContext, type PurchaseIntent } from '@shipyard402/policy-engine';
 import {
+  InvalidCredentialRejectionRunner,
   ProtectedDeliveryReplayRunner,
-  UnpaidAccessDenialRunner,
+  verifyResponseSignature,
   type ProtectedDeliveryClient,
   type ReplayEvidence,
   type ReplayScenario,
@@ -63,7 +64,7 @@ const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecutionContext
     };
   },
   'unpaid-access-denial': async (ctx) => ({
-    evidence: await new UnpaidAccessDenialRunner(ctx.deliveryClient).run({
+    evidence: await new InvalidCredentialRejectionRunner(ctx.deliveryClient).run({
       scenarioId: 'unpaid-access-denial',
       targetServiceId: ctx.targetServiceId,
       targetVersionHash: ctx.targetVersionHash,
@@ -74,12 +75,54 @@ const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecutionContext
     // No payment happens in this scenario, so there is no real transaction to attach the receipt to.
     chainTransactionHash: ZERO_CHAIN_TRANSACTION_HASH,
   }),
+  'tampered-receipt-rejection': async (ctx) => ({
+    evidence: await new InvalidCredentialRejectionRunner(ctx.deliveryClient).run({
+      scenarioId: 'tampered-receipt-rejection',
+      targetServiceId: ctx.targetServiceId,
+      targetVersionHash: ctx.targetVersionHash,
+      policyHash: ctx.policyHash,
+      method: 'GET',
+      route: PAID_RESOURCE_ROUTE,
+      // Deterministically corrupt the real earned receipt -- guaranteed to fail the target's
+      // integrity check without needing to know its internal format.
+      presentedReceipt: `${ctx.paymentReceipt}-tampered`,
+    }),
+    // No new payment -- this reuses (a corrupted form of) the same receipt from procurement.
+    chainTransactionHash: ZERO_CHAIN_TRANSACTION_HASH,
+  }),
 };
 
 function aggregateScenarioResult(results: readonly ReplayEvidence[]): 'PASS' | 'FAIL' | 'INCONCLUSIVE' {
   if (results.some((result) => result.result === 'FAIL')) return 'FAIL';
   if (results.some((result) => result.result === 'INCONCLUSIVE')) return 'INCONCLUSIVE';
   return 'PASS';
+}
+
+/**
+ * Opt-in cross-check: if the provider is registered to sign its responses (DemoTargetConfig.
+ * providerSignerAddress), a PASS is only trustworthy if every attempt with a real response is
+ * actually signed by that address -- otherwise a compromised or buggy fetch client could fabricate
+ * "the target rejected the replay" without ever really talking to the target. A FAIL is left as-is:
+ * the practical risk this guards against is a forged PASS hiding a real vulnerability, not a forged
+ * FAIL hiding a real pass (nothing is gained by fabricating a worse result).
+ */
+function verifyScenarioProvenance(
+  results: readonly ScenarioResult[],
+  expectedSigner: `0x${string}` | undefined,
+): readonly ScenarioResult[] {
+  if (!expectedSigner) return results;
+  return results.map((result) => {
+    if (result.evidence.result !== 'PASS') return result;
+    const unverified = result.evidence.attempts.some((attempt) => (
+      attempt.responseHash !== undefined &&
+      !verifyResponseSignature(attempt.responseHash, attempt.providerSignature, expectedSigner)
+    ));
+    if (!unverified) return result;
+    return {
+      ...result,
+      evidence: { ...result.evidence, result: 'INCONCLUSIVE', failureCode: 'PROVIDER_SIGNATURE_INVALID' },
+    };
+  });
 }
 
 /**
@@ -119,6 +162,12 @@ export type DemoTargetConfig = Readonly<{
   minimumConfirmations: number;
   toolVersion: string;
   chainId: number;
+  /**
+   * The registered signer address this provider is expected to sign its /paid/resource responses
+   * with. Verification is opt-in: unset means the provider doesn't sign, so nothing is checked.
+   * Set means every scenario result gets cross-checked against it (see verifyScenarioProvenance).
+   */
+  providerSignerAddress?: `0x${string}`;
 }>;
 
 export type OrchestratorPipelineDependencies = Readonly<{
@@ -348,6 +397,7 @@ export async function runOrchestratorPipeline(
       completedAt = Math.floor(now().getTime() / 1_000);
       await deps.checkpointStore.merge(runId, { evidence: scenarioResults, startedAt, completedAt });
     }
+    scenarioResults = verifyScenarioProvenance(scenarioResults, deps.demoTarget.providerSignerAddress);
 
     // EVIDENCE_BUILDING
     await advance('EXECUTION_WORKER', 'EVIDENCE_BUILDING');
