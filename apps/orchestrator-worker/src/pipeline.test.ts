@@ -1,4 +1,5 @@
-import type { RunAggregate, RunTransitionedEvent } from '@shipyard402/run-domain';
+import type { AttestationRecord, EvidencePack, OrchestratorRunCheckpoint } from '@shipyard402/persistence-postgres';
+import type { RunAggregate, RunStatus, RunTransitionedEvent } from '@shipyard402/run-domain';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
 import { describe, expect, it } from 'vitest';
 
@@ -6,6 +7,9 @@ import {
   OrchestratorPipelineError,
   RunNotReadyForOrchestrationError,
   runOrchestratorPipeline,
+  type AttestationStorePort,
+  type CheckpointStorePort,
+  type EvidencePackStorePort,
   type OrchestratorPipelineDependencies,
 } from './pipeline.js';
 import type { QuoteRepositoryPort, RunRecord, RunRepositoryPort } from './ports.js';
@@ -48,6 +52,75 @@ function fakeRunRepository(initial: RunAggregate): RunRepositoryPort & { saved: 
       saved.push(record.uncommittedEvent);
     },
   };
+}
+
+const ORCHESTRATOR_STEP_ACTORS = {
+  ANALYZING: 'ORCHESTRATOR',
+  PLAN_COMPILED: 'POLICY_ENGINE',
+  PROCURING: 'PROCUREMENT_WORKER',
+  EXECUTING: 'PROCUREMENT_WORKER',
+  EVIDENCE_BUILDING: 'EXECUTION_WORKER',
+  ATTESTING: 'EVIDENCE_WORKER',
+} as const;
+
+function runAtStatus(status: RunStatus): RunAggregate {
+  let run = fundedRun();
+  if (status === 'FUNDED') return run;
+  for (const to of Object.keys(ORCHESTRATOR_STEP_ACTORS) as (keyof typeof ORCHESTRATOR_STEP_ACTORS)[]) {
+    const result = transitionRun(run, {
+      actor: ORCHESTRATOR_STEP_ACTORS[to],
+      expectedRevision: run.revision,
+      idempotencyKey: `setup:${to}`,
+      occurredAt: NOW.toISOString(),
+      to,
+    });
+    run = result.run;
+    if (to === status) break;
+  }
+  return run;
+}
+
+function fakeCheckpointStore(initial: OrchestratorRunCheckpoint = {}): CheckpointStorePort & { state: OrchestratorRunCheckpoint } {
+  const store = {
+    state: initial,
+    async load(_runId: string) {
+      return store.state;
+    },
+    async merge(_runId: string, patch: OrchestratorRunCheckpoint) {
+      store.state = { ...store.state, ...patch };
+    },
+  };
+  return store;
+}
+
+function fakeEvidencePackStore(existing: EvidencePack | null = null): EvidencePackStorePort & { puts: EvidencePack[] } {
+  const store = {
+    puts: [] as EvidencePack[],
+    stored: existing,
+    async put(pack: EvidencePack) {
+      store.stored = pack;
+      store.puts.push(pack);
+    },
+    async getByRunId() {
+      return store.stored;
+    },
+  };
+  return store;
+}
+
+function fakeAttestationStore(existing: AttestationRecord | null = null): AttestationStorePort & { puts: AttestationRecord[] } {
+  const store = {
+    puts: [] as AttestationRecord[],
+    stored: existing,
+    async put(record: AttestationRecord) {
+      store.stored = record;
+      store.puts.push(record);
+    },
+    async getByRunId() {
+      return store.stored;
+    },
+  };
+  return store;
 }
 
 function fakeQuoteRepository(): QuoteRepositoryPort {
@@ -153,7 +226,7 @@ function baseDeps(overrides: Partial<OrchestratorPipelineDependencies> = {}): Or
         return `0x${'66'.repeat(65)}`;
       },
     },
-    evidencePackStore: { async put() {} },
+    evidencePackStore: fakeEvidencePackStore(),
     evidencePublicBaseUrl: 'https://api.example',
     attestor: {
       address: '0x7000000000000000000000000000000000000007',
@@ -163,7 +236,8 @@ function baseDeps(overrides: Partial<OrchestratorPipelineDependencies> = {}): Or
         return `0x${'77'.repeat(32)}`;
       },
     },
-    attestationStore: { async put() {} },
+    attestationStore: fakeAttestationStore(),
+    checkpointStore: fakeCheckpointStore(),
     now: () => NOW,
     ...overrides,
   };
@@ -219,5 +293,118 @@ describe('runOrchestratorPipeline', () => {
     const error = await runOrchestratorPipeline(RUN_ID, deps).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(OrchestratorPipelineError);
     expect((error as OrchestratorPipelineError).advancedPastFunded).toBe(true);
+  });
+
+  it('resumes from PROCURING without re-sending a payment that was already checkpointed', async () => {
+    let sendPaymentCalls = 0;
+    const deps = baseDeps({
+      runRepository: fakeRunRepository(runAtStatus('PROCURING')),
+      checkpointStore: fakeCheckpointStore({
+        plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+        paymentTransactionHash: `0x${'55'.repeat(32)}`,
+      }),
+      paymentSender: {
+        async sendPayment() {
+          sendPaymentCalls += 1;
+          return `0x${'55'.repeat(32)}`;
+        },
+        async waitForConfirmation(transactionHash) {
+          return { transactionHash, confirmations: 1 };
+        },
+      },
+    });
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_PASS');
+    expect(sendPaymentCalls).toBe(0);
+  });
+
+  it('resumes from EVIDENCE_BUILDING without re-running the already-spent replay probe', async () => {
+    let deliveryCalls = 0;
+    const evidence = {
+      scenarioId: 'payment-proof-replay',
+      targetServiceId: 'service:demo',
+      targetVersionHash: `0x${'11'.repeat(32)}`,
+      policyHash: `0x${'22'.repeat(32)}`,
+      paymentProofHash: `0x${'99'.repeat(32)}`,
+      presentedReceiptHash: `0x${'aa'.repeat(32)}`,
+      result: 'PASS' as const,
+      attempts: [
+        { phase: 'INITIAL' as const, requestHash: `0x${'bb'.repeat(32)}` as const, responseHash: `0x${'44'.repeat(32)}` as const, statusCode: 200, deliveryConfirmed: true },
+        { phase: 'REPLAY' as const, requestHash: `0x${'cc'.repeat(32)}` as const, responseHash: `0x${'44'.repeat(32)}` as const, statusCode: 409, deliveryConfirmed: false },
+      ],
+    };
+    const deps = baseDeps({
+      runRepository: fakeRunRepository(runAtStatus('EVIDENCE_BUILDING')),
+      checkpointStore: fakeCheckpointStore({
+        plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+        paymentTransactionHash: `0x${'55'.repeat(32)}`,
+        purchaseReceipt: 'fake-earned-receipt-token',
+        evidence,
+        startedAt: 1_000,
+        completedAt: 1_010,
+      }),
+      deliveryClient: {
+        async execute() {
+          deliveryCalls += 1;
+          return { statusCode: 200, deliveryConfirmed: true, responseBodyHash: `0x${'44'.repeat(32)}` };
+        },
+      },
+    });
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result.finalStatus).toBe('DELIVERED_PASS');
+    expect(deliveryCalls).toBe(0);
+  });
+
+  it('resumes from ATTESTING without resubmitting to the append-only registry or re-storing evidence', async () => {
+    let submitCalls = 0;
+    const existingEvidencePack: EvidencePack = {
+      runId: RUN_ID,
+      evidenceRoot: `0x${'dd'.repeat(32)}`,
+      toolReceiptRoot: `0x${'ee'.repeat(32)}`,
+      uri: `https://api.example/v1/runs/${RUN_ID}/evidence`,
+      contentHash: `0x${'ff'.repeat(32)}`,
+      publicManifest: { scenarios: ['payment-proof-replay'], result: 'PASS' },
+      builtAt: NOW.toISOString(),
+    };
+    const evidencePackStore = fakeEvidencePackStore(existingEvidencePack);
+    const deps = baseDeps({
+      runRepository: fakeRunRepository(runAtStatus('ATTESTING')),
+      checkpointStore: fakeCheckpointStore({
+        plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+        paymentTransactionHash: `0x${'55'.repeat(32)}`,
+        purchaseReceipt: 'fake-earned-receipt-token',
+        evidence: {
+          scenarioId: 'payment-proof-replay',
+          targetServiceId: 'service:demo',
+          targetVersionHash: `0x${'11'.repeat(32)}`,
+          policyHash: `0x${'22'.repeat(32)}`,
+          paymentProofHash: `0x${'99'.repeat(32)}`,
+          presentedReceiptHash: `0x${'aa'.repeat(32)}`,
+          result: 'PASS',
+          attempts: [
+            { phase: 'INITIAL', requestHash: `0x${'bb'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 200, deliveryConfirmed: true },
+            { phase: 'REPLAY', requestHash: `0x${'cc'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 409, deliveryConfirmed: false },
+          ],
+        },
+        startedAt: 1_000,
+        completedAt: 1_010,
+        attestationTransactionHash: `0x${'77'.repeat(32)}`,
+      }),
+      evidencePackStore,
+      attestor: {
+        address: '0x7000000000000000000000000000000000000007',
+        registryAddress: '0x07f6a55Fb88DD29e9A10802ce8d706dA26db8ddd',
+        chainId: 48816,
+        async submit() {
+          submitCalls += 1;
+          return `0x${'77'.repeat(32)}`;
+        },
+      },
+    });
+    const result = await runOrchestratorPipeline(RUN_ID, deps);
+    expect(result).toMatchObject({ finalStatus: 'DELIVERED_PASS', attestationTransactionHash: `0x${'77'.repeat(32)}` });
+    expect(submitCalls).toBe(0);
+    expect(evidencePackStore.puts).toHaveLength(0);
+    expect((deps.attestationStore as ReturnType<typeof fakeAttestationStore>).puts).toHaveLength(1);
   });
 });

@@ -24,10 +24,17 @@ describe('orchestrator job handler', () => {
     });
   });
 
-  it('dead-letters a pipeline failure that already mutated the run past FUNDED', async () => {
+  it('retries a mid-pipeline failure instead of dead-lettering, since the pipeline is checkpoint-resumable', async () => {
     const handler = handlerThatThrows(new OrchestratorPipelineError('boom', true));
     await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
-      action: 'DEAD_LETTER', reason: 'PIPELINE_FAILED_MID_SEQUENCE',
+      action: 'RETRY', delayMilliseconds: 5_000, reason: 'UNCLASSIFIED_ORCHESTRATION_FAILURE',
+    });
+  });
+
+  it('eventually dead-letters a mid-pipeline failure once retries are exhausted', async () => {
+    const handler = handlerThatThrows(new OrchestratorPipelineError('boom', true));
+    await expect(handler.handle({ runId: 'run-1', attempt: 5, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER', reason: 'PIPELINE_RETRIES_EXHAUSTED',
     });
   });
 

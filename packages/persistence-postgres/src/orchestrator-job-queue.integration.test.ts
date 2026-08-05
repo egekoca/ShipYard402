@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresAttestationStore } from './attestation-store.js';
 import { PostgresEvidencePackStore } from './evidence-pack-store.js';
+import { PostgresOrchestratorCheckpointStore } from './orchestrator-checkpoint-store.js';
 import { PostgresOrchestratorJobQueue } from './orchestrator-job-queue.js';
 import { PostgresQuoteRepository, PostgresRunRepository } from './api-repositories.js';
 import { createShipyardPool } from './pool.js';
@@ -105,6 +106,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
 
   afterAll(async () => {
     if (!pool) return;
+    await pool.query(`DELETE FROM orchestrator_run_checkpoints WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM attestations WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM evidence_packs WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM orchestrator_jobs WHERE run_id = $1`, [runId]);
@@ -184,6 +186,28 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
       transactionHash: `0x${'ff'.repeat(32)}`,
       attestor: '0x8eb7e837242d6ee3baa274f1750c644bf3e08c10',
     });
+  });
+
+  it('accumulates an orchestrator checkpoint across independent merges without clobbering earlier fields', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresOrchestratorCheckpointStore(pool);
+
+    await expect(store.load(runId)).resolves.toEqual({});
+
+    await store.merge(runId, {
+      plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+    });
+    await store.merge(runId, { paymentTransactionHash: `0x${'11'.repeat(32)}` });
+
+    await expect(store.load(runId)).resolves.toMatchObject({
+      plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
+      paymentTransactionHash: `0x${'11'.repeat(32)}`,
+    });
+
+    // A merge must never overwrite an already-checkpointed field — this is what makes a resumed
+    // pipeline safe to re-derive the same "already sent" payment hash instead of double-spending.
+    await store.merge(runId, { paymentTransactionHash: `0x${'22'.repeat(32)}` });
+    await expect(store.load(runId)).resolves.toMatchObject({ paymentTransactionHash: `0x${'11'.repeat(32)}` });
   });
 });
 

@@ -1,5 +1,4 @@
 import {
-  OrchestratorPipelineError,
   ProcurementDeniedError,
   RunNotReadyForOrchestrationError,
   runOrchestratorPipeline,
@@ -50,9 +49,9 @@ export class OrchestratorJobHandler {
       if (error instanceof ProcurementDeniedError) {
         return { action: 'DEAD_LETTER', reason: 'PROCUREMENT_DENIED', failureCodes: error.denialCodes };
       }
-      if (error instanceof OrchestratorPipelineError && error.advancedPastFunded) {
-        return { action: 'DEAD_LETTER', reason: 'PIPELINE_FAILED_MID_SEQUENCE' };
-      }
+      // A mid-pipeline failure (OrchestratorPipelineError with advancedPastFunded=true) is safe
+      // to retry: the pipeline is checkpoint-resumable, so a re-claimed job picks up from the
+      // run's persisted status and artifacts instead of repeating spend-once side effects.
       if (job.attempt >= job.maximumAttempts) {
         return { action: 'DEAD_LETTER', reason: 'PIPELINE_RETRIES_EXHAUSTED' };
       }
