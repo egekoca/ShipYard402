@@ -37,8 +37,8 @@ main { min-height: 100vh; overflow: hidden; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; gap: 12px; align-items: center; color: inherit; font-size: 14px; font-weight: 800; letter-spacing: .12em; text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--gold-ink); background: var(--gold); font-size: 10px; font-weight: 900; letter-spacing: 0; border-radius: 50%; }
-.brand-mark-icon { width: 22px; height: 22px; }
+.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; }
+.brand-mark-icon { width: 42px; height: 42px; object-fit: contain; }
 .network-pill { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
 .network-pill span { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(240, 196, 25, .18); }
 .network-pill span::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: var(--gold); animation: pulse-ring 2.2s ease-out infinite; }

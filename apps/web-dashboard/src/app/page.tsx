@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 
 import { AnimatedWorkflow } from '../components/animated-workflow';
-import { HeroRadar, RadarMark } from '../components/logo';
+import { HeroRadar } from '../components/logo';
 import { ReleaseRunForm } from '../components/release-run-form';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
 
@@ -14,7 +14,8 @@ export default function HomePage() {
     <main>
       <header className="nav-shell">
         <a className="brand" href="#top" aria-label="Shipyard402 home">
-          <span className="brand-mark"><RadarMark className="brand-mark-icon" /></span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no next/image config needed for a 42px mark */}
+          <span className="brand-mark"><img src="/logo-mark.png" alt="" className="brand-mark-icon" /></span>
           <span>SHIPYARD402</span>
         </a>
         <div className="network-pill"><span /> GOAT TESTNET3</div>
