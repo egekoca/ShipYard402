@@ -120,6 +120,18 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .quote-result .primary-button { width: 100%; margin: 25px 0 0; }
 .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
 .run-created { display: flex; flex-direction: column; gap: 6px; padding: 14px; background: var(--surface); border: 1px solid var(--line); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+.wallet-connect-row { padding: 17px 20px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.wallet-connect-row .primary-button { width: 100%; min-height: 44px; margin: 0; }
+.wallet-connected { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--ink); }
+.wallet-pay-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 12px; background: var(--bg); border: 1px solid var(--line); }
+.wallet-pay-panel dl { margin: 0; }
+.wallet-pay-panel dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 11px; }
+.wallet-pay-panel dl div:first-child { border-top: 0; }
+.wallet-pay-panel dt { color: var(--muted); }
+.wallet-pay-panel dd { margin: 0; font-weight: 800; text-align: right; color: var(--ink); overflow-wrap: anywhere; }
+.wallet-pay-panel .primary-button { width: 100%; min-height: 44px; margin: 0; }
+.wallet-pay-panel .error-card { margin-top: 0; padding: 14px; }
+.wallet-paid { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; color: var(--ink); }
 .state-in { animation: state-in .5s cubic-bezier(.16,1,.3,1) both; }
 footer { display: flex; justify-content: space-between; gap: 30px; max-width: 1280px; margin: 0 auto; padding: 35px 36px; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 
