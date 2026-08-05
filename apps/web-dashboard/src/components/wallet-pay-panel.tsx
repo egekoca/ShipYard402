@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { connectWallet, ensureChain, formatWalletError, isWalletAvailable, sendErc20Payment } from '../lib/goat-wallet';
 
@@ -16,17 +16,43 @@ export function WalletPayPanel({
   challenge,
   tokenSymbol,
   tokenDecimals,
+  connectedAddress,
 }: Readonly<{
   chainId: number;
   challenge: PaymentChallenge;
   tokenSymbol?: string;
   tokenDecimals?: number;
+  /** Already-connected address, if the wallet was connected elsewhere (e.g. earlier in the form) -- skips asking to connect again. */
+  connectedAddress?: `0x${string}` | null;
 }>) {
-  const [address, setAddress] = useState<`0x${string}` | null>(null);
+  const [address, setAddress] = useState<`0x${string}` | null>(connectedAddress ?? null);
+  const [networkStatus, setNetworkStatus] = useState<'checking' | 'ready' | 'failed'>('checking');
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
+
+  useEffect(() => {
+    if (connectedAddress) setAddress(connectedAddress);
+  }, [connectedAddress]);
+
+  // As soon as an address is known, add/switch to the right GOAT chain automatically -- no click
+  // required, so by the time the customer presses Pay the wallet is already on the right network.
+  // A failure here (e.g. the add-network prompt was dismissed) still leaves Pay clickable below;
+  // handlePay retries the same ensureChain call, so nothing gets permanently stuck.
+  useEffect(() => {
+    if (!address || !isWalletAvailable()) return;
+    let cancelled = false;
+    setNetworkStatus('checking');
+    ensureChain(chainId)
+      .then(() => { if (!cancelled) setNetworkStatus('ready'); })
+      .catch((caught: unknown) => {
+        if (cancelled) return;
+        setNetworkStatus('failed');
+        setError(formatWalletError(caught));
+      });
+    return () => { cancelled = true; };
+  }, [address, chainId]);
 
   async function handleConnect() {
     setBusy(true);
@@ -97,9 +123,9 @@ export function WalletPayPanel({
           {busy ? busyLabel : 'Connect wallet'}
         </button>
       ) : (
-        <button className="primary-button" type="button" disabled={busy} onClick={handlePay}>
-          {busy && <span className="spinner" aria-hidden="true" />}
-          {busy ? busyLabel : `Pay ${amountLabel} ${assetLabel}`}
+        <button className="primary-button" type="button" disabled={busy || networkStatus === 'checking'} onClick={handlePay}>
+          {(busy || networkStatus === 'checking') && <span className="spinner" aria-hidden="true" />}
+          {busy ? busyLabel : networkStatus === 'checking' ? 'Adding GOAT network…' : `Pay ${amountLabel} ${assetLabel}`}
         </button>
       )}
     </div>
