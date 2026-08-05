@@ -123,7 +123,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
           )}
 
           <section className="run-detail-grid">
-            <div className="run-detail-panel">
+            <div className="run-detail-panel state-in" data-state={activeStep >= 0 ? 'ready' : 'pending'} style={{ animationDelay: '0ms' }}>
               <span className="panel-label"><i>[01]</i> PAYMENT</span>
               <dl>
                 <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
@@ -132,9 +132,18 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               </dl>
             </div>
 
-            <div className="run-detail-panel">
+            <div
+              className="run-detail-panel state-in"
+              data-state={!evidence ? 'pending' : evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready'}
+              style={{ animationDelay: '90ms' }}
+            >
               <span className="panel-label"><i>[02]</i> EVIDENCE</span>
-              {!evidence && <p className="run-detail-empty">Not built yet — appears once the run reaches EVIDENCE_BUILDING.</p>}
+              {!evidence && (
+                <div className="panel-empty">
+                  <RadarMark className="panel-empty-icon" />
+                  <p>Not built yet — appears once the run reaches EVIDENCE_BUILDING.</p>
+                </div>
+              )}
               {evidence && (
                 <>
                   <dl>
@@ -162,9 +171,14 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               )}
             </div>
 
-            <div className="run-detail-panel">
+            <div className="run-detail-panel state-in" data-state={attestation ? 'ready' : 'pending'} style={{ animationDelay: '180ms' }}>
               <span className="panel-label"><i>[03]</i> ON-CHAIN ATTESTATION</span>
-              {!attestation && <p className="run-detail-empty">Not submitted yet — appears once the run reaches ATTESTING.</p>}
+              {!attestation && (
+                <div className="panel-empty">
+                  <RadarMark className="panel-empty-icon" />
+                  <p>Not submitted yet — appears once the run reaches ATTESTING.</p>
+                </div>
+              )}
               {attestation && (
                 <dl>
                   <div><dt>Registry</dt><dd className="mono">{shortHash(attestation.registryAddress)}</dd></div>
