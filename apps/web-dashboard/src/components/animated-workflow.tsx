@@ -1,9 +1,9 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { useEffect, useState } from 'react';
 
 import { useReveal } from '../hooks/use-reveal';
+import { Pipeline } from './pipeline';
 
 const STEPS = [
   'Customer payment',
@@ -28,18 +28,9 @@ export function AnimatedWorkflow() {
   }, [visible]);
 
   return (
-    <section className={`workflow${visible ? ' is-visible' : ''}`} aria-label="Assurance workflow" ref={ref}>
-      <div className="workflow-track" style={{ '--progress': `${((active + 1) / STEPS.length) * 100}%` } as CSSProperties} />
-      {STEPS.map((step, index) => (
-        <div
-          className={`workflow-step${index === active ? ' is-active' : ''}${index < active ? ' is-done' : ''}`}
-          key={step}
-          style={{ '--delay': `${index * 90}ms` } as CSSProperties}
-        >
-          <span>{String(index + 1).padStart(2, '0')}</span>
-          <p>{step}</p>
-        </div>
-      ))}
+    <section className="workflow-section" aria-label="Assurance workflow" ref={ref}>
+      <span className="eyebrow workflow-eyebrow"><i>[01]</i> HOW A RUN MOVES</span>
+      <Pipeline steps={STEPS} activeIndex={active} visible={visible} />
     </section>
   );
 }
