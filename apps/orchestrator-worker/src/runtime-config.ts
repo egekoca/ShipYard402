@@ -31,6 +31,7 @@ const environmentSchema = z.object({
   ORCHESTRATOR_WORKER_ID: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional(),
   ORCHESTRATOR_POLL_INTERVAL_MS: z.string().regex(/^\d+$/).optional(),
   ORCHESTRATOR_LEASE_SECONDS: z.string().regex(/^\d+$/).optional(),
+  ORCHESTRATOR_REFUNDS_ENABLED: z.enum(['true', 'false']).optional(),
 }).strict();
 
 const selectedNames = [
@@ -42,7 +43,7 @@ const selectedNames = [
   'DEMO_TARGET_TOOL_AGENT_ID', 'DEMO_TARGET_RECEIVING_ADDRESS', 'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT',
   'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'DEMO_TARGET_TOOL_VERSION', 'IPFS_API_URL',
   'OPENAI_API_KEY', 'OPENAI_MODEL', 'ORCHESTRATOR_WORKER_ID', 'ORCHESTRATOR_POLL_INTERVAL_MS',
-  'ORCHESTRATOR_LEASE_SECONDS',
+  'ORCHESTRATOR_LEASE_SECONDS', 'ORCHESTRATOR_REFUNDS_ENABLED',
 ] as const;
 
 export type OrchestratorWorkerRuntimeConfig = Readonly<{
@@ -66,6 +67,11 @@ export type OrchestratorWorkerRuntimeConfig = Readonly<{
     toolVersion: string;
   }>;
   ipfsApiUrl: string;
+  /**
+   * Off by default: GOAT Flow merchant onboarding is still simulated, so the orchestrator signer
+   * holds no real customer ERC20 balance to refund from yet. Flip this once it does.
+   */
+  refundsEnabled: boolean;
   openAi: Readonly<{ apiKey: string; model: string }>;
   workerId: string;
   pollIntervalMilliseconds: number;
@@ -141,6 +147,7 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
       toolVersion: values.DEMO_TARGET_TOOL_VERSION,
     },
     ipfsApiUrl: values.IPFS_API_URL,
+    refundsEnabled: values.ORCHESTRATOR_REFUNDS_ENABLED === 'true',
     openAi: { apiKey: values.OPENAI_API_KEY, model: values.OPENAI_MODEL },
     workerId: values.ORCHESTRATOR_WORKER_ID ?? `orchestrator-worker:${process.pid}`,
     pollIntervalMilliseconds: poll,

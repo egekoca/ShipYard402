@@ -1,11 +1,13 @@
+import { createEgressSafeFetch } from '@shipyard402/policy-engine';
+import type { ProtectedDeliveryAttempt, ProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
 import { createHash } from 'node:crypto';
 
-import type { ProtectedDeliveryAttempt, ProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
+const egressSafeFetch = createEgressSafeFetch();
 
 export function createFetchProtectedDeliveryClient(baseUrl: string): ProtectedDeliveryClient {
   return {
     async execute(input): Promise<ProtectedDeliveryAttempt> {
-      const response = await fetch(new URL(input.route, baseUrl), {
+      const response = await egressSafeFetch(new URL(input.route, baseUrl), {
         method: input.method,
         headers: {
           'content-type': 'application/json',

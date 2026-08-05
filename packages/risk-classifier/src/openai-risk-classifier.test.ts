@@ -11,6 +11,7 @@ const input: RiskClassificationInput = {
   openApiUrl: 'https://target.example/openapi.json',
   serviceSummary: 'A small paid resource used for testnet demonstration.',
   mandatoryScenarios: ['payment-proof-replay'],
+  availableScenarios: ['payment-proof-replay', 'unpaid-access-denial'],
   maximumToolBudgetAtomic: '1000000',
 };
 
@@ -67,6 +68,29 @@ describe('OpenAiRiskClassifier', () => {
       client: fakeClient(JSON.stringify({ riskLevel: 'EXTREME', proposedScenarios: [], proposedToolBudgetAtomic: '-5', rationale: '' })),
     });
     await expect(classifier.classify(input)).rejects.toThrowError(RiskClassificationUnavailableError);
+  });
+
+  it('tells the model which scenario IDs are actually executable', async () => {
+    let capturedInput: unknown;
+    const client = {
+      responses: {
+        create: async (request: { input: unknown }) => {
+          capturedInput = request.input;
+          return {
+            output_text: JSON.stringify({
+              riskLevel: 'LOW',
+              proposedScenarios: ['payment-proof-replay'],
+              proposedToolBudgetAtomic: '100000',
+              rationale: 'Low-risk resource.',
+            }),
+          };
+        },
+      },
+    } as unknown as OpenAI;
+    const classifier = new OpenAiRiskClassifier({ apiKey: 'sk-test', model: 'gpt-5.1', client });
+
+    await classifier.classify(input);
+    expect(String(capturedInput)).toContain('payment-proof-replay, unpaid-access-denial');
   });
 
   it('fails closed when the underlying request throws', async () => {

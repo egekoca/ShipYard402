@@ -46,6 +46,10 @@ export interface ToolReceiptSigner {
   sign(receipt: UnsignedToolReceipt): Promise<`0x${string}`>;
 }
 
+export interface RefundSender {
+  sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint }>): Promise<`0x${string}`>;
+}
+
 export type RunAttestationInput = Readonly<{
   runId: `0x${string}`;
   targetAgentId: bigint;

@@ -91,7 +91,8 @@ function buildPrompt(input: RiskClassificationInput): string {
     `OpenAPI document: ${input.openApiUrl}`,
     `Service summary: ${input.serviceSummary}`,
     `Mandatory scenarios that will always run regardless of your answer: ${input.mandatoryScenarios.join(', ')}`,
+    `Scenario IDs the pipeline can actually execute: ${input.availableScenarios.join(', ')}. Proposing an ID outside this list changes nothing -- it will not run.`,
     `Maximum tool budget (atomic units, do not exceed): ${input.maximumToolBudgetAtomic}`,
-    'Propose a risk level, any additional scenario IDs beyond the mandatory ones, a tool budget within the ceiling, and a short rationale.',
+    'Propose a risk level, any additional scenario IDs beyond the mandatory ones (only from the executable list above), a tool budget within the ceiling, and a short rationale.',
   ].join('\n');
 }

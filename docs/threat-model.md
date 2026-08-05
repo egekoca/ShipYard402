@@ -34,7 +34,6 @@
 
 ## Known incomplete controls
 
-- DNS resolution and redirect-chain enforcement are designed but not yet wired to an HTTP egress broker.
 - GOAT Flow webhook signing is deployment-specific and is not implemented until the active Mainnet contract is verified.
 - Signer service/KMS integration and the production worker bootstrap are not implemented; production boot is disabled.
 - External provider independence and receipt signer registration are not yet established.

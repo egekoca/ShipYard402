@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import OpenAI from 'openai';
 import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
-import { EthersNativePaymentSender, EthersRegistryAttestor, EthersToolReceiptSigner } from './ethers-adapters.js';
+import { EthersErc20RefundSender, EthersNativePaymentSender, EthersRegistryAttestor, EthersToolReceiptSigner } from './ethers-adapters.js';
 import { createFetchPurchaseClient } from './fetch-purchase-client.js';
 import { createKuboEvidencePublisher } from './ipfs-publisher.js';
 import { createFetchProtectedDeliveryClient } from './protected-delivery-fetch-client.js';
@@ -53,6 +53,7 @@ async function start(): Promise<void> {
       demoTarget: { ...config.demoTarget, chainId: config.chainId },
       deliveryClient: createFetchProtectedDeliveryClient(config.demoTarget.baseUrl),
       paymentSender: new EthersNativePaymentSender(signerWallet, provider, BigInt(config.maximumProcurementSpendAtomic)),
+      ...(config.refundsEnabled ? { refundSender: new EthersErc20RefundSender(signerWallet) } : {}),
       purchaseClient: createFetchPurchaseClient(config.demoTarget.baseUrl),
       toolReceiptSigner: new EthersToolReceiptSigner(toolReceiptSignerWallet),
       evidencePackStore: new PostgresEvidencePackStore(pool),

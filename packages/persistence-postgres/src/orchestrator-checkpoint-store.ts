@@ -13,6 +13,7 @@ export type OrchestratorRunCheckpoint = Readonly<{
   startedAt?: number;
   completedAt?: number;
   attestationTransactionHash?: `0x${string}`;
+  refundTransactionHash?: `0x${string}`;
 }>;
 
 export interface OrchestratorCheckpointStore {
@@ -31,6 +32,7 @@ type CheckpointRow = QueryResultRow & {
   started_at: string | null;
   completed_at: string | null;
   attestation_transaction_hash: Buffer | null;
+  refund_transaction_hash: Buffer | null;
 };
 
 const EMPTY_CHECKPOINT: OrchestratorRunCheckpoint = {};
@@ -45,7 +47,8 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
   async load(runId: string): Promise<OrchestratorRunCheckpoint> {
     const result = await this.#pool.query<CheckpointRow>(
       `SELECT risk_level, scenarios, tool_budget_atomic, rationale, payment_transaction_hash,
-              purchase_receipt, evidence, started_at, completed_at, attestation_transaction_hash
+              purchase_receipt, evidence, started_at, completed_at, attestation_transaction_hash,
+              refund_transaction_hash
        FROM orchestrator_run_checkpoints WHERE run_id = $1`,
       [runId],
     );
@@ -58,8 +61,8 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
       `INSERT INTO orchestrator_run_checkpoints (
          run_id, risk_level, scenarios, tool_budget_atomic, rationale,
          payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
-         attestation_transaction_hash
-       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
+         attestation_transaction_hash, refund_transaction_hash
+       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12)
        ON CONFLICT (run_id) DO UPDATE SET
          risk_level = COALESCE(orchestrator_run_checkpoints.risk_level, EXCLUDED.risk_level),
          scenarios = COALESCE(orchestrator_run_checkpoints.scenarios, EXCLUDED.scenarios),
@@ -71,6 +74,7 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
          started_at = COALESCE(orchestrator_run_checkpoints.started_at, EXCLUDED.started_at),
          completed_at = COALESCE(orchestrator_run_checkpoints.completed_at, EXCLUDED.completed_at),
          attestation_transaction_hash = COALESCE(orchestrator_run_checkpoints.attestation_transaction_hash, EXCLUDED.attestation_transaction_hash),
+         refund_transaction_hash = COALESCE(orchestrator_run_checkpoints.refund_transaction_hash, EXCLUDED.refund_transaction_hash),
          updated_at = now()`,
       [
         runId,
@@ -84,6 +88,7 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
         patch.startedAt ?? null,
         patch.completedAt ?? null,
         patch.attestationTransactionHash ? hexToBuffer(patch.attestationTransactionHash) : null,
+        patch.refundTransactionHash ? hexToBuffer(patch.refundTransactionHash) : null,
       ],
     );
   }
@@ -107,6 +112,7 @@ function parseRow(row: CheckpointRow): OrchestratorRunCheckpoint {
     ...(row.started_at !== null ? { startedAt: Number(row.started_at) } : {}),
     ...(row.completed_at !== null ? { completedAt: Number(row.completed_at) } : {}),
     ...(row.attestation_transaction_hash ? { attestationTransactionHash: bufferToHex(row.attestation_transaction_hash) } : {}),
+    ...(row.refund_transaction_hash ? { refundTransactionHash: bufferToHex(row.refund_transaction_hash) } : {}),
   };
 }
 

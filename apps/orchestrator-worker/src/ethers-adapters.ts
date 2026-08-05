@@ -2,7 +2,9 @@ import { toolReceiptDomain, TOOL_RECEIPT_TYPES, type UnsignedToolReceipt } from 
 import { Contract, Wallet, getAddress, type InterfaceAbi, type JsonRpcProvider } from 'ethers';
 
 import { ATTESTATION_TYPED_DATA_TYPES, attestationTypedDataValue, registryDomain, RESULT_INDEX } from './registry-eip712.js';
-import type { ConfirmedPayment, NativePaymentSender, RegistryAttestor, RunAttestationInput, ToolReceiptSigner } from './ports.js';
+import type { ConfirmedPayment, NativePaymentSender, RefundSender, RegistryAttestor, RunAttestationInput, ToolReceiptSigner } from './ports.js';
+
+const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 export class EthersNativePaymentSender implements NativePaymentSender {
   readonly #wallet: Wallet;
@@ -36,6 +38,25 @@ export class EthersNativePaymentSender implements NativePaymentSender {
     }
     const currentBlock = await this.#provider.getBlockNumber();
     return { transactionHash, confirmations: currentBlock - receipt.blockNumber + 1 };
+  }
+}
+
+export class EthersErc20RefundSender implements RefundSender {
+  readonly #wallet: Wallet;
+
+  constructor(wallet: Wallet) {
+    this.#wallet = wallet;
+  }
+
+  async sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint }>): Promise<`0x${string}`> {
+    if (input.valueAtomic <= 0n) throw new Error('Refund amount must be positive');
+    const token = new Contract(getAddress(input.tokenAddress), ERC20_TRANSFER_ABI, this.#wallet);
+    const tx = await token['transfer']!(getAddress(input.toAddress), input.valueAtomic);
+    const receipt = await tx.wait(1);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(`Refund transaction did not confirm successfully: ${tx.hash}`);
+    }
+    return receipt.hash as `0x${string}`;
   }
 }
 
