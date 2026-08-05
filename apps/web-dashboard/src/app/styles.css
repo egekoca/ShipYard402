@@ -60,7 +60,7 @@ h1 .hero-in { display: inline-block; }
 .hero-in { opacity: 0; animation: hero-in .8s cubic-bezier(.16,1,.3,1) forwards; animation-delay: var(--delay, 0ms); }
 h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .hero-copy { max-width: 690px; margin: 0; color: var(--muted); font-size: clamp(17px, 1.8vw, 21px); line-height: 1.55; }
-.scope-note { display: flex; gap: 22px; max-width: 760px; margin-top: 38px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink); }
+.scope-note { display: flex; align-items: baseline; gap: 22px; max-width: 760px; margin-top: 38px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink); }
 .scope-note strong { min-width: 140px; color: var(--gold); text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
 
 .workflow-section { max-width: 1280px; margin: 0 auto; padding: 90px 36px 100px; }
