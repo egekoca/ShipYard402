@@ -67,7 +67,7 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .workflow-eyebrow { display: block; margin-bottom: 42px; }
 .pipeline { position: relative; }
 .pipeline-rail { position: relative; height: 2px; margin: 0 7px 54px; background: var(--line); }
-.pipeline-rail-fill { position: absolute; inset: 0; width: 0%; background: linear-gradient(90deg, var(--gold), #fff0b3); box-shadow: 0 0 18px 1px rgba(240, 196, 25, .45); transition: width .6s cubic-bezier(.16,1,.3,1); }
+.pipeline-rail-fill { position: absolute; inset: 0; width: 0%; background: linear-gradient(90deg, var(--gold), #fff0b3); box-shadow: 0 0 18px 1px rgba(240, 196, 25, .45); transition: width 2s linear; }
 .pipeline-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); transition: background .4s ease, border-color .4s ease, box-shadow .4s ease; }
 .pipeline-dot.is-done { background: var(--gold); border-color: var(--gold); }
 .pipeline-dot.is-active { background: var(--gold); border-color: var(--gold); animation: dot-pulse 1.6s ease-in-out infinite; }
