@@ -17,7 +17,7 @@ export default function HomePage() {
           <span className="brand-mark"><RadarMark className="brand-mark-icon" /></span>
           <span>SHIPYARD402</span>
         </a>
-        <div className="network-pill"><span /> GOAT MAINNET</div>
+        <div className="network-pill"><span /> GOAT TESTNET3</div>
       </header>
 
       <section className="hero" id="top">
