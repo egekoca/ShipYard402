@@ -20,7 +20,8 @@ export default function HomePage() {
       </header>
 
       <section className="hero" id="top">
-        <div className="eyebrow hero-in" style={delayStyle(0)}>AUTONOMOUS RELEASE ASSURANCE</div>
+        <div className="hero-glow" aria-hidden="true" />
+        <div className="eyebrow hero-in" style={delayStyle(0)}><i>[00]</i> AUTONOMOUS RELEASE ASSURANCE</div>
         <h1>
           <span className="hero-in" style={delayStyle(80)}>Prove the paid path.</span>
           <br />
@@ -43,7 +44,7 @@ export default function HomePage() {
       <section className="run-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">RELEASE GATE</span>
+            <span className="eyebrow"><i>[03]</i> RELEASE GATE</span>
             <h2>Request a funded run</h2>
           </div>
           <p>The quote is created from a verified merchant capability. No token or recipient is assumed by this interface.</p>

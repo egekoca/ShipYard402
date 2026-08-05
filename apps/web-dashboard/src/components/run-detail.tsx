@@ -9,6 +9,8 @@ import {
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { Pipeline } from './pipeline';
+
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
 const POLL_MS = 4000;
 const TERMINAL_STATUSES = new Set([
@@ -91,7 +93,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
       </header>
 
       <section className="run-detail-hero">
-        <span className="eyebrow">RELEASE RUN</span>
+        <span className="eyebrow"><i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}</span>
         <h1 className="mono run-detail-id">{runId}</h1>
         {lastPolledAt && (
           <p className="run-detail-polled">Last updated {lastPolledAt.toLocaleTimeString()}{!isTerminal ? ' — refreshing automatically' : ''}</p>
@@ -108,18 +110,8 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
       {run && (
         <>
-          <section className="workflow is-visible" aria-label="Run progress">
-            <div className="workflow-track" style={{ '--progress': `${((Math.max(activeStep, 0) + 1) / STEPS.length) * 100}%` } as React.CSSProperties} />
-            {STEPS.map((step, index) => (
-              <div
-                className={`workflow-step${index === activeStep ? ' is-active' : ''}${index < activeStep || isTerminal ? ' is-done' : ''}`}
-                key={step}
-                style={{ '--delay': '0ms' } as React.CSSProperties}
-              >
-                <span>{String(index + 1).padStart(2, '0')}</span>
-                <p>{step}</p>
-              </div>
-            ))}
+          <section className="workflow-section" aria-label="Run progress">
+            <Pipeline steps={STEPS} activeIndex={activeStep} />
           </section>
 
           {isTerminal && (
@@ -131,7 +123,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
           <section className="run-detail-grid">
             <div className="run-detail-panel">
-              <span className="panel-label">PAYMENT</span>
+              <span className="panel-label"><i>[01]</i> PAYMENT</span>
               <dl>
                 <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
                 <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
@@ -140,7 +132,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
             </div>
 
             <div className="run-detail-panel">
-              <span className="panel-label">EVIDENCE</span>
+              <span className="panel-label"><i>[02]</i> EVIDENCE</span>
               {!evidence && <p className="run-detail-empty">Not built yet — appears once the run reaches EVIDENCE_BUILDING.</p>}
               {evidence && (
                 <>
@@ -170,7 +162,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
             </div>
 
             <div className="run-detail-panel">
-              <span className="panel-label">ON-CHAIN ATTESTATION</span>
+              <span className="panel-label"><i>[03]</i> ON-CHAIN ATTESTATION</span>
               {!attestation && <p className="run-detail-empty">Not submitted yet — appears once the run reaches ATTESTING.</p>}
               {attestation && (
                 <dl>
