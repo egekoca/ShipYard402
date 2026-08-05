@@ -11,25 +11,44 @@ export type PipelineProps = Readonly<{
    * actual status, never needs this since it only ever moves forward.
    */
   fillResetKey?: number | string;
+  /**
+   * 0..1, updated every animation frame by a continuous rAF loop (see AnimatedWorkflow). When
+   * set, the fill width and each dot's lit state are both derived directly from this single
+   * value every frame instead of activeIndex's discrete jumps -- there is no separate CSS
+   * transition trying to chase a moving target, so they can never visibly fall out of step or
+   * stutter relative to each other.
+   */
+  progress?: number;
 }>;
 
-export function Pipeline({ steps, activeIndex, visible = true, fillResetKey }: PipelineProps) {
+export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, progress }: PipelineProps) {
+  const continuous = progress !== undefined;
   const filled = Math.min(Math.max(activeIndex, 0) + 1, steps.length);
-  const progress = activeIndex < 0 ? 0 : (filled / steps.length) * 100;
+  const width = continuous ? progress * 100 : activeIndex < 0 ? 0 : (filled / steps.length) * 100;
+  const currentSegment = Math.min(Math.max(activeIndex, 0), steps.length - 1);
 
   return (
     <div className={`pipeline${visible ? ' is-visible' : ''}`}>
       <div className="pipeline-rail">
-        <div key={fillResetKey} className="pipeline-rail-fill" style={{ width: `${progress}%` }} />
-        {steps.map((step, index) => (
-          <span
-            // Same remount-on-reset trick as the rail fill above: a cycle restart must snap every
-            // dot back to unlit instantly, not fade it back out over its (deliberately delayed) light-up transition.
-            key={fillResetKey !== undefined ? `${fillResetKey}-${step}` : step}
-            className={`pipeline-dot${index < activeIndex ? ' is-done' : ''}${index === activeIndex ? ' is-active' : ''}`}
-            style={{ left: `${((index + 0.5) / steps.length) * 100}%` }}
-          />
-        ))}
+        <div
+          key={fillResetKey}
+          className={`pipeline-rail-fill${continuous ? ' is-continuous' : ''}`}
+          style={{ width: `${width}%` }}
+        />
+        {steps.map((step, index) => {
+          const dotPosition = (index + 0.5) / steps.length;
+          const isDone = continuous ? (progress as number) >= dotPosition : index < activeIndex;
+          const isActive = continuous ? !isDone && index === currentSegment : index === activeIndex;
+          return (
+            <span
+              // Same remount-on-reset trick as the rail fill above: a cycle restart must snap
+              // every dot back to unlit instantly, not fade it back out over its light-up transition.
+              key={fillResetKey !== undefined ? `${fillResetKey}-${step}` : step}
+              className={`pipeline-dot${isDone ? ' is-done' : ''}${isActive ? ' is-active' : ''}`}
+              style={{ left: `${dotPosition * 100}%` }}
+            />
+          );
+        })}
       </div>
       <div className="pipeline-labels">
         {steps.map((step, index) => (

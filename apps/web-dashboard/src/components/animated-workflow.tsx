@@ -13,54 +13,58 @@ const STEPS = [
   'GOAT attestation',
 ];
 
-const STEP_DURATION_MS = 2200;
-// Gap between a pass finishing and the next one beginning, on a freshly-keyed (0%-width) rail
-// fill element -- this is what makes every pass sweep left-to-right only, never drain backward.
-const RESET_DELAY_MS = 60;
+const TOTAL_DURATION_MS = 2200 * STEPS.length;
+// Held at 100% before snapping back to 0% and starting the next pass -- lets "GOAT attestation"
+// actually register as reached instead of resetting the instant it lights up.
+const HOLD_AT_END_MS = 900;
 
 export function AnimatedWorkflow() {
   const [ref, visible] = useReveal<HTMLElement>();
-  const [active, setActive] = useState(-1);
+  const [progress, setProgress] = useState(0);
   const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
     if (!visible) return;
-    let cancelled = false;
+    let frameId: number;
     let timeoutId: number;
+    let cancelled = false;
 
-    function runStep(current: number) {
-      timeoutId = window.setTimeout(() => {
+    function playPass() {
+      const startTime = performance.now();
+      function frame(now: number) {
         if (cancelled) return;
-        if (current + 1 < STEPS.length) {
-          setActive(current + 1);
-          runStep(current + 1);
-        } else {
-          // Full pass complete -- bump cycle (remounts the rail fill at 0%, see Pipeline's
-          // fillResetKey) and start the next left-to-right pass after a brief reset beat.
-          setCycle((count) => count + 1);
-          setActive(-1);
+        const elapsed = now - startTime;
+        if (elapsed >= TOTAL_DURATION_MS) {
+          setProgress(1);
           timeoutId = window.setTimeout(() => {
             if (cancelled) return;
-            setActive(0);
-            runStep(0);
-          }, RESET_DELAY_MS);
+            setCycle((count) => count + 1);
+            setProgress(0);
+            playPass();
+          }, HOLD_AT_END_MS);
+          return;
         }
-      }, STEP_DURATION_MS);
+        setProgress(elapsed / TOTAL_DURATION_MS);
+        frameId = requestAnimationFrame(frame);
+      }
+      frameId = requestAnimationFrame(frame);
     }
 
-    setActive(0);
-    runStep(0);
+    playPass();
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frameId);
       window.clearTimeout(timeoutId);
     };
   }, [visible]);
 
+  const activeIndex = Math.min(Math.floor(progress * STEPS.length), STEPS.length - 1);
+
   return (
     <section className="workflow-section" aria-label="Assurance workflow" ref={ref}>
       <span className="eyebrow workflow-eyebrow"><i>[01]</i> HOW A RUN MOVES</span>
-      <Pipeline steps={STEPS} activeIndex={active} visible={visible} fillResetKey={cycle} />
+      <Pipeline steps={STEPS} activeIndex={activeIndex} visible={visible} fillResetKey={cycle} progress={progress} />
     </section>
   );
 }
