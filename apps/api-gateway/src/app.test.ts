@@ -248,6 +248,7 @@ describe('api gateway vertical slice', () => {
       runId: 'run_evidence_1',
       evidenceRoot: `0x${'aa'.repeat(32)}`,
       toolReceiptRoot: `0x${'bb'.repeat(32)}`,
+      uri: 'ipfs://bafkfaketest',
       contentHash: `0x${'cc'.repeat(32)}`,
       publicManifest: { scenarios: ['payment-proof-replay'], result: 'PASS' },
       builtAt: '2026-08-05T00:00:00.000Z',

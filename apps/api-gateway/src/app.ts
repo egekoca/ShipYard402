@@ -48,6 +48,7 @@ export type PublicEvidencePack = Readonly<{
   runId: string;
   evidenceRoot: `0x${string}`;
   toolReceiptRoot: `0x${string}`;
+  uri: string;
   contentHash: `0x${string}`;
   publicManifest: unknown;
   builtAt: string;

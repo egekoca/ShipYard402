@@ -33,6 +33,10 @@ function explorerTxUrl(chainId: number, txHash: string): string {
   return `${base}/tx/${txHash}`;
 }
 
+function ipfsGatewayUrl(uri: string): string {
+  return uri.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${uri.slice('ipfs://'.length)}` : uri;
+}
+
 export function RunDetail({ runId }: Readonly<{ runId: string }>) {
   const [run, setRun] = useState<RunResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceResponse | null>(null);
@@ -150,6 +154,14 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
                     <div><dt>Risk level</dt><dd>{evidence.publicManifest.riskLevel}</dd></div>
                     <div><dt>Result</dt><dd>{evidence.publicManifest.result}</dd></div>
                     <div><dt>Evidence root</dt><dd className="mono">{shortHash(evidence.evidenceRoot)}</dd></div>
+                    <div>
+                      <dt>Evidence pack</dt>
+                      <dd>
+                        <a className="explorer-link" href={ipfsGatewayUrl(evidence.uri)} target="_blank" rel="noreferrer">
+                          view on IPFS ↗
+                        </a>
+                      </dd>
+                    </div>
                   </dl>
                   <ul className="run-detail-receipts">
                     {evidence.publicManifest.toolReceipts.map((receipt) => (
