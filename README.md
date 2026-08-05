@@ -2,7 +2,7 @@
 
 Autonomous Release Assurance & Runtime Sentinel for x402 services on GOAT Network.
 
-Shipyard402 sells version-scoped, policy-scoped, expiry-bound execution evidence. A `PASS` result is not a security audit or a general safety certificate.
+Shipyard402 sells version-scoped, policy-scoped, expiry-bound execution evidence. A `PASS` result is not a security audit or a general safety certificate. See [`docs/business-model.md`](./docs/business-model.md) for who pays, for what, when, and what is real versus still simulated.
 
 ## Current implementation status
 
