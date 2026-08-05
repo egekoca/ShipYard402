@@ -38,13 +38,14 @@ main { min-height: 100vh; overflow: hidden; }
 }
 .brand { display: flex; gap: 12px; align-items: center; color: inherit; font-size: 14px; font-weight: 800; letter-spacing: .12em; text-decoration: none; }
 .brand-mark { display: grid; place-items: center; width: 42px; height: 42px; color: var(--gold-ink); background: var(--gold); font-size: 10px; font-weight: 900; letter-spacing: 0; border-radius: 50%; }
+.brand-mark-icon { width: 22px; height: 22px; }
 .network-pill { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
 .network-pill span { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(240, 196, 25, .18); }
 .network-pill span::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: var(--gold); animation: pulse-ring 2.2s ease-out infinite; }
 
 .hero { max-width: 1280px; margin: 0 auto; padding: 100px 36px 70px; position: relative; }
 .hero::after { content: '402'; position: absolute; z-index: -1; top: 5px; right: -20px; color: transparent; -webkit-text-stroke: 1px #1c1d20; font-size: clamp(180px, 28vw, 430px); font-weight: 900; line-height: 1; animation: watermark-drift 16s ease-in-out infinite; }
-.hero-glow { position: absolute; z-index: -1; top: -160px; right: -220px; width: 720px; height: 720px; background: radial-gradient(circle, rgba(240, 196, 25, .16), transparent 68%); filter: blur(6px); pointer-events: none; animation: glow-drift 13s ease-in-out infinite; }
+.hero-logo { position: absolute; z-index: -1; top: -40px; right: -20px; width: min(46vw, 560px); height: auto; color: var(--gold); opacity: .22; pointer-events: none; animation: glow-drift 13s ease-in-out infinite; }
 .eyebrow, .panel-label { color: var(--gold); font-size: 11px; font-weight: 900; letter-spacing: .18em; }
 .eyebrow i, .panel-label i { color: var(--muted); font-style: normal; margin-right: 8px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; }
 .live-pulse { position: relative; display: inline-block; width: 6px; height: 6px; margin-left: 10px; border-radius: 50%; background: var(--gold); vertical-align: middle; }
@@ -256,7 +257,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
     opacity: 1 !important;
     transform: none !important;
   }
-  .hero::after, .hero-glow, .network-pill span::after, .live-pulse::after, .radar-sweep, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before {
+  .hero::after, .hero-logo, .network-pill span::after, .live-pulse::after, .radar-sweep, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before {
     animation: none !important;
   }
 }
