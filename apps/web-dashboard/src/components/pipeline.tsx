@@ -5,19 +5,27 @@ export type PipelineProps = Readonly<{
   /** -1 = nothing started yet; steps.length = everything done. */
   activeIndex: number;
   visible?: boolean;
+  /**
+   * Bump this to force the rail fill to remount at 0% instead of animating backward from a
+   * filled state -- e.g. a looping demo restarting. Real (non-looping) progress, like a run's
+   * actual status, never needs this since it only ever moves forward.
+   */
+  fillResetKey?: number | string;
 }>;
 
-export function Pipeline({ steps, activeIndex, visible = true }: PipelineProps) {
+export function Pipeline({ steps, activeIndex, visible = true, fillResetKey }: PipelineProps) {
   const filled = Math.min(Math.max(activeIndex, 0) + 1, steps.length);
-  const progress = (filled / steps.length) * 100;
+  const progress = activeIndex < 0 ? 0 : (filled / steps.length) * 100;
 
   return (
     <div className={`pipeline${visible ? ' is-visible' : ''}`}>
       <div className="pipeline-rail">
-        <div className="pipeline-rail-fill" style={{ width: `${progress}%` }} />
+        <div key={fillResetKey} className="pipeline-rail-fill" style={{ width: `${progress}%` }} />
         {steps.map((step, index) => (
           <span
-            key={step}
+            // Same remount-on-reset trick as the rail fill above: a cycle restart must snap every
+            // dot back to unlit instantly, not fade it back out over its (deliberately delayed) light-up transition.
+            key={fillResetKey !== undefined ? `${fillResetKey}-${step}` : step}
             className={`pipeline-dot${index < activeIndex ? ' is-done' : ''}${index === activeIndex ? ' is-active' : ''}`}
             style={{ left: `${((index + 0.5) / steps.length) * 100}%` }}
           />
