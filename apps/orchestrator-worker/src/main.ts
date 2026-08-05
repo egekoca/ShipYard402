@@ -1,6 +1,7 @@
 import {
   PostgresAttestationStore,
   PostgresEvidencePackStore,
+  PostgresOrchestratorCheckpointStore,
   PostgresOrchestratorJobQueue,
   PostgresQuoteRepository,
   PostgresRunRepository,
@@ -57,6 +58,7 @@ async function start(): Promise<void> {
       evidencePublicBaseUrl: config.evidencePublicBaseUrl,
       attestor: new EthersRegistryAttestor(signerWallet, config.registryAddress, config.chainId, registryAbi),
       attestationStore: new PostgresAttestationStore(pool),
+      checkpointStore: new PostgresOrchestratorCheckpointStore(pool),
     });
     const queue = new PostgresOrchestratorJobQueue(pool);
     const controller = new AbortController();

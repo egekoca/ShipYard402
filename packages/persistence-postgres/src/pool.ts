@@ -1,6 +1,6 @@
 import { Pool, type PoolConfig } from 'pg';
 
-export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0003_orchestrator_jobs.sql';
+export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0004_orchestrator_run_checkpoints.sql';
 
 export type ShipyardPoolOptions = Readonly<{
   connectionString: string;
@@ -27,6 +27,7 @@ export async function assertShipyardSchemaReady(pool: Pool): Promise<void> {
     has_payment_receipts: boolean;
     has_payment_jobs: boolean;
     has_orchestrator_jobs: boolean;
+    has_orchestrator_checkpoints: boolean;
     has_migration_ledger: boolean;
   }>(`
     SELECT
@@ -34,12 +35,13 @@ export async function assertShipyardSchemaReady(pool: Pool): Promise<void> {
       to_regclass('public.payment_receipts') IS NOT NULL AS has_payment_receipts,
       to_regclass('public.payment_reconciliation_jobs') IS NOT NULL AS has_payment_jobs,
       to_regclass('public.orchestrator_jobs') IS NOT NULL AS has_orchestrator_jobs,
+      to_regclass('public.orchestrator_run_checkpoints') IS NOT NULL AS has_orchestrator_checkpoints,
       to_regclass('public.shipyard_schema_migrations') IS NOT NULL AS has_migration_ledger
   `);
   const state = objects.rows[0];
   if (
     !state?.has_runs || !state.has_payment_receipts || !state.has_payment_jobs ||
-    !state.has_orchestrator_jobs || !state.has_migration_ledger
+    !state.has_orchestrator_jobs || !state.has_orchestrator_checkpoints || !state.has_migration_ledger
   ) {
     throw new Error('PostgreSQL schema is incomplete; run the checksum-verified migrations before startup');
   }
