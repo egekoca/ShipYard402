@@ -8,7 +8,7 @@ Shipyard402 sells version-scoped, policy-scoped, expiry-bound execution evidence
 
 The repository now has independently deployable frontend and backend boundaries:
 
-- `apps/web-dashboard`: Next.js public UI. It can import only the public API client and has no merchant, database, signer, or chain-write dependencies.
+- `apps/web-dashboard`: Next.js public UI. It can import only the public API client and has no merchant, database, signer, or chain-write dependencies. The customer pays their own x402 challenge directly from a connected browser wallet (EIP-1193 `window.ethereum` -- MetaMask and most other extensions) rather than a copy-pasted address: connect, switch to the right GOAT chain, and send the exact ERC-20 transfer the challenge specifies. Signing always happens inside the customer's own wallet; this frontend never holds a key.
 - `apps/api-gateway`: Fastify backend for capability-bound quotes, idempotent runs, and adapter-backed HTTP 402 challenges.
 - `apps/payment-worker`: separate read-only backend worker for durable leased payment polling, deterministic settlement rejection, bounded retry, and dead-letter behavior.
 - backend packages: GOAT Flow merchant adapter, deterministic settlement reconciliation, read-only GOAT receipt reader, protected-delivery replay runner, PostgreSQL receipt/order stores, policy engine, evidence SDK, and run domain.

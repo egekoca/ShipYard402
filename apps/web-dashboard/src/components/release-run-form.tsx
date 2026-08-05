@@ -10,6 +10,9 @@ import {
 import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useMemo, useState } from 'react';
 
+import { connectWallet, formatWalletError } from '../lib/goat-wallet';
+import { WalletPayPanel } from './wallet-pay-panel';
+
 type FormState = Readonly<{
   organizationId: string;
   requesterAddress: string;
@@ -54,6 +57,19 @@ export function ReleaseRunForm() {
     setError(null);
   }
 
+  async function handleConnectWallet() {
+    setBusy(true);
+    setError(null);
+    try {
+      const address = await connectWallet();
+      update('requesterAddress', address);
+    } catch (caught) {
+      setError(formatWalletError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function requestQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -89,8 +105,20 @@ export function ReleaseRunForm() {
   return (
     <div className="run-grid">
       <form className="release-form" onSubmit={requestQuote}>
+        <div className="wallet-connect-row">
+          {form.requesterAddress ? (
+            <div className="wallet-connected">
+              <span className="live-pulse" aria-hidden="true" />
+              <span className="mono">{form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}</span>
+            </div>
+          ) : (
+            <button className="primary-button" type="button" disabled={busy} onClick={handleConnectWallet}>
+              {busy && <span className="spinner" aria-hidden="true" />}
+              Connect wallet
+            </button>
+          )}
+        </div>
         <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
-        <Field label="Requester wallet" value={form.requesterAddress} onChange={(value) => update('requesterAddress', value)} placeholder="0x…" />
         <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
         <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
         <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
@@ -98,9 +126,9 @@ export function ReleaseRunForm() {
         <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
         <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
         <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
-        <button className="primary-button" disabled={busy} type="submit">
+        <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
           {busy && <span className="spinner" aria-hidden="true" />}
-          {busy ? 'Checking capability…' : 'Request transparent quote'}
+          {!form.requesterAddress ? 'Connect a wallet first' : busy ? 'Checking capability…' : 'Request transparent quote'}
         </button>
       </form>
 
@@ -138,6 +166,14 @@ export function ReleaseRunForm() {
                 <strong>{run.run.id}</strong>
                 <span>{run.payment.nextAction}</span>
                 {run.payment.orderId && <span>GOAT Flow order: {run.payment.orderId}</span>}
+                {run.payment.paymentRequired?.accepts[0] && (
+                  <WalletPayPanel
+                    chainId={quote.capabilitySnapshot.chainId}
+                    challenge={run.payment.paymentRequired.accepts[0]}
+                    tokenSymbol={quote.capabilitySnapshot.tokenSymbol}
+                    tokenDecimals={quote.capabilitySnapshot.tokenDecimals}
+                  />
+                )}
                 <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`}>Track this run →</a>
               </div>
             )}

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
+import { WalletPayPanel } from './wallet-pay-panel';
 
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
 const POLL_MS = 4000;
@@ -134,6 +135,9 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
                 <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
                 {run.payment.orderId && <div><dt>GOAT Flow order</dt><dd className="mono">{run.payment.orderId}</dd></div>}
               </dl>
+              {run.payment.paymentRequired?.accepts[0] && (
+                <WalletPayPanel chainId={48816} challenge={run.payment.paymentRequired.accepts[0]} />
+              )}
             </div>
 
             <div
