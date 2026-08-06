@@ -401,16 +401,32 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .run-verdict--expired .run-verdict-label { background: var(--line); color: var(--ink); }
 .run-verdict p { position: relative; margin: 0; max-width: 640px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; margin: 30px 36px 0; }
-.run-detail-panel { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--line); transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease; }
+.run-detail-panel { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--line); transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease, grid-column .2s ease; }
 .run-detail-panel[data-state="ready"] { border-top-color: var(--gold); }
+.run-detail-panel[data-state="active"] { border-top-color: rgba(240, 196, 25, .5); }
 .run-detail-panel[data-state="fail"] { border-top-color: var(--danger); }
+/* Expanding pushes the card to span the whole grid row instead of growing in place -- the point
+   is to read the detail at full width, not to have three unrelated cards squeezed even narrower
+   beside it. */
+.run-detail-panel.is-expanded { grid-column: 1 / -1; }
 .run-detail-panel dl { margin: 16px 0 0; }
 .run-detail-panel dl div { display: flex; justify-content: space-between; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 12px; }
 .run-detail-panel dt { color: var(--muted); }
 .run-detail-panel dd { margin: 0; font-weight: 800; text-align: right; color: var(--ink); overflow-wrap: anywhere; }
-.panel-empty { display: flex; align-items: flex-start; gap: 12px; margin: 16px 0 0; }
-.panel-empty-icon { flex: none; width: 26px; height: 26px; margin-top: 1px; color: var(--muted); opacity: .6; animation: radar-spin 6s linear infinite; }
-.panel-empty p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+/* Collapsed by default: a run mid-flight used to leave three of four panels sitting on a static
+   "not available yet" placeholder with no sense that anything was happening, and once everything
+   finished all four panels dumped their full detail at once, which read as noise. Now every panel
+   is a one-line summary (state icon + short status) that expands on click; only the currently
+   active step gets the spinning mark, so "in progress" and "not started" no longer look the same. */
+.panel-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font-family: inherit; }
+.panel-summary { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-align: right; }
+.run-detail-panel[data-state="ready"] .panel-summary { color: var(--ink); }
+.panel-status-icon { flex: none; width: 15px; height: 15px; color: var(--gold); animation: radar-spin 1.4s linear infinite; }
+.panel-status-check { flex: none; color: var(--gold); font-weight: 900; }
+.panel-status-fail { flex: none; color: var(--danger); font-weight: 900; }
+.panel-toggle-chevron { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 14px; font-weight: 900; line-height: 1; transition: transform .25s ease, border-color .25s ease, color .25s ease; }
+.run-detail-panel.is-expanded .panel-toggle-chevron { transform: rotate(45deg); border-color: var(--gold); color: var(--gold); }
+.panel-body { margin-top: 6px; }
 .run-detail-receipts { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
 .run-detail-receipts li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 11px; color: var(--ink); }
 .receipt-result { padding: 3px 8px; font-weight: 900; font-size: 10px; letter-spacing: .06em; }
@@ -502,7 +518,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
     opacity: 1 !important;
     transform: none !important;
   }
-  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-empty-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before, .glow-card::before, .hero-network-icon, .pipeline-label-radar {
+  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-status-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before, .glow-card::before, .hero-network-icon, .pipeline-label-radar {
     animation: none !important;
   }
   .shimmer-overlay { display: none !important; }

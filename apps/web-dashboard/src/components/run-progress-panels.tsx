@@ -1,6 +1,7 @@
 'use client';
 
 import type { AttestationResponse, EvidenceResponse, RunResponse } from '@shipyard402/public-api-client';
+import { useState } from 'react';
 
 import { explorerTxUrl, ipfsGatewayUrl, shortHash } from '../hooks/use-run-progress';
 import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
@@ -10,10 +11,22 @@ import { WalletPayPanel } from './wallet-pay-panel';
 
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
 
+type PanelState = 'pending' | 'active' | 'ready' | 'fail';
+type PanelKey = 'payment' | 'plan' | 'evidence' | 'attestation';
+
 /**
  * The pipeline + verdict + four-panel detail grid, shared between the standalone /runs/[id] page
  * and the inline "watch it happen right here" section on the run-request card -- one real
  * implementation of "what does a run's progress look like", not two that can drift apart.
+ *
+ * Each panel is collapsed to a one-line summary by default and expands (full width, pushing the
+ * others down) on click -- four panels of full detail all open at once read as noise, not signal.
+ * Panel state is three-way, not just "waiting vs done": pending (queued, hasn't started), active
+ * (the run is on this step *right now* -- a spinning mark says so instead of leaving the card
+ * static and silent), and ready. The AI risk plan and evidence panels in particular stay "active"
+ * well past their nominal pipeline step, because their real content only exists once the evidence
+ * pack is actually built -- showing that as still-in-progress is honest; a static "not available"
+ * label while the run visibly keeps moving is not.
  */
 export function RunProgressPanels({
   runId,
@@ -37,6 +50,15 @@ export function RunProgressPanels({
   connectedAddress?: `0x${string}` | null | undefined;
 }>) {
   const manifest = evidence?.publicManifest;
+  const [expanded, setExpanded] = useState<Partial<Record<PanelKey, boolean>>>({});
+  const toggle = (key: PanelKey) => setExpanded((current) => ({ ...current, [key]: !current[key] }));
+
+  const paymentState: PanelState = activeStep >= 0 ? 'ready' : 'active';
+  const planState: PanelState = manifest ? 'ready' : activeStep >= 1 ? 'active' : 'pending';
+  const evidenceState: PanelState = evidence
+    ? (evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready')
+    : activeStep >= 2 ? 'active' : 'pending';
+  const attestationState: PanelState = attestation ? 'ready' : activeStep >= 4 ? 'active' : 'pending';
 
   return (
     <>
@@ -52,13 +74,9 @@ export function RunProgressPanels({
       )}
 
       <div className="run-detail-grid">
-        <div className="run-detail-panel glow-card state-in" data-state={activeStep >= 0 ? 'ready' : 'pending'} style={{ animationDelay: '0ms' }}>
-          <span className="panel-label"><i>[01]</i> PAYMENT</span>
-          <dl>
-            <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
-            <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
-            {run.payment.orderId && <div><dt>GOAT Flow order</dt><dd className="mono">{run.payment.orderId}</dd></div>}
-          </dl>
+        <Panel index="01" label="PAYMENT" state={paymentState} expanded={Boolean(expanded.payment)} onToggle={() => toggle('payment')}
+          summary={paymentState === 'ready' ? run.payment.status : 'Awaiting payment'}
+        >
           {run.payment.paymentRequired?.accepts[0] && (
             <WalletPayPanel
               chainId={GOAT_TESTNET3_CHAIN_ID}
@@ -68,16 +86,16 @@ export function RunProgressPanels({
               connectedAddress={connectedAddress}
             />
           )}
-        </div>
+          <dl>
+            <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
+            <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
+            {run.payment.orderId && <div><dt>GOAT Flow order</dt><dd className="mono">{run.payment.orderId}</dd></div>}
+          </dl>
+        </Panel>
 
-        <div className="run-detail-panel glow-card state-in" data-state={manifest ? 'ready' : 'pending'} style={{ animationDelay: '90ms' }}>
-          <span className="panel-label"><i>[02]</i> AI RISK PLAN</span>
-          {!manifest && (
-            <div className="panel-empty">
-              <RadarMark className="panel-empty-icon" />
-              <p>Not available yet — the AI&apos;s proposal and the compiled plan appear once the run reaches EVIDENCE_BUILDING.</p>
-            </div>
-          )}
+        <Panel index="02" label="AI RISK PLAN" state={planState} expanded={Boolean(expanded.plan)} onToggle={() => toggle('plan')}
+          summary={manifest ? `${manifest.riskLevel} risk · ${manifest.scenarios.length} scenarios` : 'Compiling…'}
+        >
           {manifest && (
             <>
               <dl>
@@ -100,20 +118,11 @@ export function RunProgressPanels({
               )}
             </>
           )}
-        </div>
+        </Panel>
 
-        <div
-          className="run-detail-panel glow-card state-in"
-          data-state={!evidence ? 'pending' : evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready'}
-          style={{ animationDelay: '135ms' }}
+        <Panel index="03" label="EVIDENCE" state={evidenceState} expanded={Boolean(expanded.evidence)} onToggle={() => toggle('evidence')}
+          summary={evidence ? evidence.publicManifest.result : 'Building…'}
         >
-          <span className="panel-label"><i>[03]</i> EVIDENCE</span>
-          {!evidence && (
-            <div className="panel-empty">
-              <RadarMark className="panel-empty-icon" />
-              <p>Not built yet — appears once the run reaches EVIDENCE_BUILDING.</p>
-            </div>
-          )}
           {evidence && (
             <>
               <dl>
@@ -166,16 +175,11 @@ export function RunProgressPanels({
               </ul>
             </>
           )}
-        </div>
+        </Panel>
 
-        <div className="run-detail-panel glow-card state-in" data-state={attestation ? 'ready' : 'pending'} style={{ animationDelay: '180ms' }}>
-          <span className="panel-label"><i>[04]</i> ON-CHAIN ATTESTATION</span>
-          {!attestation && (
-            <div className="panel-empty">
-              <RadarMark className="panel-empty-icon" />
-              <p>Not submitted yet — appears once the run reaches ATTESTING.</p>
-            </div>
-          )}
+        <Panel index="04" label="ON-CHAIN ATTESTATION" state={attestationState} expanded={Boolean(expanded.attestation)} onToggle={() => toggle('attestation')}
+          summary={attestation ? 'Recorded on-chain' : 'Pending…'}
+        >
           {attestation && (
             <dl>
               <div><dt>Registry</dt><dd className="mono">{shortHash(attestation.registryAddress)}</dd></div>
@@ -190,8 +194,42 @@ export function RunProgressPanels({
               <div><dt>Expires</dt><dd>{new Date(attestation.expiresAt).toLocaleString()}</dd></div>
             </dl>
           )}
-        </div>
+        </Panel>
       </div>
     </>
+  );
+}
+
+function Panel({
+  index,
+  label,
+  state,
+  summary,
+  expanded,
+  onToggle,
+  children,
+}: Readonly<{
+  index: string;
+  label: string;
+  state: PanelState;
+  summary: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}>) {
+  return (
+    <div className={`run-detail-panel glow-card state-in${expanded ? ' is-expanded' : ''}`} data-state={state}>
+      <button type="button" className="panel-toggle" onClick={onToggle} aria-expanded={expanded}>
+        <span className="panel-label"><i>[{index}]</i> {label}</span>
+        <span className="panel-summary">
+          {state === 'active' && <RadarMark className="panel-status-icon" />}
+          {state === 'ready' && <span className="panel-status-check" aria-hidden="true">✓</span>}
+          {state === 'fail' && <span className="panel-status-fail" aria-hidden="true">✕</span>}
+          {summary}
+        </span>
+        <span className="panel-toggle-chevron" aria-hidden="true">+</span>
+      </button>
+      {expanded && <div className="panel-body state-in">{children}</div>}
+    </div>
   );
 }
