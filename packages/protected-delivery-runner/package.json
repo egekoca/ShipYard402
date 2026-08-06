@@ -19,8 +19,8 @@
     "ethers": "6.17.0"
   },
   "devDependencies": {
-    "@types/node": "24.3.0",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   }
 }

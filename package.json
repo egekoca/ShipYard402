@@ -36,14 +36,14 @@
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile && pnpm contracts:test"
   },
   "devDependencies": {
-    "@types/node": "24.3.0",
+    "@types/node": "26.1.2",
     "ethers": "6.17.0",
-    "solc": "0.8.24",
-    "@openzeppelin/contracts": "5.4.0",
-    "turbo": "2.5.6",
-    "tsx": "4.20.5",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "solc": "0.8.36",
+    "@openzeppelin/contracts": "5.6.1",
+    "turbo": "2.10.8",
+    "tsx": "4.23.5",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "pnpm": {
     "overrides": {
