@@ -63,7 +63,7 @@ export function AnimatedWorkflow() {
 
   return (
     <section className="workflow-section" aria-label="Assurance workflow" ref={ref}>
-      <span className="eyebrow workflow-eyebrow"><i>[02]</i> HOW A RUN MOVES</span>
+      <span className="eyebrow workflow-eyebrow"><i>[03]</i> HOW A RUN MOVES</span>
       <Pipeline steps={STEPS} activeIndex={activeIndex} visible={visible} fillResetKey={cycle} progress={progress} />
     </section>
   );

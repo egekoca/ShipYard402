@@ -30,7 +30,7 @@ export function ThreatCoverage() {
     <section className={`threat-coverage${visible ? ' is-visible' : ''}`} ref={ref} aria-label="What Shipyard402 checks for">
       <div className="section-heading">
         <div>
-          <span className="eyebrow"><i>[01]</i> WHAT WE CATCH</span>
+          <span className="eyebrow"><i>[02]</i> WHAT WE CATCH</span>
           <h2>Three ways a paid endpoint quietly leaks money.</h2>
         </div>
         <p>Every run pays the target for real, then really tries all three against it -- not a checklist, an attempt.</p>
@@ -38,7 +38,7 @@ export function ThreatCoverage() {
 
       <div className="threat-grid">
         {THREATS.map((threat, i) => (
-          <div className="threat-card" style={{ '--delay': `${i * 110}ms` } as React.CSSProperties} key={threat.scenario}>
+          <div className="threat-card glow-card" style={{ '--delay': `${i * 110}ms` } as React.CSSProperties} key={threat.scenario}>
             <div className="threat-card-top">
               <span className="threat-index">{threat.index}</span>
               <span className="threat-chip" aria-hidden="true" />

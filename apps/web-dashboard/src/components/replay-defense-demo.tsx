@@ -34,7 +34,7 @@ export function ReplayDefenseDemo() {
     <section className={`replay-demo${visible ? ' is-visible' : ''}`} ref={ref} aria-label="Payment-proof replay check">
       <div className="section-heading">
         <div>
-          <span className="eyebrow"><i>[03]</i> DETERMINISTIC CHECK</span>
+          <span className="eyebrow"><i>[04]</i> DETERMINISTIC CHECK</span>
           <h2>One receipt. One delivery.</h2>
         </div>
         <p>
@@ -72,7 +72,7 @@ function ReplayLane({
 }: Readonly<{ version: string; label: string; phase: Phase; showResult: boolean; outcome: 'PASS' | 'FAIL' }>) {
   const exploited = outcome === 'FAIL';
   return (
-    <div className={`replay-lane replay-lane--${version.toLowerCase()}${showResult ? ' has-result' : ''}`}>
+    <div className={`replay-lane glow-card replay-lane--${version.toLowerCase()}${showResult ? ' has-result' : ''}`}>
       <div className="replay-lane-head">
         <span className="replay-version">{version}</span>
         <span className="replay-label">{label}</span>

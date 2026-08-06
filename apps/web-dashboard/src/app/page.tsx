@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 
 import { AnimatedWorkflow } from '../components/animated-workflow';
 import { HeroRadar } from '../components/logo';
+import { ProblemSolution } from '../components/problem-solution';
 import { ReleaseRunForm } from '../components/release-run-form';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
 import { ThreatCoverage } from '../components/threat-coverage';
@@ -40,6 +41,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <ProblemSolution />
+
       <ThreatCoverage />
 
       <AnimatedWorkflow />
@@ -49,7 +52,7 @@ export default function HomePage() {
       <section className="run-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow"><i>[04]</i> RELEASE GATE</span>
+            <span className="eyebrow"><i>[05]</i> RELEASE GATE</span>
             <h2>Request a funded run</h2>
           </div>
           <p>The quote is created from a verified merchant capability. No token or recipient is assumed by this interface.</p>

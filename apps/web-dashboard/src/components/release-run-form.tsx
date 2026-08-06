@@ -131,7 +131,7 @@ export function ReleaseRunForm() {
 
   return (
     <div className="run-grid">
-      <form className="release-form" onSubmit={requestQuote}>
+      <form className="release-form glow-card" onSubmit={requestQuote}>
         <div className="form-header">
           <span className="form-header-label">Requester</span>
           {form.requesterAddress ? (
@@ -177,7 +177,7 @@ export function ReleaseRunForm() {
         </div>
       </form>
 
-      <aside className="quote-panel" aria-live="polite">
+      <aside className="quote-panel glow-card" aria-live="polite">
         <span className="panel-label">ECONOMIC COMMITMENT</span>
         {!quote && !error && (
           <div className="empty-state state-in">

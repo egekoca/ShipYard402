@@ -95,7 +95,7 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .section-heading h2 { margin: 9px 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: clamp(36px, 4.5vw, 60px); font-weight: 900; letter-spacing: -.03em; color: var(--white); }
 .section-heading p { max-width: 450px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .run-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 24px; align-items: start; }
-.release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); }
 .form-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
 .form-header-label { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .form-body { display: flex; flex-direction: column; flex: 1; }
@@ -125,7 +125,7 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .wallet-button:disabled { cursor: not-allowed; opacity: .5; }
 .spinner { width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 
-.quote-panel { padding: 28px; color: var(--ink); background: linear-gradient(165deg, #1b1c21 0%, var(--surface-alt) 55%, #131418 100%); border: 1px solid var(--line); border-radius: 16px; }
+.quote-panel { padding: 28px; color: var(--ink); background: linear-gradient(165deg, #1b1c21 0%, var(--surface-alt) 55%, #131418 100%); border: 1px solid var(--line); }
 .empty-state { display: grid; place-items: center; min-height: 320px; text-align: center; }
 .empty-state h3 { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: 25px; font-weight: 800; color: var(--white); }
 .empty-state p { max-width: 300px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
@@ -168,26 +168,20 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
   initial-value: 0deg;
 }
 
-.threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 24px; }
-.threat-card {
+/* Shared "glow card" treatment -- rounded corners, an animated conic-gradient ring light traced
+   along the edge on hover (masked to a 1.5px border band via content-box/border-box XOR, so it
+   reads as a chasing border glow, not a fill), and a soft diagonal sheen sweep. Used by every
+   bordered panel on the site (threat cards, compare cards, replay lanes, the run-request and
+   quote panels, run-detail panels) so the same tone/motion reads consistently everywhere. */
+.glow-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  min-height: 270px;
-  padding: 30px;
   border-radius: 18px;
-  background: linear-gradient(155deg, #18191d 0%, var(--surface) 55%, #101114 100%);
-  border: 1px solid var(--line);
   overflow: hidden;
   isolation: isolate;
-  opacity: 0;
   transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease;
 }
-.threat-coverage.is-visible .threat-card { animation: step-in .6s cubic-bezier(.16,1,.3,1) forwards; animation-delay: var(--delay, 0ms); }
-/* Animated conic-gradient "ring light" traced along the card edge on hover -- masked to the
-   1.5px border band only (content-box vs border-box XOR) so it reads as a chasing border glow,
-   not a full gradient fill. Paused by default; only spends cycles while actually hovered. */
-.threat-card::before {
+.glow-card > * { position: relative; z-index: 3; }
+.glow-card::before {
   content: '';
   position: absolute;
   inset: -1px;
@@ -204,7 +198,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
   animation-play-state: paused;
   pointer-events: none;
 }
-.threat-card::after {
+.glow-card::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -214,15 +208,49 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
   transition: transform .9s cubic-bezier(.16,1,.3,1);
   pointer-events: none;
 }
-.threat-card:hover { transform: translateY(-6px); box-shadow: 0 26px 48px -22px rgba(240, 196, 25, .35); border-color: rgba(240, 196, 25, .45); }
-.threat-card:hover::before { opacity: 1; animation-play-state: running; }
-.threat-card:hover::after { transform: translateX(140%); }
-.threat-card-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.glow-card:hover { transform: translateY(-6px); box-shadow: 0 26px 48px -22px rgba(240, 196, 25, .35); border-color: rgba(240, 196, 25, .45); }
+.glow-card:hover::before { opacity: 1; animation-play-state: running; }
+.glow-card:hover::after { transform: translateX(140%); }
+/* Large interactive panels (the run-request form, the quote panel) get the same ring-light and
+   shadow bloom on hover, but not the lift -- a giant container shifting under the cursor while
+   someone is filling in a form or reading a result reads as jitter, not polish. */
+.release-form.glow-card:hover, .quote-panel.glow-card:hover { transform: none; }
+
+.problem-solution { max-width: 1280px; margin: 0 auto; padding: 90px 36px 0; opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+.problem-solution.is-visible { opacity: 1; transform: translateY(0); }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 24px; }
+.compare-card { padding: 30px; background: linear-gradient(155deg, #18191d 0%, var(--surface) 55%, #101114 100%); border: 1px solid var(--line); opacity: 0; transform: translateY(14px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease; }
+.problem-solution.is-visible .compare-card { opacity: 1; transform: translateY(0); }
+.problem-solution.is-visible .compare-card--after { transition-delay: .12s; }
+.compare-card--before:hover { border-color: rgba(255, 82, 82, .4); }
+.compare-card--before:hover::before { background: conic-gradient(from var(--card-angle), transparent 0deg 250deg, #ffcccc 285deg, var(--danger) 305deg, #ffcccc 325deg, transparent 360deg); }
+.compare-label { display: block; margin-bottom: 20px; font-size: 10px; font-weight: 900; letter-spacing: .14em; }
+.compare-label--before { color: var(--danger); }
+.compare-label--after { color: var(--gold); }
+.compare-card ul { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.compare-card li { display: flex; align-items: flex-start; gap: 12px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.compare-card--after li { color: var(--ink); }
+.compare-mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; font-size: 10px; font-weight: 900; }
+.compare-mark--bad { color: var(--danger); background: var(--danger-deep); }
+.compare-mark--good { color: var(--gold-ink); background: var(--gold); }
+
+.threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 24px; }
+.threat-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 270px;
+  padding: 30px;
+  background: linear-gradient(155deg, #18191d 0%, var(--surface) 55%, #101114 100%);
+  border: 1px solid var(--line);
+  opacity: 0;
+}
+.threat-coverage.is-visible .threat-card { animation: step-in .6s cubic-bezier(.16,1,.3,1) forwards; animation-delay: var(--delay, 0ms); }
+.threat-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .threat-index { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--gold); letter-spacing: .14em; }
 .threat-chip { width: 32px; height: 23px; border-radius: 5px; background: linear-gradient(145deg, #f3dc93, #a9812c 55%, #f3dc93); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }
-.threat-card h3 { position: relative; z-index: 3; margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--white); }
-.threat-card p { position: relative; z-index: 3; flex: 1 0 auto; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.threat-scenario { position: relative; z-index: 3; align-self: flex-start; margin-top: 22px; display: inline-block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: var(--ink); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+.threat-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--white); }
+.threat-card p { flex: 1 0 auto; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.threat-scenario { align-self: flex-start; margin-top: 22px; display: inline-block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: var(--ink); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
 
 @keyframes card-border-spin {
   to { --card-angle: 360deg; }
@@ -231,9 +259,8 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .replay-demo { max-width: 1280px; margin: 0 auto; padding: 90px 36px; opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
 .replay-demo.is-visible { opacity: 1; transform: translateY(0); }
 .replay-demo .section-heading h2 { color: var(--ink); }
-.replay-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 10px; background: var(--line); border: 1px solid var(--line); }
-.replay-lane { padding: 26px; background: var(--surface); transition: background .4s ease, transform .3s cubic-bezier(.16,1,.3,1), box-shadow .3s ease; }
-.replay-lane:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -20px rgba(240, 196, 25, .3); }
+.replay-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 24px; }
+.replay-lane { padding: 26px; background: var(--surface); border: 1px solid var(--line); transition: background .4s ease, transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease; }
 .replay-lane-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 24px; }
 .replay-version { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: 20px; font-weight: 900; color: var(--white); }
 .replay-label { color: var(--muted); font-size: 11px; }
@@ -274,9 +301,8 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .run-verdict--cancelled .run-verdict-label,
 .run-verdict--expired .run-verdict-label { background: var(--line); color: var(--ink); }
 .run-verdict p { position: relative; margin: 0; max-width: 640px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; margin: 30px 36px 0; background: var(--line); border: 1px solid var(--line); }
-.run-detail-panel { padding: 24px; background: var(--surface); border-top: 3px solid var(--line); transition: transform .3s cubic-bezier(.16,1,.3,1), box-shadow .3s ease, border-color .4s ease; }
-.run-detail-panel:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -20px rgba(240, 196, 25, .3); }
+.run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; margin: 30px 36px 0; }
+.run-detail-panel { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--line); transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease; }
 .run-detail-panel[data-state="ready"] { border-top-color: var(--gold); }
 .run-detail-panel[data-state="fail"] { border-top-color: var(--danger); }
 .run-detail-panel dl { margin: 16px 0 0; }
@@ -319,6 +345,8 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
   .replay-lanes { grid-template-columns: 1fr; }
   .threat-coverage { padding: 60px 20px 0; }
   .threat-grid { grid-template-columns: 1fr; }
+  .problem-solution { padding: 60px 20px 0; }
+  .compare-grid { grid-template-columns: 1fr; }
   .run-detail-hero, .run-verdict, .run-detail-grid { margin-left: 20px; margin-right: 20px; }
   .run-detail-hero { padding-left: 0; padding-right: 0; }
   .run-detail-grid { grid-template-columns: 1fr; }
@@ -369,13 +397,13 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .hero-in, .pipeline.is-visible .pipeline-label, .state-in, .replay-demo, .primary-button, .pipeline-label, .pipeline-rail-fill, .threat-coverage, .threat-card {
+  .hero-in, .pipeline.is-visible .pipeline-label, .state-in, .replay-demo, .primary-button, .pipeline-label, .pipeline-rail-fill, .threat-coverage, .threat-card, .problem-solution, .compare-card, .glow-card {
     animation: none !important;
     transition: none !important;
     opacity: 1 !important;
     transform: none !important;
   }
-  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-empty-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before, .threat-card::before {
+  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-empty-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before, .glow-card::before {
     animation: none !important;
   }
 }

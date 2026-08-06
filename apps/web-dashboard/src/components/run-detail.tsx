@@ -130,7 +130,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
           )}
 
           <section className="run-detail-grid">
-            <div className="run-detail-panel state-in" data-state={activeStep >= 0 ? 'ready' : 'pending'} style={{ animationDelay: '0ms' }}>
+            <div className="run-detail-panel glow-card state-in" data-state={activeStep >= 0 ? 'ready' : 'pending'} style={{ animationDelay: '0ms' }}>
               <span className="panel-label"><i>[01]</i> PAYMENT</span>
               <dl>
                 <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
@@ -142,7 +142,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               )}
             </div>
 
-            <div className="run-detail-panel state-in" data-state={manifest ? 'ready' : 'pending'} style={{ animationDelay: '90ms' }}>
+            <div className="run-detail-panel glow-card state-in" data-state={manifest ? 'ready' : 'pending'} style={{ animationDelay: '90ms' }}>
               <span className="panel-label"><i>[02]</i> AI RISK PLAN</span>
               {!manifest && (
                 <div className="panel-empty">
@@ -175,7 +175,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
             </div>
 
             <div
-              className="run-detail-panel state-in"
+              className="run-detail-panel glow-card state-in"
               data-state={!evidence ? 'pending' : evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready'}
               style={{ animationDelay: '135ms' }}
             >
@@ -240,7 +240,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
               )}
             </div>
 
-            <div className="run-detail-panel state-in" data-state={attestation ? 'ready' : 'pending'} style={{ animationDelay: '180ms' }}>
+            <div className="run-detail-panel glow-card state-in" data-state={attestation ? 'ready' : 'pending'} style={{ animationDelay: '180ms' }}>
               <span className="panel-label"><i>[04]</i> ON-CHAIN ATTESTATION</span>
               {!attestation && (
                 <div className="panel-empty">
