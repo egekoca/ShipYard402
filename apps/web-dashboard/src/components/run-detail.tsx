@@ -5,7 +5,7 @@ import { RunProgressPanels } from './run-progress-panels';
 import { SiteHeader } from './site-header';
 
 export function RunDetail({ runId }: Readonly<{ runId: string }>) {
-  const { run, evidence, attestation, error, lastPolledAt, activeStep, isTerminal } = useRunProgress(runId);
+  const { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal } = useRunProgress(runId);
 
   return (
     <main className="run-detail">
@@ -31,6 +31,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
         <RunProgressPanels
           runId={runId}
           run={run}
+          plan={plan}
           evidence={evidence}
           attestation={attestation}
           activeStep={activeStep}

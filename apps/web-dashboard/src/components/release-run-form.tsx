@@ -232,6 +232,7 @@ export function ReleaseRunForm() {
             <RunProgressPanels
               runId={run.run.id}
               run={progress.run}
+              plan={progress.plan}
               evidence={progress.evidence}
               attestation={progress.attestation}
               activeStep={progress.activeStep}

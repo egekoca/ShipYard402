@@ -6,13 +6,17 @@ import {
   PostgresAttestationStore,
   PostgresEvidencePackStore,
   PostgresFlowOrderContextStore,
+  PostgresOrchestratorCheckpointStore,
   PostgresQuoteRepository,
   PostgresRunRepository,
+  type OrchestratorCheckpointStore,
 } from '@shipyard402/persistence-postgres';
 import { QuoteEngine } from '@shipyard402/quote-engine';
 
 import {
   createApp,
+  type PlanProvider,
+  type PublicPlan,
   type RuntimeCapabilityProvider,
   type RuntimeStatusProvider,
 } from './app.js';
@@ -49,6 +53,27 @@ class VerifiedMerchantCapabilityProvider implements RuntimeCapabilityProvider {
         sameAddress(capability.receivingAddress, this.#reviewedCapability.receivingAddress),
     );
     return exactMatches.length === 1 ? exactMatches[0]! : null;
+  }
+}
+
+class CheckpointPlanProvider implements PlanProvider {
+  readonly #store: OrchestratorCheckpointStore;
+
+  constructor(store: OrchestratorCheckpointStore) {
+    this.#store = store;
+  }
+
+  async getByRunId(runId: string): Promise<PublicPlan | null> {
+    const checkpoint = await this.#store.load(runId);
+    if (!checkpoint.plan) return null;
+    return {
+      runId,
+      riskLevel: checkpoint.plan.riskLevel,
+      scenarios: checkpoint.plan.scenarios,
+      toolBudgetAtomic: checkpoint.plan.toolBudgetAtomic,
+      rationale: checkpoint.plan.rationale,
+      ...(checkpoint.proposal !== undefined ? { aiProposal: checkpoint.proposal } : {}),
+    };
   }
 }
 
@@ -168,6 +193,7 @@ export async function buildApp(): Promise<BuiltApp> {
     runRepository,
     evidencePackProvider: new PostgresEvidencePackStore(pool),
     attestationProvider: new PostgresAttestationStore(pool),
+    planProvider: new CheckpointPlanProvider(new PostgresOrchestratorCheckpointStore(pool)),
     runtimeStatusProvider: new PostgresRuntimeStatusProvider(
       pool,
       config.environment,

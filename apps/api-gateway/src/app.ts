@@ -75,6 +75,27 @@ export interface AttestationProvider {
   getByRunId(runId: string): Promise<PublicAttestation | null>;
 }
 
+export type PublicPlan = Readonly<{
+  runId: string;
+  riskLevel: string;
+  scenarios: readonly string[];
+  toolBudgetAtomic: string;
+  rationale: string;
+  /** The AI's raw, pre-compilation proposal -- advisory only, kept for transparency. */
+  aiProposal?: unknown;
+}>;
+
+/**
+ * Exposes the orchestrator's compiled test plan as soon as it exists (right after
+ * PLAN_COMPILED), well before the full evidence pack is built -- without this, a run's AI-risk
+ * step visibly finishes on the pipeline stepper while its own detail card has nothing to show
+ * for minutes, because the evidence pack (the only other place this data lived) isn't ready
+ * until much later.
+ */
+export interface PlanProvider {
+  getByRunId(runId: string): Promise<PublicPlan | null>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
@@ -84,6 +105,7 @@ export type AppDependencies = Readonly<{
   runtimeStatusProvider?: RuntimeStatusProvider;
   evidencePackProvider?: EvidencePackProvider;
   attestationProvider?: AttestationProvider;
+  planProvider?: PlanProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -262,6 +284,20 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     const record = await dependencies.runRepository.findById(params.data.runId);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     return reply.code(200).send(toRunResponse(record));
+  });
+
+  app.get('/v1/runs/:runId/plan', async (request, reply) => {
+    const params = runParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    if (!dependencies.planProvider) {
+      return reply.code(503).send({
+        code: 'PLAN_PROVIDER_UNAVAILABLE',
+        message: 'Orchestrator plan storage is not configured.',
+      });
+    }
+    const plan = await dependencies.planProvider.getByRunId(params.data.runId);
+    if (!plan) return reply.code(404).send({ code: 'PLAN_NOT_FOUND' });
+    return reply.code(200).send(plan);
   });
 
   app.get('/v1/runs/:runId/evidence', async (request, reply) => {

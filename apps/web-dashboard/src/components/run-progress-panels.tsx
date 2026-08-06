@@ -1,6 +1,6 @@
 'use client';
 
-import type { AttestationResponse, EvidenceResponse, RunResponse } from '@shipyard402/public-api-client';
+import type { AttestationResponse, EvidenceResponse, PlanResponse, RunResponse } from '@shipyard402/public-api-client';
 import { useState } from 'react';
 
 import { explorerTxUrl, ipfsGatewayUrl, shortHash } from '../hooks/use-run-progress';
@@ -31,6 +31,7 @@ type PanelKey = 'payment' | 'plan' | 'evidence' | 'attestation';
 export function RunProgressPanels({
   runId,
   run,
+  plan,
   evidence,
   attestation,
   activeStep,
@@ -41,6 +42,7 @@ export function RunProgressPanels({
 }: Readonly<{
   runId: string;
   run: RunResponse;
+  plan: PlanResponse | null;
   evidence: EvidenceResponse | null;
   attestation: AttestationResponse | null;
   activeStep: number;
@@ -50,11 +52,16 @@ export function RunProgressPanels({
   connectedAddress?: `0x${string}` | null | undefined;
 }>) {
   const manifest = evidence?.publicManifest;
+  // The plan panel's own content -- prefer the early plan endpoint (available right after
+  // PLAN_COMPILED) over waiting for the evidence pack (only built much later); once evidence
+  // exists its manifest carries the same fields plus scenarioTraces used elsewhere, but for this
+  // panel's own display the earliest available source wins.
+  const planView = plan ?? manifest;
   const [expanded, setExpanded] = useState<Partial<Record<PanelKey, boolean>>>({});
   const toggle = (key: PanelKey) => setExpanded((current) => ({ ...current, [key]: !current[key] }));
 
   const paymentState: PanelState = activeStep >= 0 ? 'ready' : 'active';
-  const planState: PanelState = manifest ? 'ready' : activeStep >= 1 ? 'active' : 'pending';
+  const planState: PanelState = planView ? 'ready' : activeStep >= 1 ? 'active' : 'pending';
   const evidenceState: PanelState = evidence
     ? (evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready')
     : activeStep >= 2 ? 'active' : 'pending';
@@ -94,23 +101,23 @@ export function RunProgressPanels({
         </Panel>
 
         <Panel index="02" label="AI RISK PLAN" state={planState} expanded={Boolean(expanded.plan)} onToggle={() => toggle('plan')}
-          summary={manifest ? `${manifest.riskLevel} risk · ${manifest.scenarios.length} scenarios` : 'Compiling…'}
+          summary={planView ? `${planView.riskLevel} risk · ${planView.scenarios.length} scenarios` : 'Compiling…'}
         >
-          {manifest && (
+          {planView && (
             <>
               <dl>
-                <div><dt>Risk level (compiled)</dt><dd>{manifest.riskLevel}</dd></div>
-                <div><dt>Tool budget (compiled)</dt><dd className="mono">{manifest.toolBudgetAtomic}</dd></div>
-                <div><dt>Scenarios run</dt><dd>{manifest.scenarios.join(', ')}</dd></div>
+                <div><dt>Risk level (compiled)</dt><dd>{planView.riskLevel}</dd></div>
+                <div><dt>Tool budget (compiled)</dt><dd className="mono">{planView.toolBudgetAtomic}</dd></div>
+                <div><dt>Scenarios run</dt><dd>{planView.scenarios.join(', ')}</dd></div>
               </dl>
-              <p className="ai-rationale">{manifest.rationale}</p>
-              {manifest.aiProposal ? (
+              <p className="ai-rationale">{planView.rationale}</p>
+              {planView.aiProposal ? (
                 <div className="ai-proposal-diff">
                   <span className="panel-sublabel">AI PROPOSED THIS (ADVISORY, NOT BINDING)</span>
                   <dl>
-                    <div><dt>Risk level</dt><dd>{manifest.aiProposal.riskLevel}</dd></div>
-                    <div><dt>Scenarios</dt><dd>{manifest.aiProposal.proposedScenarios.join(', ')}</dd></div>
-                    <div><dt>Budget</dt><dd className="mono">{manifest.aiProposal.proposedToolBudgetAtomic}</dd></div>
+                    <div><dt>Risk level</dt><dd>{planView.aiProposal.riskLevel}</dd></div>
+                    <div><dt>Scenarios</dt><dd>{planView.aiProposal.proposedScenarios.join(', ')}</dd></div>
+                    <div><dt>Budget</dt><dd className="mono">{planView.aiProposal.proposedToolBudgetAtomic}</dd></div>
                   </dl>
                 </div>
               ) : (

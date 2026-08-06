@@ -150,6 +150,20 @@ export type EvidenceResponse = Readonly<{
   builtAt: string;
 }>;
 
+/**
+ * The compiled test plan, available as soon as the orchestrator reaches PLAN_COMPILED -- well
+ * before the full evidence pack exists. Same shape as EvidencePublicManifest's plan fields, just
+ * available earlier.
+ */
+export type PlanResponse = Readonly<{
+  runId: string;
+  riskLevel: string;
+  scenarios: readonly string[];
+  toolBudgetAtomic: string;
+  rationale: string;
+  aiProposal?: AiRiskProposal;
+}>;
+
 export type AttestationResponse = Readonly<{
   runId: string;
   registryAddress: `0x${string}`;
@@ -209,6 +223,10 @@ export class ShipyardApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  async getPlan(runId: string, signal?: AbortSignal): Promise<PlanResponse | null> {
+    return this.#getOrNull<PlanResponse>(`/v1/runs/${encodeURIComponent(runId)}/plan`, signal);
   }
 
   async getEvidence(runId: string, signal?: AbortSignal): Promise<EvidenceResponse | null> {

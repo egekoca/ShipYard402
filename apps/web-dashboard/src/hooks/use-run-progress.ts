@@ -5,6 +5,7 @@ import {
   ShipyardApiError,
   type AttestationResponse,
   type EvidenceResponse,
+  type PlanResponse,
   type RunResponse,
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -31,6 +32,7 @@ export function isTerminalStatus(status: string): boolean {
 /** Polls a run (plus its evidence/attestation once available) every few seconds, backing off once terminal. */
 export function useRunProgress(runId: string | null) {
   const [run, setRun] = useState<RunResponse | null>(null);
+  const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceResponse | null>(null);
   const [attestation, setAttestation] = useState<AttestationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export function useRunProgress(runId: string | null) {
   useEffect(() => {
     if (!runId) {
       setRun(null);
+      setPlan(null);
       setEvidence(null);
       setAttestation(null);
       return;
@@ -53,13 +56,15 @@ export function useRunProgress(runId: string | null) {
 
     async function poll() {
       try {
-        const [runResponse, evidenceResponse, attestationResponse] = await Promise.all([
+        const [runResponse, planResponse, evidenceResponse, attestationResponse] = await Promise.all([
           client.getRun(runId as string),
+          client.getPlan(runId as string),
           client.getEvidence(runId as string),
           client.getAttestation(runId as string),
         ]);
         if (stopped.current) return;
         setRun(runResponse);
+        setPlan(planResponse);
         setEvidence(evidenceResponse);
         setAttestation(attestationResponse);
         setError(null);
@@ -84,7 +89,7 @@ export function useRunProgress(runId: string | null) {
   const activeStep = run ? stepIndexForStatus(run.run.status) : -1;
   const isTerminal = run ? TERMINAL_STATUSES.has(run.run.status) : false;
 
-  return { run, evidence, attestation, error, lastPolledAt, activeStep, isTerminal };
+  return { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal };
 }
 
 export function explorerTxUrl(chainId: number, txHash: string): string {
