@@ -62,15 +62,18 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
   readonly #pool: ReturnType<typeof createShipyardPool>;
   readonly #environment: 'development' | 'test' | 'production';
   readonly #merchantConfigured: boolean;
+  readonly #mainnetWritesEnabled: boolean;
 
   constructor(
     pool: ReturnType<typeof createShipyardPool>,
     environment: 'development' | 'test' | 'production',
     merchantConfigured: boolean,
+    mainnetWritesEnabled: boolean,
   ) {
     this.#pool = pool;
     this.#environment = environment;
     this.#merchantConfigured = merchantConfigured;
+    this.#mainnetWritesEnabled = mainnetWritesEnabled;
   }
 
   async getRuntimeStatus() {
@@ -82,6 +85,7 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
         persistence: 'postgresql' as const,
         database: 'connected' as const,
         merchantPayments: this.#merchantConfigured ? 'configured' as const : 'not_configured' as const,
+        mainnetWritesEnabled: this.#mainnetWritesEnabled,
       };
     } catch {
       return {
@@ -90,6 +94,7 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
         persistence: 'postgresql' as const,
         database: 'unavailable' as const,
         merchantPayments: this.#merchantConfigured ? 'configured' as const : 'not_configured' as const,
+        mainnetWritesEnabled: this.#mainnetWritesEnabled,
       };
     }
   }
@@ -156,6 +161,7 @@ async function start(): Promise<void> {
       pool,
       config.environment,
       merchantAdapter !== undefined,
+      merchantAdapter !== undefined && config.goatEnvironment === 'mainnet',
     ),
     ...(merchantAdapter ? { merchantAdapter } : {}),
   });

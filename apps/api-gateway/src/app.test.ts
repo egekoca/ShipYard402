@@ -124,7 +124,7 @@ describe('api gateway vertical slice', () => {
         async getRuntimeStatus() {
           return {
             status: 'degraded', environment: 'development', persistence: 'postgresql',
-            database: 'connected', merchantPayments: 'not_configured',
+            database: 'connected', merchantPayments: 'not_configured', mainnetWritesEnabled: false,
           };
         },
       },
@@ -137,6 +137,54 @@ describe('api gateway vertical slice', () => {
       status: 'degraded', persistence: 'postgresql', database: 'connected',
       merchantPayments: 'not_configured', mainnetWritesEnabled: false,
     });
+  });
+
+  it('only reports mainnetWritesEnabled when a merchant capability is configured AND it targets mainnet', async () => {
+    const baseDeps = {
+      capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
+      quoteEngine: new QuoteEngine({
+        pricingStatus: 'HYPOTHESIS',
+        baseOrchestrationFeeAtomic: '1',
+        mandatoryToolBudgetAtomic: '1',
+        dynamicToolBudgetAtomic: '1',
+        modelInfrastructureReserveAtomic: '1',
+        chainStorageReserveAtomic: '1',
+        riskSupportReserveAtomic: '1',
+        quoteTtlSeconds: 60,
+      }),
+      quoteRepository: new InMemoryQuoteRepository(),
+      runRepository: new InMemoryRunRepository(),
+    };
+
+    const testnetConfiguredApp = createApp({
+      ...baseDeps,
+      runtimeStatusProvider: {
+        async getRuntimeStatus() {
+          return {
+            status: 'ok', environment: 'development', persistence: 'postgresql',
+            database: 'connected', merchantPayments: 'configured', mainnetWritesEnabled: false,
+          };
+        },
+      },
+    });
+    apps.push(testnetConfiguredApp);
+    const testnetResponse = await testnetConfiguredApp.inject({ method: 'GET', url: '/health' });
+    expect(testnetResponse.json().mainnetWritesEnabled).toBe(false);
+
+    const mainnetConfiguredApp = createApp({
+      ...baseDeps,
+      runtimeStatusProvider: {
+        async getRuntimeStatus() {
+          return {
+            status: 'ok', environment: 'development', persistence: 'postgresql',
+            database: 'connected', merchantPayments: 'configured', mainnetWritesEnabled: true,
+          };
+        },
+      },
+    });
+    apps.push(mainnetConfiguredApp);
+    const mainnetResponse = await mainnetConfiguredApp.inject({ method: 'GET', url: '/health' });
+    expect(mainnetResponse.json().mainnetWritesEnabled).toBe(true);
   });
 
   it('fails closed instead of inventing a payment capability', async () => {
