@@ -236,6 +236,9 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .problem-solution.is-visible .compare-card--after { transition-delay: .12s; }
 .compare-card--before:hover { border-color: rgba(255, 82, 82, .4); }
 .compare-card--before:hover::before { background: conic-gradient(from var(--card-angle), transparent 0deg 250deg, #ffcccc 285deg, var(--danger) 305deg, #ffcccc 325deg, transparent 360deg); }
+.compare-icon { display: block; width: 38px; height: 38px; margin-bottom: 16px; }
+.compare-icon--bad { color: var(--danger); }
+.compare-icon--good { color: var(--gold); }
 .compare-label { display: block; margin-bottom: 20px; font-size: 10px; font-weight: 900; letter-spacing: .14em; }
 .compare-label--before { color: var(--danger); }
 .compare-label--after { color: var(--gold); }

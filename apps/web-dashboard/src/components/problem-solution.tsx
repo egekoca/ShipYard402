@@ -1,6 +1,7 @@
 'use client';
 
 import { useReveal } from '../hooks/use-reveal';
+import { ShieldAlertMark, ShieldCheckMark } from './icons';
 
 const WITHOUT = [
   'Releases ship on hope -- nobody re-tests the paid path after the code changes.',
@@ -29,6 +30,7 @@ export function ProblemSolution() {
 
       <div className="compare-grid">
         <div className="compare-card compare-card--before glow-card">
+          <ShieldAlertMark className="compare-icon compare-icon--bad" />
           <span className="compare-label compare-label--before">WITHOUT SHIPYARD402</span>
           <ul>
             {WITHOUT.map((item) => (
@@ -37,6 +39,7 @@ export function ProblemSolution() {
           </ul>
         </div>
         <div className="compare-card compare-card--after glow-card">
+          <ShieldCheckMark className="compare-icon compare-icon--good" />
           <span className="compare-label compare-label--after">WITH SHIPYARD402</span>
           <ul>
             {WITH.map((item) => (
