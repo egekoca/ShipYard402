@@ -97,6 +97,16 @@ export function WalletPayPanel({
       <dl>
         <div><dt>Amount</dt><dd>{amountLabel} <small>{assetLabel}</small></dd></div>
         <div><dt>Pay to</dt><dd className="mono">{shortAddress(challenge.payTo)}</dd></div>
+        {txHash && (
+          <div>
+            <dt>Transaction</dt>
+            <dd>
+              <a className="explorer-link" href={explorerTxUrl(chainId, txHash)} target="_blank" rel="noreferrer">
+                {shortAddress(txHash)} ↗
+              </a>
+            </dd>
+          </div>
+        )}
       </dl>
       {error && (
         <div className="error-card state-in" key={error}>
@@ -107,10 +117,7 @@ export function WalletPayPanel({
       {txHash ? (
         <div className="wallet-paid state-in">
           <span className="live-pulse" aria-hidden="true" />
-          <span>Payment sent</span>
-          <a className="explorer-link" href={explorerTxUrl(chainId, txHash)} target="_blank" rel="noreferrer">
-            {shortAddress(txHash)} ↗
-          </a>
+          <span>Payment sent — confirming on-chain</span>
         </div>
       ) : !isWalletAvailable() ? (
         <p className="run-detail-empty">

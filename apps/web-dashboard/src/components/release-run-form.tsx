@@ -10,8 +10,12 @@ import {
 import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useMemo, useState } from 'react';
 
+import { explorerTxUrl, useRunProgress } from '../hooks/use-run-progress';
 import { connectWallet, ensureChain, formatWalletError, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import { Pipeline } from './pipeline';
 import { WalletPayPanel } from './wallet-pay-panel';
+
+const RUN_STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
 
 type FormState = Readonly<{
   organizationId: string;
@@ -57,6 +61,10 @@ export function ReleaseRunForm() {
   const [runRequestKey, setRunRequestKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Polls the run itself the moment it exists, independently of the WalletPayPanel below --
+  // so the pipeline visibly starts moving the instant the payment worker sees the on-chain
+  // settlement, without the customer ever having to leave this page to watch it happen.
+  const progress = useRunProgress(run?.run.id ?? null);
   // Collapsed by default: these are catalog identifiers (a UUID, two 32-byte hashes, two URLs)
   // that describe exactly which pre-registered service/version/policy the quote is for -- nobody
   // is meant to type these by hand, they're already filled in from SELF_TEST_TARGET. Shown
@@ -204,7 +212,7 @@ export function ReleaseRunForm() {
             </dl>
             <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
               {busy && <span className="spinner" aria-hidden="true" />}
-              {run ? `Run ${run.run.status}` : 'Create idempotent run'}
+              {run ? `Run ${progress.run?.run.status ?? run.run.status}` : 'Create idempotent run'}
             </button>
             {run && (
               <div className="run-created state-in">
@@ -220,7 +228,28 @@ export function ReleaseRunForm() {
                     connectedAddress={form.requesterAddress as `0x${string}`}
                   />
                 )}
-                <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`}>Track this run →</a>
+
+                <div className="inline-progress">
+                  <span className="panel-sublabel">RUN PROGRESS{!progress.isTerminal ? ' — LIVE' : ''}</span>
+                  <Pipeline steps={RUN_STEPS} activeIndex={progress.activeStep} />
+                  {progress.isTerminal && progress.run && (
+                    <div className={`run-verdict run-verdict--${progress.run.run.status.toLowerCase()} state-in inline-verdict`}>
+                      <span className="run-verdict-label">{progress.run.run.status.replace('DELIVERED_', '')}</span>
+                    </div>
+                  )}
+                  {progress.attestation && (
+                    <a
+                      className="explorer-link"
+                      href={explorerTxUrl(progress.attestation.chainId, progress.attestation.transactionHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Attestation tx ↗
+                    </a>
+                  )}
+                </div>
+
+                <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`}>Full run detail →</a>
               </div>
             )}
           </div>
