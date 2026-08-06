@@ -94,8 +94,8 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: end; margin-bottom: 45px; }
 .section-heading h2 { margin: 9px 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: clamp(36px, 4.5vw, 60px); font-weight: 900; letter-spacing: -.03em; color: var(--white); }
 .section-heading p { max-width: 450px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-.run-grid { display: grid; grid-template-columns: 1.45fr .75fr; border: 1px solid var(--line); }
-.release-form { display: flex; flex-direction: column; background: var(--bg); border-right: 1px solid var(--line); }
+.run-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: 24px; align-items: start; }
+.release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); }
 .form-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
 .form-header-label { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .form-body { display: flex; flex-direction: column; flex: 1; }
@@ -125,8 +125,8 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .wallet-button:disabled { cursor: not-allowed; opacity: .5; }
 .spinner { width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 
-.quote-panel { min-height: 500px; padding: 28px; color: var(--ink); background: var(--surface-alt); }
-.empty-state { display: grid; place-items: center; min-height: 400px; text-align: center; }
+.quote-panel { padding: 28px; color: var(--ink); background: var(--surface-alt); border: 1px solid var(--line); }
+.empty-state { display: grid; place-items: center; min-height: 320px; text-align: center; }
 .empty-state h3 { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: 25px; font-weight: 800; color: var(--white); }
 .empty-state p { max-width: 300px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .radar { position: relative; width: 110px; height: 110px; overflow: hidden; border: 1px solid var(--line); border-radius: 50%; background: radial-gradient(circle, var(--gold) 0 3px, transparent 4px), repeating-radial-gradient(circle, transparent 0 20px, var(--line) 21px 22px); }
@@ -255,11 +255,9 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
   .pipeline-labels { grid-template-columns: 1fr; gap: 14px; padding: 0; text-align: left; }
   .run-section { padding: 70px 20px; }
   .run-grid { grid-template-columns: 1fr; }
-  .release-form { border-right: 0; border-bottom: 1px solid var(--line); }
   .technical-fields { grid-template-columns: 1fr; }
   .field:nth-child(2n) { border-right: 1px solid var(--line); }
   .field:nth-child(n+2) { border-top: 1px solid var(--line); }
-  .quote-panel { min-height: 430px; }
   .replay-demo { padding: 60px 20px; }
   .replay-lanes { grid-template-columns: 1fr; }
   .threat-coverage { padding: 60px 20px 0; }
