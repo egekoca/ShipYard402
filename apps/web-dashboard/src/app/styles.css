@@ -94,8 +94,8 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: end; margin-bottom: 45px; }
 .section-heading h2 { margin: 9px 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: clamp(36px, 4.5vw, 60px); font-weight: 900; letter-spacing: -.03em; color: var(--white); }
 .section-heading p { max-width: 450px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-.run-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: 24px; align-items: start; }
-.release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); }
+.run-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 24px; align-items: start; }
+.release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 .form-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
 .form-header-label { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .form-body { display: flex; flex-direction: column; flex: 1; }
@@ -115,23 +115,23 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .link-toggle { flex: none; padding: 0; color: var(--gold); background: none; border: 0; font-size: 11px; font-weight: 800; letter-spacing: .04em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .link-toggle:hover { color: var(--ink); }
 
-.primary-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 22px; color: var(--gold-ink); background: var(--gold); border: 0; cursor: pointer; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; transition: background .2s ease, transform .2s ease, box-shadow .2s ease; }
+.primary-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 22px; color: var(--gold-ink); background: var(--gold); border: 0; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; transition: background .2s ease, transform .2s ease, box-shadow .2s ease; }
 .primary-button:hover:not(:disabled) { background: var(--white); transform: translateY(-2px); box-shadow: 0 14px 30px -14px rgba(240, 196, 25, .5); }
 .primary-button:active:not(:disabled) { transform: translateY(0); }
 .primary-button:disabled { cursor: not-allowed; opacity: .5; }
 .form-footer .primary-button { width: 100%; }
-.wallet-button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 18px; color: var(--gold-ink); background: var(--gold); border: 0; cursor: pointer; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; transition: background .2s ease; }
+.wallet-button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 18px; color: var(--gold-ink); background: var(--gold); border: 0; border-radius: 7px; cursor: pointer; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; transition: background .2s ease; }
 .wallet-button:hover:not(:disabled) { background: var(--white); }
 .wallet-button:disabled { cursor: not-allowed; opacity: .5; }
 .spinner { width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 
-.quote-panel { padding: 28px; color: var(--ink); background: var(--surface-alt); border: 1px solid var(--line); }
+.quote-panel { padding: 28px; color: var(--ink); background: linear-gradient(165deg, #1b1c21 0%, var(--surface-alt) 55%, #131418 100%); border: 1px solid var(--line); border-radius: 16px; }
 .empty-state { display: grid; place-items: center; min-height: 320px; text-align: center; }
 .empty-state h3 { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: 25px; font-weight: 800; color: var(--white); }
 .empty-state p { max-width: 300px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .radar { position: relative; width: 110px; height: 110px; overflow: hidden; border: 1px solid var(--line); border-radius: 50%; background: radial-gradient(circle, var(--gold) 0 3px, transparent 4px), repeating-radial-gradient(circle, transparent 0 20px, var(--line) 21px 22px); }
 .radar-sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg, transparent 300deg, rgba(240, 196, 25, .4) 335deg, transparent 360deg); animation: radar-spin 3.2s linear infinite; }
-.error-card { margin-top: 30px; padding: 22px; border-left: 4px solid var(--danger); background: var(--danger-deep); }
+.error-card { margin-top: 30px; padding: 22px; border-left: 4px solid var(--danger); background: var(--danger-deep); border-radius: 0 10px 10px 0; }
 .error-card strong { color: var(--white); }
 .error-card p { color: #ffb3b3; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.5; }
 .quote-result { padding-top: 30px; }
@@ -146,9 +146,9 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .quote-result dd { margin: 0; font-weight: 800; text-align: right; color: var(--ink); }
 .quote-result .primary-button { width: 100%; margin-top: 25px; }
 .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
-.run-created { display: flex; flex-direction: column; gap: 6px; padding: 14px; background: var(--surface); border: 1px solid var(--line); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+.run-created { display: flex; flex-direction: column; gap: 6px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
 .wallet-connected { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--ink); }
-.wallet-pay-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 12px; background: var(--bg); border: 1px solid var(--line); }
+.wallet-pay-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
 .wallet-pay-panel dl { margin: 0; }
 .wallet-pay-panel dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 11px; }
 .wallet-pay-panel dl div:first-child { border-top: 0; }
