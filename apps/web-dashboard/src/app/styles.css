@@ -93,7 +93,7 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .run-section { padding: 90px max(36px, calc((100vw - 1208px) / 2)); background: var(--surface); color: var(--ink); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: end; margin-bottom: 45px; }
 .section-heading h2 { margin: 9px 0 0; font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; font-size: clamp(36px, 4.5vw, 60px); font-weight: 900; letter-spacing: -.03em; color: var(--white); }
-.section-heading p { max-width: 450px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.section-heading p { max-width: 450px; margin: 0; color: #b7b9c0; font-size: 15px; font-weight: 500; line-height: 1.6; }
 .run-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 24px; align-items: start; }
 .release-form { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line); }
 .form-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
@@ -228,8 +228,8 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .compare-label--before { color: var(--danger); }
 .compare-label--after { color: var(--gold); }
 .compare-card ul { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
-.compare-card li { display: flex; align-items: flex-start; gap: 12px; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.compare-card--after li { color: var(--ink); }
+.compare-card li { display: flex; align-items: flex-start; gap: 12px; color: #b7b9c0; font-size: 15px; font-weight: 500; line-height: 1.6; }
+.compare-card--after li { color: var(--ink); font-weight: 600; }
 .compare-mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .compare-mark--bad { color: var(--danger); background: var(--danger-deep); }
 .compare-mark--good { color: var(--gold-ink); background: var(--gold); }
@@ -249,7 +249,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .threat-index { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--gold); letter-spacing: .14em; }
 .threat-chip { width: 32px; height: 23px; border-radius: 5px; background: linear-gradient(145deg, #f3dc93, #a9812c 55%, #f3dc93); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }
 .threat-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--white); }
-.threat-card p { flex: 1 0 auto; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.threat-card p { flex: 1 0 auto; margin: 0; color: #b7b9c0; font-size: 14px; font-weight: 500; line-height: 1.6; }
 .threat-scenario { align-self: flex-start; margin-top: 22px; display: inline-block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: var(--ink); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
 
 @keyframes card-border-spin {
