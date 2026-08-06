@@ -10,7 +10,8 @@ import {
 } from '@shipyard402/persistence-postgres';
 import { JsonRpcProvider } from 'ethers';
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
 import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
@@ -20,6 +21,12 @@ import { createKuboEvidencePublisher } from './ipfs-publisher.js';
 import { createFetchProtectedDeliveryClient } from './protected-delivery-fetch-client.js';
 import { parseOrchestratorWorkerRuntimeConfig } from './runtime-config.js';
 import { OrchestratorJobHandler, processNextOrchestratorJob } from './worker.js';
+
+// Resolved from this file's own location, not process.cwd() -- `pnpm --filter ... dev` runs with
+// cwd set to this package's directory, not the repo root, so a cwd-relative path silently broke
+// under that (very standard) invocation. dist/main.js and src/main.ts are both three levels below
+// the repo root (apps/orchestrator-worker/{dist,src}/main.{js,ts}), so the same ../../../ reaches it.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 async function start(): Promise<void> {
   const config = parseOrchestratorWorkerRuntimeConfig(process.env);
@@ -36,7 +43,7 @@ async function start(): Promise<void> {
     const signerWallet = await config.signerKeySource.loadWallet(provider);
     const toolReceiptSignerWallet = await config.toolReceiptSignerKeySource.loadWallet(provider);
     const registryAbi = JSON.parse(await readFile(
-      resolve('contracts/out-solc/src_ShipyardRunRegistry_sol_ShipyardRunRegistry.abi'),
+      resolve(REPO_ROOT, 'contracts/out-solc/src_ShipyardRunRegistry_sol_ShipyardRunRegistry.abi'),
       'utf8',
     ));
 
