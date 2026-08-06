@@ -132,44 +132,49 @@ export function ReleaseRunForm() {
   return (
     <div className="run-grid">
       <form className="release-form" onSubmit={requestQuote}>
-        <div className="wallet-connect-row">
+        <div className="form-header">
+          <span className="form-header-label">Requester</span>
           {form.requesterAddress ? (
             <div className="wallet-connected">
               <span className="live-pulse" aria-hidden="true" />
               <span className="mono">{form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}</span>
             </div>
           ) : (
-            <button className="primary-button" type="button" disabled={busy} onClick={handleConnectWallet}>
+            <button className="wallet-button" type="button" disabled={busy} onClick={handleConnectWallet}>
               {busy && <span className="spinner" aria-hidden="true" />}
               Connect wallet
             </button>
           )}
         </div>
-        <div className="target-summary">
-          <p>
-            Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant
-            service on GOAT Testnet3. Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
-          </p>
-          <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
-            {showTechnical ? 'Hide' : 'Show'} technical identifiers
+        <div className="form-body">
+          <div className="target-summary">
+            <p>
+              Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant
+              service on GOAT Testnet3. Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
+            </p>
+            <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
+              {showTechnical ? 'Hide' : 'Show'} technical identifiers
+            </button>
+          </div>
+          {showTechnical && (
+            <div className="technical-fields">
+              <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
+              <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
+              <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
+              <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
+              <Field label="Policy hash" value={form.policyHash} onChange={(value) => update('policyHash', value)} placeholder="0x + 32 bytes" />
+              <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
+              <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
+              <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
+            </div>
+          )}
+        </div>
+        <div className="form-footer">
+          <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
+            {busy && <span className="spinner" aria-hidden="true" />}
+            {!form.requesterAddress ? 'Connect a wallet first' : busy ? 'Checking capability…' : 'Request transparent quote'}
           </button>
         </div>
-        {showTechnical && (
-          <>
-            <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
-            <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
-            <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
-            <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
-            <Field label="Policy hash" value={form.policyHash} onChange={(value) => update('policyHash', value)} placeholder="0x + 32 bytes" />
-            <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
-            <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
-            <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
-          </>
-        )}
-        <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
-          {busy && <span className="spinner" aria-hidden="true" />}
-          {!form.requesterAddress ? 'Connect a wallet first' : busy ? 'Checking capability…' : 'Request transparent quote'}
-        </button>
       </form>
 
       <aside className="quote-panel" aria-live="polite">
