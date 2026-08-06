@@ -162,14 +162,71 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 
 .threat-coverage { max-width: 1280px; margin: 0 auto; padding: 90px 36px 0; opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
 .threat-coverage.is-visible { opacity: 1; transform: translateY(0); }
-.threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 10px; background: var(--line); border: 1px solid var(--line); }
-.threat-card { padding: 28px; background: var(--surface); opacity: 0; transition: transform .3s cubic-bezier(.16,1,.3,1), box-shadow .3s ease; }
+@property --card-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 24px; }
+.threat-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 270px;
+  padding: 30px;
+  border-radius: 18px;
+  background: linear-gradient(155deg, #18191d 0%, var(--surface) 55%, #101114 100%);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  isolation: isolate;
+  opacity: 0;
+  transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease;
+}
 .threat-coverage.is-visible .threat-card { animation: step-in .6s cubic-bezier(.16,1,.3,1) forwards; animation-delay: var(--delay, 0ms); }
-.threat-card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -20px rgba(240, 196, 25, .3); }
-.threat-index { display: block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: var(--gold); margin-bottom: 14px; letter-spacing: .1em; }
-.threat-card h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--white); }
-.threat-card p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.threat-scenario { display: inline-block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); padding: 4px 8px; }
+/* Animated conic-gradient "ring light" traced along the card edge on hover -- masked to the
+   1.5px border band only (content-box vs border-box XOR) so it reads as a chasing border glow,
+   not a full gradient fill. Paused by default; only spends cycles while actually hovered. */
+.threat-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--card-angle), transparent 0deg 250deg, #fff8dc 285deg, var(--gold) 305deg, #fff8dc 325deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity .4s ease;
+  animation: card-border-spin 2.6s linear infinite;
+  animation-play-state: paused;
+  pointer-events: none;
+}
+.threat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .05) 42%, rgba(240, 196, 25, .14) 50%, transparent 62%);
+  transform: translateX(-140%);
+  transition: transform .9s cubic-bezier(.16,1,.3,1);
+  pointer-events: none;
+}
+.threat-card:hover { transform: translateY(-6px); box-shadow: 0 26px 48px -22px rgba(240, 196, 25, .35); border-color: rgba(240, 196, 25, .45); }
+.threat-card:hover::before { opacity: 1; animation-play-state: running; }
+.threat-card:hover::after { transform: translateX(140%); }
+.threat-card-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.threat-index { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: var(--gold); letter-spacing: .14em; }
+.threat-chip { width: 32px; height: 23px; border-radius: 5px; background: linear-gradient(145deg, #f3dc93, #a9812c 55%, #f3dc93); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .3); }
+.threat-card h3 { position: relative; z-index: 3; margin: 0 0 10px; font-size: 18px; font-weight: 800; color: var(--white); }
+.threat-card p { position: relative; z-index: 3; flex: 1 0 auto; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.threat-scenario { position: relative; z-index: 3; align-self: flex-start; margin-top: 22px; display: inline-block; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: var(--ink); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+
+@keyframes card-border-spin {
+  to { --card-angle: 360deg; }
+}
 
 .replay-demo { max-width: 1280px; margin: 0 auto; padding: 90px 36px; opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
 .replay-demo.is-visible { opacity: 1; transform: translateY(0); }
@@ -318,7 +375,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
     opacity: 1 !important;
     transform: none !important;
   }
-  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-empty-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before {
+  .hero::after, .hero-radar-sweep, .network-pill span::after, .live-pulse::after, .radar-sweep, .panel-empty-icon, .spinner, .replay-packet.is-moving, .pipeline-dot.is-active, .run-verdict::before, .threat-card::before {
     animation: none !important;
   }
 }

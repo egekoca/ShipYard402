@@ -39,7 +39,10 @@ export function ThreatCoverage() {
       <div className="threat-grid">
         {THREATS.map((threat, i) => (
           <div className="threat-card" style={{ '--delay': `${i * 110}ms` } as React.CSSProperties} key={threat.scenario}>
-            <span className="threat-index">{threat.index}</span>
+            <div className="threat-card-top">
+              <span className="threat-index">{threat.index}</span>
+              <span className="threat-chip" aria-hidden="true" />
+            </div>
             <h3>{threat.title}</h3>
             <p>{threat.body}</p>
             <code className="threat-scenario">{threat.scenario}</code>
