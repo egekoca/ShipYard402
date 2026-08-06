@@ -25,16 +25,29 @@ type FormState = Readonly<{
   maximumCustomerBudgetAtomic: string;
 }>;
 
+/**
+ * The one service/release/policy currently onboarded in the catalog (organizations/services/
+ * releases/policies tables) that a quote can actually be created against -- there is no
+ * self-service onboarding flow yet (a real one would let a customer register their own service
+ * and compute these from their live OpenAPI spec), so asking a person to hand-type a UUID and two
+ * 32-byte hashes here would be pure friction for zero benefit until that exists. Pre-filling the
+ * one target that's actually real removes that friction without pretending it's more dynamic than
+ * it is; the fields stay editable for anyone who has their own onboarded catalog entry to test.
+ */
+const SELF_TEST_TARGET: Omit<FormState, 'requesterAddress'> = {
+  organizationId: 'b6b9ef3b-5528-4dd6-b3e7-cb79440db30a',
+  targetAgentId: 'agent:shipyard402-selftest',
+  targetServiceId: 'service:x402-demo-target:testnet3-real-merchant',
+  targetVersionHash: '0xd7a58f3393a3ce108484d3fe83c2a65a870c99cb1be072363b9cc26f1f5ec176',
+  policyHash: '0x46a763af460addd917b0bb04976aee3544dbfe1e5d8cfe89808247091351c490',
+  x402Endpoint: 'https://x402-demo-target.shipyard402-selftest.internal/paid/resource',
+  openApiUrl: 'https://x402-demo-target.shipyard402-selftest.internal/openapi.json',
+  maximumCustomerBudgetAtomic: '5000000',
+};
+
 const initialForm: FormState = {
-  organizationId: '',
+  ...SELF_TEST_TARGET,
   requesterAddress: '',
-  targetAgentId: '',
-  targetServiceId: '',
-  targetVersionHash: '',
-  policyHash: '',
-  x402Endpoint: '',
-  openApiUrl: '',
-  maximumCustomerBudgetAtomic: '',
 };
 
 export function ReleaseRunForm() {
