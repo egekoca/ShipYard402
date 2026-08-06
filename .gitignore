@@ -11,6 +11,7 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+.vercel/
 
 # Foundry
 contracts/cache/
