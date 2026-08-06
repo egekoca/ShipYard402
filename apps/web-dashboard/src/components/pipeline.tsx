@@ -21,9 +21,15 @@ export type PipelineProps = Readonly<{
    * stutter relative to each other.
    */
   progress?: number;
+  /**
+   * Per-step "usually takes ~Xs" hint, same length/order as `steps`. `null` at an index means no
+   * estimate is available yet (too few historical runs) -- omit the whole prop rather than pass
+   * fabricated numbers, e.g. for the marketing landing-page demo, which has no real runs behind it.
+   */
+  stepEtas?: readonly (string | null)[];
 }>;
 
-export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, progress }: PipelineProps) {
+export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, progress, stepEtas }: PipelineProps) {
   const continuous = progress !== undefined;
   const filled = Math.min(Math.max(activeIndex, 0) + 1, steps.length);
   const width = continuous ? progress * 100 : activeIndex < 0 ? 0 : (filled / steps.length) * 100;
@@ -63,6 +69,7 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
             >
               <span className="pipeline-label-index">{String(index + 1).padStart(2, '0')}</span>
               <p>{step}{isActive && <RadarMark className="pipeline-label-radar" />}</p>
+              {stepEtas?.[index] && <span className="pipeline-label-eta">{stepEtas[index]} typical</span>}
             </div>
           );
         })}

@@ -164,6 +164,18 @@ export type PlanResponse = Readonly<{
   aiProposal?: AiRiskProposal;
 }>;
 
+/**
+ * Real historical timing, not a guessed SLA -- medians computed from how long recent completed
+ * runs actually spent on each pipeline step. A bucket is absent until enough completed runs exist
+ * to compute it.
+ */
+export type StepDurationStatsResponse = Readonly<{
+  sampleSize: number;
+  medianMillisecondsByStep: Readonly<
+    Partial<Record<'payment' | 'plan' | 'procurement' | 'evidence' | 'attestation', number>>
+  >;
+}>;
+
 export type AttestationResponse = Readonly<{
   runId: string;
   registryAddress: `0x${string}`;
@@ -227,6 +239,13 @@ export class ShipyardApiClient {
 
   async getPlan(runId: string, signal?: AbortSignal): Promise<PlanResponse | null> {
     return this.#getOrNull<PlanResponse>(`/v1/runs/${encodeURIComponent(runId)}/plan`, signal);
+  }
+
+  async getStepDurationStats(signal?: AbortSignal): Promise<StepDurationStatsResponse> {
+    return this.#request<StepDurationStatsResponse>('/v1/stats/step-durations', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
   }
 
   async getEvidence(runId: string, signal?: AbortSignal): Promise<EvidenceResponse | null> {

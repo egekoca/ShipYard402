@@ -166,6 +166,8 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .pipeline-label p { margin: 0; font-size: 13px; font-weight: 800; line-height: 1.3; color: #55575d; transition: color .3s ease; }
 .pipeline-label-radar { display: inline-block; width: 13px; height: 13px; margin-left: 8px; vertical-align: -2px; color: var(--gold); animation: radar-spin 1.6s linear infinite; }
 .pipeline-label.is-active p, .pipeline-label.is-done p { color: var(--ink); }
+.pipeline-label-eta { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.pipeline-label.is-active .pipeline-label-eta { color: var(--gold); }
 
 .run-section { padding: 90px max(36px, calc((100vw - 1208px) / 2)); background: var(--surface); color: var(--ink); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: end; margin-bottom: 45px; }

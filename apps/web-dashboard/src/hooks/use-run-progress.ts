@@ -7,6 +7,7 @@ import {
   type EvidenceResponse,
   type PlanResponse,
   type RunResponse,
+  type StepDurationStatsResponse,
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -90,6 +91,38 @@ export function useRunProgress(runId: string | null) {
   const isTerminal = run ? TERMINAL_STATUSES.has(run.run.status) : false;
 
   return { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal };
+}
+
+/**
+ * Fetches once, not polled -- it's a slow-moving aggregate over recent completed runs, not
+ * per-run state. Failing quietly (no ETA hint) beats surfacing an error banner for what is only
+ * ever a nice-to-have estimate.
+ */
+export function useStepDurationStats(): StepDurationStatsResponse | null {
+  const [stats, setStats] = useState<StepDurationStatsResponse | null>(null);
+  const client = useMemo(
+    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    client.getStepDurationStats()
+      .then((result) => { if (!cancelled) setStats(result); })
+      .catch(() => { /* no ETA hint is a fine fallback */ });
+    return () => { cancelled = true; };
+  }, [client]);
+
+  return stats;
+}
+
+/** "~3s" / "~2m 15s" -- always rounds to the nearest whole second, never shows milliseconds. */
+export function formatDurationEstimate(milliseconds: number): string {
+  const totalSeconds = Math.max(1, Math.round(milliseconds / 1000));
+  if (totalSeconds < 60) return `~${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds === 0 ? `~${minutes}m` : `~${minutes}m ${seconds}s`;
 }
 
 export function explorerTxUrl(chainId: number, txHash: string): string {

@@ -96,6 +96,23 @@ export interface PlanProvider {
   getByRunId(runId: string): Promise<PublicPlan | null>;
 }
 
+export type PublicStepDurationStats = Readonly<{
+  /** Number of completed runs the medians were computed from -- smallest bucket sample size. */
+  sampleSize: number;
+  medianMillisecondsByStep: Readonly<
+    Partial<Record<'payment' | 'plan' | 'procurement' | 'evidence' | 'attestation', number>>
+  >;
+}>;
+
+/**
+ * Backs the pipeline stepper's "typically takes ~Xs" hint with real historical durations instead
+ * of a guessed number -- computed from how long recent completed runs actually spent on each
+ * step, not a static estimate.
+ */
+export interface StepDurationStatsProvider {
+  getRecentMedianDurations(): Promise<PublicStepDurationStats | null>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
@@ -106,6 +123,7 @@ export type AppDependencies = Readonly<{
   evidencePackProvider?: EvidencePackProvider;
   attestationProvider?: AttestationProvider;
   planProvider?: PlanProvider;
+  stepDurationStatsProvider?: StepDurationStatsProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -145,6 +163,15 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       service: 'shipyard402-api-gateway',
       assuranceClaim: 'version-policy-expiry-scoped-execution-evidence',
     });
+  });
+
+  app.get('/v1/stats/step-durations', async (_request, reply) => {
+    const stats = dependencies.stepDurationStatsProvider
+      ? await dependencies.stepDurationStatsProvider.getRecentMedianDurations()
+      : null;
+    // Optional enhancement, not a resource lookup -- an unconfigured provider or a fresh
+    // install with no completed runs yet both just mean "no ETA hint available", not an error.
+    return reply.code(200).send(stats ?? { sampleSize: 0, medianMillisecondsByStep: {} });
   });
 
   app.post('/v1/quotes', async (request, reply) => {

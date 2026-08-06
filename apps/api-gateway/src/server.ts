@@ -9,6 +9,7 @@ import {
   PostgresOrchestratorCheckpointStore,
   PostgresQuoteRepository,
   PostgresRunRepository,
+  PostgresStepDurationStatsStore,
   type OrchestratorCheckpointStore,
 } from '@shipyard402/persistence-postgres';
 import { QuoteEngine } from '@shipyard402/quote-engine';
@@ -194,6 +195,7 @@ export async function buildApp(): Promise<BuiltApp> {
     evidencePackProvider: new PostgresEvidencePackStore(pool),
     attestationProvider: new PostgresAttestationStore(pool),
     planProvider: new CheckpointPlanProvider(new PostgresOrchestratorCheckpointStore(pool)),
+    stepDurationStatsProvider: new PostgresStepDurationStatsStore(pool),
     runtimeStatusProvider: new PostgresRuntimeStatusProvider(
       pool,
       config.environment,

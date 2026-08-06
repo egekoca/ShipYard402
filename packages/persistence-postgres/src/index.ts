@@ -6,4 +6,5 @@ export * from './orchestrator-job-queue.js';
 export * from './orchestrator-checkpoint-store.js';
 export * from './evidence-pack-store.js';
 export * from './attestation-store.js';
+export * from './step-duration-stats-store.js';
 export * from './pool.js';

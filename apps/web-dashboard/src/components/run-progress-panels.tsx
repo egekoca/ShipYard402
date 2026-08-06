@@ -3,13 +3,15 @@
 import type { AttestationResponse, EvidenceResponse, PlanResponse, RunResponse } from '@shipyard402/public-api-client';
 import { useState } from 'react';
 
-import { explorerTxUrl, ipfsGatewayUrl, shortHash } from '../hooks/use-run-progress';
+import { explorerTxUrl, formatDurationEstimate, ipfsGatewayUrl, shortHash, useStepDurationStats } from '../hooks/use-run-progress';
 import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
 import { WalletPayPanel } from './wallet-pay-panel';
 
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
+/** Same order as STEPS -- maps each stepper label to the step-duration-stats bucket it corresponds to. */
+const STEP_DURATION_BUCKETS = ['payment', 'plan', 'procurement', 'evidence', 'attestation'] as const;
 
 type PanelState = 'pending' | 'active' | 'ready' | 'fail';
 type PanelKey = 'payment' | 'plan' | 'evidence' | 'attestation';
@@ -51,6 +53,11 @@ export function RunProgressPanels({
   tokenDecimals?: number | undefined;
   connectedAddress?: `0x${string}` | null | undefined;
 }>) {
+  const stepDurationStats = useStepDurationStats();
+  const stepEtas: readonly (string | null)[] = STEP_DURATION_BUCKETS.map((bucket) => {
+    const ms = stepDurationStats?.medianMillisecondsByStep[bucket];
+    return ms ? formatDurationEstimate(ms) : null;
+  });
   const manifest = evidence?.publicManifest;
   // The plan panel's own content -- prefer the early plan endpoint (available right after
   // PLAN_COMPILED) over waiting for the evidence pack (only built much later); once evidence
@@ -70,7 +77,7 @@ export function RunProgressPanels({
   return (
     <>
       <div className="workflow-section" aria-label="Run progress">
-        <Pipeline steps={STEPS} activeIndex={activeStep} />
+        <Pipeline steps={STEPS} activeIndex={activeStep} stepEtas={stepEtas} />
       </div>
 
       {isTerminal && (
