@@ -13,6 +13,7 @@
     "contracts:test": "cd contracts && forge test",
     "dev": "turbo run dev --parallel --filter=@shipyard402/api-gateway --filter=@shipyard402/web-dashboard",
     "dev:payment-worker": "turbo run dev --filter=@shipyard402/payment-worker",
+    "local:backend:up": "bash scripts/local-backend-up.sh",
     "format:check": "turbo run format:check",
     "infra:down": "docker-compose down",
     "infra:logs": "docker-compose logs -f postgres",
