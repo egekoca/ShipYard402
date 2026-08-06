@@ -53,8 +53,14 @@ export class PaymentReconciliationJobHandler {
       if (error instanceof SettlementRejectedError) {
         return { action: 'DEAD_LETTER', reason: 'DETERMINISTIC_SETTLEMENT_REJECTION', failureCodes: error.failureCodes };
       }
+      if (!(error instanceof PaymentNotReadyError)) {
+        console.error(`[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`, error);
+      }
       if (job.attempt >= job.maximumAttempts) {
-        return { action: 'DEAD_LETTER', reason: classifyRetryableError(error) };
+        const reason = error instanceof PaymentNotReadyError
+          ? 'PAYMENT_NOT_READY_TIMEOUT'
+          : classifyRetryableError(error);
+        return { action: 'DEAD_LETTER', reason };
       }
       return {
         action: 'RETRY',
@@ -97,7 +103,7 @@ function validateJob(job: PaymentReconciliationJob): void {
 }
 
 function retryDelay(attempt: number): number {
-  return Math.min(5_000 * 2 ** (attempt - 1), 60_000);
+  return Math.min(5_000 * 2 ** (attempt - 1), 180_000);
 }
 
 function classifyRetryableError(error: unknown): string {

@@ -26,6 +26,15 @@ describe('payment reconciliation job handler', () => {
     });
   });
 
+  it('dead-letters an exhausted payment-not-ready wait with a distinct reason from real failures', async () => {
+    const handler = new PaymentReconciliationJobHandler(reconciler(async () => {
+      throw new PaymentNotReadyError('CHECKOUT_VERIFIED');
+    }));
+    await expect(handler.handle({ runId: 'run-1', attempt: 5, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER', reason: 'PAYMENT_NOT_READY_TIMEOUT',
+    });
+  });
+
   it('dead-letters deterministic settlement mismatches without retrying', async () => {
     const handler = new PaymentReconciliationJobHandler(reconciler(async () => {
       throw new SettlementRejectedError(['RECIPIENT_MISMATCH']);
