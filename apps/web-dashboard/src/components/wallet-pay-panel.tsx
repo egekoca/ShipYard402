@@ -20,10 +20,10 @@ export function WalletPayPanel({
 }: Readonly<{
   chainId: number;
   challenge: PaymentChallenge;
-  tokenSymbol?: string;
-  tokenDecimals?: number;
+  tokenSymbol?: string | undefined;
+  tokenDecimals?: number | undefined;
   /** Already-connected address, if the wallet was connected elsewhere (e.g. earlier in the form) -- skips asking to connect again. */
-  connectedAddress?: `0x${string}` | null;
+  connectedAddress?: `0x${string}` | null | undefined;
 }>) {
   const [address, setAddress] = useState<`0x${string}` | null>(connectedAddress ?? null);
   const [networkStatus, setNetworkStatus] = useState<'checking' | 'ready' | 'failed'>('checking');

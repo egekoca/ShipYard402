@@ -223,20 +223,27 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .quote-result dd { margin: 0; font-weight: 800; text-align: right; color: var(--ink); }
 .quote-result .primary-button { width: 100%; margin-top: 25px; }
 .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
-.run-created { display: flex; flex-direction: column; gap: 6px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
-/* Compact, always-visible run pipeline embedded directly in the run-created card -- the point is
-   to watch a run actually move (FUNDED -> ... -> DELIVERED_*) without ever leaving this page. The
-   full 5-column pipeline layout only works at page width, so this collapses it to the same
-   single-column stack the site already uses on narrow viewports (see the 800px media query). */
-.inline-progress { margin: 6px 0 2px; padding-top: 14px; border-top: 1px dashed var(--line); font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; }
-.inline-progress .pipeline-rail { display: none; }
-.inline-progress .pipeline-labels { display: flex; flex-direction: column; gap: 10px; padding: 0; text-align: left; }
-.inline-progress .pipeline-label { display: flex; align-items: baseline; gap: 10px; opacity: 1; transform: none; animation: none; }
-.inline-progress .pipeline-label-index { margin-bottom: 0; }
-.inline-progress .pipeline-label p { font-size: 12px; }
-.inline-verdict { margin: 14px 0 0; padding: 14px 16px; gap: 12px; }
-.inline-verdict .run-verdict-label { padding: 6px 12px; font-size: 13px; }
 .wallet-connected { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--ink); }
+/* Once a run exists, it gets its own full-width row below the quote/form grid instead of being
+   crammed into the narrow quote-panel column -- a run's progress (pipeline, verdict, four detail
+   panels) is real content, not a side note, and a two-column layout only gets more lopsided as it
+   grows. Reuses the exact same RunProgressPanels the standalone /runs/[id] page renders, so
+   watching a run resolve never requires leaving this page at all. */
+.run-request { display: flex; flex-direction: column; gap: 24px; }
+.run-progress-section { padding: 28px 32px; background: linear-gradient(165deg, #1b1c21 0%, var(--surface-alt) 55%, #131418 100%); border: 1px solid var(--line); }
+.run-progress-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.run-progress-header .panel-label { display: flex; align-items: center; }
+/* The shared panels assume a full page's fixed 36px gutters (see .run-detail-hero and friends);
+   scoped to zero here since .run-progress-section already supplies its own padding. */
+.run-progress-section .workflow-section,
+.run-progress-section .run-verdict,
+.run-progress-section .run-detail-grid {
+  margin-left: 0;
+  margin-right: 0;
+}
+.run-progress-section .workflow-section { padding: 0 0 40px; }
+.run-progress-section .run-verdict { margin-top: 0; }
+.run-progress-section .run-detail-grid { margin-top: 0; }
 .wallet-pay-panel { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding: 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
 .wallet-pay-panel dl { margin: 0; }
 .wallet-pay-panel dl div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 11px; }
