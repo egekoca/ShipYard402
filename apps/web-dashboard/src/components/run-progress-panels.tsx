@@ -76,8 +76,7 @@ export function RunProgressPanels({
       <div className="run-detail-grid">
         <Panel index="01" label="PAYMENT" state={paymentState} expanded={Boolean(expanded.payment)} onToggle={() => toggle('payment')}
           summary={paymentState === 'ready' ? run.payment.status : 'Awaiting payment'}
-        >
-          {run.payment.paymentRequired?.accepts[0] && (
+          action={run.payment.paymentRequired?.accepts[0] && (
             <WalletPayPanel
               chainId={GOAT_TESTNET3_CHAIN_ID}
               challenge={run.payment.paymentRequired.accepts[0]}
@@ -86,6 +85,7 @@ export function RunProgressPanels({
               connectedAddress={connectedAddress}
             />
           )}
+        >
           <dl>
             <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
             <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
@@ -207,6 +207,7 @@ function Panel({
   summary,
   expanded,
   onToggle,
+  action,
   children,
 }: Readonly<{
   index: string;
@@ -215,6 +216,11 @@ function Panel({
   summary: string;
   expanded: boolean;
   onToggle: () => void;
+  /** Rendered unconditionally, outside the collapsible body -- for an actual action (like
+   * WalletPayPanel) that must stay mounted and visible whether or not the card is expanded.
+   * Collapsing the card to save space shouldn't cost it its in-progress payment/tx state, and
+   * an action the customer still needs to take shouldn't be hidden behind a click to expand. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }>) {
   return (
@@ -229,6 +235,7 @@ function Panel({
         </span>
         <span className="panel-toggle-chevron" aria-hidden="true">+</span>
       </button>
+      {action && <div className="panel-action">{action}</div>}
       {expanded && <div className="panel-body state-in">{children}</div>}
     </div>
   );
