@@ -24,6 +24,12 @@ describe('public API client boundary', () => {
       run: { status: 'PAYMENT_REQUIRED' },
       payment: { orderId: 'flow-order-fixed' },
     });
+
+    // A bodyless POST must never claim content-type: application/json -- Fastify (and any
+    // JSON-body-parsing server) rejects that combination as FST_ERR_CTP_EMPTY_JSON_BODY.
+    const [, requestInit] = fetchImplementation.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(requestInit.body).toBeUndefined();
+    expect((requestInit.headers as Record<string, string>)['content-type']).toBeUndefined();
   });
 
   it('returns null instead of throwing when evidence is not built yet', async () => {

@@ -241,7 +241,14 @@ export class ShipyardApiClient {
   async #request<T>(path: string, init: RequestInit, acceptedErrorStatuses = new Set<number>()): Promise<T> {
     const response = await this.#fetch(new URL(path, this.#baseUrl), {
       ...init,
-      headers: { accept: 'application/json', 'content-type': 'application/json', ...init.headers },
+      headers: {
+        accept: 'application/json',
+        // A JSON content-type on a bodyless request (e.g. requestPaymentChallenge, a pure POST
+        // action) makes Fastify reject it as FST_ERR_CTP_EMPTY_JSON_BODY -- only claim JSON when
+        // there is actually a body to back the claim.
+        ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...init.headers,
+      },
     });
     const payload: unknown = await response.json().catch(() => ({}));
     if (!response.ok && !acceptedErrorStatuses.has(response.status)) {
