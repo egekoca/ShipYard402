@@ -57,6 +57,11 @@ export function ReleaseRunForm() {
   const [runRequestKey, setRunRequestKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Collapsed by default: these are catalog identifiers (a UUID, two 32-byte hashes, two URLs)
+  // that describe exactly which pre-registered service/version/policy the quote is for -- nobody
+  // is meant to type these by hand, they're already filled in from SELF_TEST_TARGET. Shown
+  // collapsed so a first-time visitor sees "what am I testing" in plain language, not a form.
+  const [showTechnical, setShowTechnical] = useState(false);
   const client = useMemo(
     () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
     [],
@@ -140,14 +145,27 @@ export function ReleaseRunForm() {
             </button>
           )}
         </div>
-        <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
-        <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
-        <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
-        <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
-        <Field label="Policy hash" value={form.policyHash} onChange={(value) => update('policyHash', value)} placeholder="0x + 32 bytes" />
-        <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
-        <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
-        <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
+        <div className="target-summary">
+          <p>
+            Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant
+            service on GOAT Testnet3. Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
+          </p>
+          <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
+            {showTechnical ? 'Hide' : 'Show'} technical identifiers
+          </button>
+        </div>
+        {showTechnical && (
+          <>
+            <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
+            <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
+            <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
+            <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
+            <Field label="Policy hash" value={form.policyHash} onChange={(value) => update('policyHash', value)} placeholder="0x + 32 bytes" />
+            <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
+            <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
+            <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
+          </>
+        )}
         <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
           {busy && <span className="spinner" aria-hidden="true" />}
           {!form.requesterAddress ? 'Connect a wallet first' : busy ? 'Checking capability…' : 'Request transparent quote'}
