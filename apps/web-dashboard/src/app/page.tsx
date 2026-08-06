@@ -6,23 +6,32 @@ import { HeroRadar } from '../components/logo';
 import { ProblemSolution } from '../components/problem-solution';
 import { ReleaseRunForm } from '../components/release-run-form';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
+import { SiteHeader } from '../components/site-header';
 import { ThreatCoverage } from '../components/threat-coverage';
 
 function delayStyle(ms: number): CSSProperties {
   return { '--delay': `${ms}ms` } as CSSProperties;
 }
 
+/**
+ * The base text renders normally (solid color, always fully visible) -- the shine is a separate,
+ * absolutely-positioned duplicate layered on top with a mostly-transparent gradient clipped to its
+ * own text shape. That way a shine that fails to render for any reason just means "no shine right
+ * now", never "the headline is unreadable": the real text underneath is never touched.
+ */
+function ShimmerText({ children }: Readonly<{ children: string }>) {
+  return (
+    <span className="shimmer-text-wrap">
+      {children}
+      <span className="shimmer-overlay" aria-hidden="true">{children}</span>
+    </span>
+  );
+}
+
 export default function HomePage() {
   return (
     <main>
-      <header className="nav-shell">
-        <a className="brand" href="#top" aria-label="Shipyard402 home">
-          {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no next/image config needed for a 42px mark */}
-          <span className="brand-mark"><img src="/logo-mark.png" alt="" className="brand-mark-icon" /></span>
-          <span>SHIPYARD402</span>
-        </a>
-        <div className="network-pill"><span /> GOAT TESTNET3</div>
-      </header>
+      <SiteHeader homeHref="#top" />
 
       <section className="hero" id="top">
         <HeroRadar className="hero-radar" />
@@ -32,9 +41,9 @@ export default function HomePage() {
         </div>
         <div className="eyebrow hero-in" style={delayStyle(40)}><i>[00]</i> AUTONOMOUS RELEASE ASSURANCE</div>
         <h1>
-          <span className="hero-in" style={delayStyle(80)}><span className="shimmer-text">Prove the paid path.</span></span>
+          <span className="hero-in" style={delayStyle(80)}><ShimmerText>Prove the paid path.</ShimmerText></span>
           <br />
-          <em className="hero-in" style={delayStyle(200)}><span className="shimmer-text shimmer-text--gold">Before users find the drift.</span></em>
+          <em className="hero-in" style={delayStyle(200)}><ShimmerText>Before users find the drift.</ShimmerText></em>
         </h1>
         <p className="hero-copy hero-in" style={delayStyle(340)}>
           Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound

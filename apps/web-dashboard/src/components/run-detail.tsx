@@ -4,6 +4,7 @@ import { explorerTxUrl, ipfsGatewayUrl, shortHash, useRunProgress } from '../hoo
 import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
+import { SiteHeader } from './site-header';
 import { WalletPayPanel } from './wallet-pay-panel';
 
 const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
@@ -14,14 +15,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
   return (
     <main className="run-detail">
-      <header className="nav-shell">
-        <a className="brand" href="/" aria-label="Shipyard402 home">
-          {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no next/image config needed for a 42px mark */}
-          <span className="brand-mark"><img src="/logo-mark.png" alt="" className="brand-mark-icon" /></span>
-          <span>SHIPYARD402</span>
-        </a>
-        <div className="network-pill"><span /> GOAT TESTNET3</div>
-      </header>
+      <SiteHeader homeHref="/" />
 
       <section className="run-detail-hero">
         <span className="eyebrow"><i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}</span>
