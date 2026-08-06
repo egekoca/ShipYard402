@@ -43,6 +43,7 @@ export class OrchestratorJobHandler {
       const result = await this.#runPipeline(job.runId, this.#deps);
       return { action: 'ACK', finalStatus: result.finalStatus, attestationTransactionHash: result.attestationTransactionHash };
     } catch (error) {
+      console.error(`[orchestrator-worker] pipeline failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`, error);
       if (error instanceof RunNotReadyForOrchestrationError) {
         return { action: 'DEAD_LETTER', reason: 'UNEXPECTED_RUN_STATE' };
       }
