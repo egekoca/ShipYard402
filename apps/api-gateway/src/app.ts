@@ -38,6 +38,9 @@ export type RuntimeStatus = Readonly<{
   persistence: 'postgresql' | 'memory';
   database: 'connected' | 'unavailable' | 'not_configured';
   merchantPayments: 'configured' | 'not_configured';
+  /** True only once a reviewed merchant capability is configured AND it targets GOAT mainnet -- a
+   * testnet3 merchant, however fully configured, must never report this as true. */
+  mainnetWritesEnabled: boolean;
 }>;
 
 export interface RuntimeStatusProvider {
@@ -110,11 +113,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
           persistence: 'memory' as const,
           database: 'not_configured' as const,
           merchantPayments: dependencies.merchantAdapter ? 'configured' as const : 'not_configured' as const,
+          mainnetWritesEnabled: false,
         };
     return reply.code(runtime.status === 'unavailable' ? 503 : 200).send({
       ...runtime,
       service: 'shipyard402-api-gateway',
-      mainnetWritesEnabled: false,
       assuranceClaim: 'version-policy-expiry-scoped-execution-evidence',
     });
   });
