@@ -90,7 +90,10 @@ export type AppDependencies = Readonly<{
 }>;
 
 export function createApp(dependencies: AppDependencies): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 256 * 1024 });
+  const app = Fastify({
+    logger: { level: process.env['NODE_ENV'] === 'test' ? 'silent' : 'info' },
+    bodyLimit: 256 * 1024,
+  });
   const now = dependencies.now ?? (() => new Date());
   const idFactory = dependencies.idFactory ?? randomUUID;
 

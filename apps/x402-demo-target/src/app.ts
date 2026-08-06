@@ -68,7 +68,7 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
   const purchaseLedger = options.purchase?.purchaseLedger ?? new InMemoryPurchaseLedger();
   const now = options.now ?? (() => new Date());
   const providerSigner = options.providerSignerPrivateKey ? createProviderSigner(options.providerSignerPrivateKey) : undefined;
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: { level: process.env['NODE_ENV'] === 'test' ? 'silent' : 'info' } });
 
   async function sendPaidResourceReply(reply: FastifyReply, statusCode: number, payload: unknown): Promise<void> {
     const bodyText = JSON.stringify(payload);
