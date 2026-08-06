@@ -5,5 +5,6 @@ Evidence in this directory is explicitly environment-scoped. Testnet smoke evide
 - [GOAT Testnet3 smoke — 2026-08-04](./testnet3-smoke-2026-08-04.md)
 - [GOAT Testnet3 orchestrator mechanism verification — 2026-08-05](./testnet3-orchestrator-run-2026-08-05.md)
 - [GOAT Testnet3 test ERC-20 for the wallet-pay flow — 2026-08-05](./testnet3-test-token-2026-08-05.md)
+- [GOAT Testnet3 first fully real end-to-end run — 2026-08-06](./testnet3-full-real-run-2026-08-06.md)
 
 Private request bodies, authorization payloads, payment proofs, credentials, and signer material must never be stored here.
