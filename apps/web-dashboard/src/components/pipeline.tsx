@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 
+import { RadarMark } from './logo';
+
 export type PipelineProps = Readonly<{
   steps: readonly string[];
   /** -1 = nothing started yet; steps.length = everything done. */
@@ -51,16 +53,19 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
         })}
       </div>
       <div className="pipeline-labels">
-        {steps.map((step, index) => (
-          <div
-            key={step}
-            className={`pipeline-label${index < activeIndex ? ' is-done' : ''}${index === activeIndex ? ' is-active' : ''}`}
-            style={{ '--delay': `${index * 90}ms` } as CSSProperties}
-          >
-            <span className="pipeline-label-index">{String(index + 1).padStart(2, '0')}</span>
-            <p>{step}</p>
-          </div>
-        ))}
+        {steps.map((step, index) => {
+          const isActive = index === activeIndex;
+          return (
+            <div
+              key={step}
+              className={`pipeline-label${index < activeIndex ? ' is-done' : ''}${isActive ? ' is-active' : ''}`}
+              style={{ '--delay': `${index * 90}ms` } as CSSProperties}
+            >
+              <span className="pipeline-label-index">{String(index + 1).padStart(2, '0')}</span>
+              <p>{step}{isActive && <RadarMark className="pipeline-label-radar" />}</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

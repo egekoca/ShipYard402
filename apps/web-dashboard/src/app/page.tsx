@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
 import { AnimatedWorkflow } from '../components/animated-workflow';
+import { NetworkMark } from '../components/icons';
 import { HeroRadar } from '../components/logo';
 import { ProblemSolution } from '../components/problem-solution';
 import { ReleaseRunForm } from '../components/release-run-form';
@@ -25,11 +26,15 @@ export default function HomePage() {
 
       <section className="hero" id="top">
         <HeroRadar className="hero-radar" />
-        <div className="eyebrow hero-in" style={delayStyle(0)}><i>[00]</i> AUTONOMOUS RELEASE ASSURANCE</div>
+        <div className="hero-network-badge hero-in" style={delayStyle(0)}>
+          <NetworkMark className="hero-network-icon" />
+          GOAT TESTNET3
+        </div>
+        <div className="eyebrow hero-in" style={delayStyle(40)}><i>[00]</i> AUTONOMOUS RELEASE ASSURANCE</div>
         <h1>
-          <span className="hero-in" style={delayStyle(80)}>Prove the paid path.</span>
+          <span className="hero-in" style={delayStyle(80)}><span className="shimmer-text">Prove the paid path.</span></span>
           <br />
-          <em className="hero-in" style={delayStyle(200)}>Before users find the drift.</em>
+          <em className="hero-in" style={delayStyle(200)}><span className="shimmer-text shimmer-text--gold">Before users find the drift.</span></em>
         </h1>
         <p className="hero-copy hero-in" style={delayStyle(340)}>
           Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound
