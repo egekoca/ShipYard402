@@ -10,7 +10,9 @@ const isDevServer = process.env.NODE_ENV !== 'production';
 const scriptSrc = isDevServer ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self' 'unsafe-inline'";
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // Vercel packages and serves the build itself; 'standalone' is for self-hosting (Docker etc.)
+  // and is unnecessary there. Vercel sets VERCEL=1 in every build it runs.
+  ...(process.env['VERCEL'] ? {} : { output: 'standalone' }),
   poweredByHeader: false,
   reactStrictMode: true,
   transpilePackages: ['@shipyard402/public-api-client'],

@@ -100,7 +100,18 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
   }
 }
 
-async function start(): Promise<void> {
+export type BuiltApp = Readonly<{
+  app: ReturnType<typeof createApp>;
+  pool: ReturnType<typeof createShipyardPool>;
+  config: ReturnType<typeof parseRuntimeConfig>;
+}>;
+
+/**
+ * Everything short of actually binding a port -- shared by the long-running local/production
+ * process (start(), below) and the Vercel serverless entrypoint (api/index.ts), which must never
+ * call app.listen() itself since Vercel owns the request/response lifecycle.
+ */
+export async function buildApp(): Promise<BuiltApp> {
   const config = parseRuntimeConfig(process.env);
   const pool = createShipyardPool({
     connectionString: config.database.connectionString,
@@ -166,6 +177,12 @@ async function start(): Promise<void> {
     ...(merchantAdapter ? { merchantAdapter } : {}),
   });
 
+  return { app, pool, config };
+}
+
+async function start(): Promise<void> {
+  const { app, pool, config } = await buildApp();
+
   try {
     await app.listen({ host: config.host, port: config.port });
   } catch (error) {
@@ -194,4 +211,9 @@ function sameAddress(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase();
 }
 
-await start();
+// Only bind a port when this file is run directly (`node server.js` / `tsx src/server.ts`) --
+// not when it's imported purely for buildApp(), as the Vercel serverless entrypoint does. Vercel
+// owns the request/response lifecycle itself and must never see this process try to listen.
+const isDirectlyExecuted = process.argv[1] !== undefined
+  && import.meta.url === `file://${process.argv[1]}`;
+if (isDirectlyExecuted) await start();

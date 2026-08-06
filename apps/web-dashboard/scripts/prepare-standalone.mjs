@@ -1,6 +1,10 @@
 import { cp, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+// Vercel builds without output: 'standalone' (see next.config.ts) -- no .next/standalone exists
+// to populate, and there's nothing for this self-host-only step to do.
+if (process.env.VERCEL) process.exit(0);
+
 const applicationRoot = resolve(import.meta.dirname, '..');
 const standaloneRoot = resolve(applicationRoot, '.next/standalone/apps/web-dashboard');
 
