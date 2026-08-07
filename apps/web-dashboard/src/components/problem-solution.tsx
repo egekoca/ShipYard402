@@ -3,16 +3,16 @@
 import { useReveal } from '../hooks/use-reveal';
 import { ShieldAlertMark, ShieldCheckMark } from './icons';
 
-const WITHOUT = [
-  'Releases ship on hope -- nobody re-tests the paid path after the code changes.',
-  'A broken payment check is discovered by an angry customer, not by you.',
-  'The only proof anything was tested is someone’s word for it.',
+const WITHOUT: readonly { lead: string; highlight: string }[] = [
+  { lead: 'Releases ship on hope.', highlight: 'Nobody re-tests the paid path after the code changes.' },
+  { lead: 'A broken payment check is discovered by an angry customer,', highlight: 'not by you.' },
+  { lead: 'The only proof anything was tested is', highlight: 'someone’s word for it.' },
 ];
 
-const WITH = [
-  'Every release pays the real endpoint for real, then tries to break it before a customer can.',
-  'A broken payment check fails the release gate -- before it ever reaches someone paying.',
-  'Every run leaves a signed, on-chain record: what was tested, when, against which exact version.',
+const WITH: readonly { lead: string; highlight: string }[] = [
+  { lead: 'Every release pays the real endpoint for real, then', highlight: 'tries to break it before a customer can.' },
+  { lead: 'A broken payment check fails the release gate,', highlight: 'before it ever reaches someone paying.' },
+  { lead: 'Every run leaves a signed, on-chain record:', highlight: 'what was tested, when, against which exact version.' },
 ];
 
 export function ProblemSolution() {
@@ -34,7 +34,10 @@ export function ProblemSolution() {
           <span className="compare-label compare-label--before">WITHOUT SHIPYARD402</span>
           <ul>
             {WITHOUT.map((item) => (
-              <li key={item}><span className="compare-mark compare-mark--bad" aria-hidden="true">&#10005;</span>{item}</li>
+              <li key={item.lead}>
+                <span className="compare-mark compare-mark--bad" aria-hidden="true">&#10005;</span>
+                {item.lead} <strong className="compare-highlight compare-highlight--bad">{item.highlight}</strong>
+              </li>
             ))}
           </ul>
         </div>
@@ -43,7 +46,10 @@ export function ProblemSolution() {
           <span className="compare-label compare-label--after">WITH SHIPYARD402</span>
           <ul>
             {WITH.map((item) => (
-              <li key={item}><span className="compare-mark compare-mark--good" aria-hidden="true">&#10003;</span>{item}</li>
+              <li key={item.lead}>
+                <span className="compare-mark compare-mark--good" aria-hidden="true">&#10003;</span>
+                {item.lead} <strong className="compare-highlight compare-highlight--good">{item.highlight}</strong>
+              </li>
             ))}
           </ul>
         </div>

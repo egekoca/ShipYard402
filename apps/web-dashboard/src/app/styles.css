@@ -379,8 +379,12 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .compare-card { padding: 30px; background: linear-gradient(155deg, #18191d 0%, var(--surface) 55%, #101114 100%); border: 1px solid var(--line); opacity: 0; transform: translateY(14px); transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1), box-shadow .4s ease, border-color .4s ease; }
 .problem-solution.is-visible .compare-card { opacity: 1; transform: translateY(0); }
 .problem-solution.is-visible .compare-card--after { transition-delay: .12s; }
-.compare-card--before:hover { border-color: rgba(255, 82, 82, .4); }
+/* The shared .glow-card:hover rule bakes in a gold drop-shadow -- overriding just the border and
+   ring-sweep here left that gold shadow showing through underneath the "bad" card, so the whole
+   card read as glowing yellow on hover instead of red. The box-shadow needs its own override too. */
+.compare-card--before:hover { border-color: rgba(255, 82, 82, .4); box-shadow: 0 26px 48px -22px rgba(255, 82, 82, .4); }
 .compare-card--before:hover::before { background: conic-gradient(from var(--card-angle), transparent 0deg 250deg, #ffcccc 285deg, var(--danger) 305deg, #ffcccc 325deg, transparent 360deg); }
+.compare-card--after:hover { box-shadow: 0 26px 48px -22px rgba(240, 196, 25, .4); }
 .compare-icon { display: block; width: 38px; height: 38px; margin-bottom: 16px; }
 .compare-icon--bad { color: var(--danger); }
 .compare-icon--good { color: var(--gold); }
@@ -393,6 +397,9 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .compare-mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .compare-mark--bad { color: var(--danger); background: var(--danger-deep); }
 .compare-mark--good { color: var(--gold-ink); background: var(--gold); }
+.compare-highlight { font-weight: 900; }
+.compare-highlight--bad { color: var(--danger); }
+.compare-highlight--good { color: var(--gold); }
 
 .threat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 24px; }
 .threat-card {

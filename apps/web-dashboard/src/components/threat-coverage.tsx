@@ -6,7 +6,7 @@ const THREATS = [
   {
     index: '01',
     title: 'Reusing a paid receipt',
-    body: 'A customer pays once, then presents that same payment receipt again to pull the paid resource a second time -- a tenth time, forever, for free -- because nothing tracks whether it was already spent.',
+    body: 'A customer pays once, then presents that same payment receipt again to pull the paid resource a second time, a tenth time, forever, for free, because nothing tracks whether it was already spent.',
     scenario: 'payment-proof-replay',
   },
   {
@@ -18,7 +18,7 @@ const THREATS = [
   {
     index: '03',
     title: 'Accepting a forged receipt',
-    body: 'A tampered or corrupted receipt is accepted as if it were genuine, because the service checks that something was presented -- not that what was presented is real.',
+    body: 'A tampered or corrupted receipt is accepted as if it were genuine, because the service checks that something was presented, not that what was presented is real.',
     scenario: 'tampered-receipt-rejection',
   },
 ];
@@ -33,7 +33,7 @@ export function ThreatCoverage() {
           <span className="eyebrow"><i>[02]</i> WHAT WE CATCH</span>
           <h2>Three ways a paid endpoint quietly leaks money.</h2>
         </div>
-        <p>Every run pays the target for real, then really tries all three against it -- not a checklist, an attempt.</p>
+        <p>Every run pays the target for real, then really tries all three against it, not a checklist, an attempt.</p>
       </div>
 
       <div className="threat-grid">
