@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { runMandateSchema } from './mandate.js';
+import { isForbiddenHost, runMandateSchema } from './mandate.js';
 import { authorizePurchase } from './purchase-authorization.js';
 
 const mandate = runMandateSchema.parse({
@@ -76,6 +76,18 @@ describe('policy-bound purchase authorization', () => {
   it('rejects localhost and private IPs in a mandate', () => {
     expect(() => runMandateSchema.parse({ ...mandate, allowedHosts: ['localhost'] })).toThrow();
     expect(() => runMandateSchema.parse({ ...mandate, allowedHosts: ['10.0.0.1'] })).toThrow();
+  });
+
+  it('recognizes IPv4-mapped and IPv4-compatible IPv6 forms of a forbidden address', () => {
+    // These are exactly the addresses a DNS-rebinding AAAA answer could hand to egress-broker's
+    // assertHostAllowed -- isForbiddenHost must catch the embedded IPv4 address, not just the
+    // outer IPv6 literal, or the SSRF guard it backs is trivially bypassed.
+    expect(isForbiddenHost('::ffff:169.254.169.254')).toBe(true);
+    expect(isForbiddenHost('::ffff:127.0.0.1')).toBe(true);
+    expect(isForbiddenHost('::127.0.0.1')).toBe(true);
+    expect(isForbiddenHost('::ffff:a9fe:a9fe')).toBe(true); // hex form of 169.254.169.254
+    // A mapped *public* address must still be allowed -- this only closes the private-range gap.
+    expect(isForbiddenHost('::ffff:203.0.113.10')).toBe(false);
   });
 
   it('blocks self-dealing providers and terminal-run spend', () => {

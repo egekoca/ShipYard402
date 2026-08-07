@@ -72,9 +72,29 @@ export function isForbiddenHost(host: string): boolean {
   const ipVersion = isIP(canonical);
   if (ipVersion === 4) return isForbiddenIpv4(canonical);
   if (ipVersion === 6) {
-    return canonical === '::1' || canonical === '::' || canonical.startsWith('fc') || canonical.startsWith('fd') || canonical.startsWith('fe80:');
+    if (canonical === '::1' || canonical === '::' || canonical.startsWith('fc') || canonical.startsWith('fd') || canonical.startsWith('fe80:')) {
+      return true;
+    }
+    // An IPv4-mapped (::ffff:a.b.c.d) or IPv4-compatible (::a.b.c.d) IPv6 literal is a valid,
+    // resolvable answer for a plain A-record-only guard to miss -- unwrap the embedded IPv4
+    // address and run it through the same private/loopback/metadata checks, instead of only ever
+    // checking the outer IPv6 form.
+    const mappedIpv4 = extractIpv4MappedAddress(canonical);
+    if (mappedIpv4) return isForbiddenIpv4(mappedIpv4);
   }
   return false;
+}
+
+function extractIpv4MappedAddress(canonicalIpv6: string): string | null {
+  const dottedQuad = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i.exec(canonicalIpv6);
+  if (dottedQuad?.[1]) return dottedQuad[1];
+  const hexGroups = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(canonicalIpv6);
+  if (hexGroups?.[1] && hexGroups[2]) {
+    const high = Number.parseInt(hexGroups[1], 16);
+    const low = Number.parseInt(hexGroups[2], 16);
+    return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+  }
+  return null;
 }
 
 function isForbiddenIpv4(ip: string): boolean {

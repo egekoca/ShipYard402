@@ -27,6 +27,16 @@ describe('createEgressSafeFetch', () => {
     expect(baseFetch).not.toHaveBeenCalled();
   });
 
+  it('refuses a hostname whose DNS answer is a metadata IP in IPv4-mapped IPv6 form', async () => {
+    const baseFetch = vi.fn();
+    const egressFetch = createEgressSafeFetch(baseFetch, {
+      resolveHost: fakeResolver({ 'api.example.com': ['::ffff:169.254.169.254'] }),
+    });
+
+    await expect(egressFetch('https://api.example.com/data')).rejects.toThrow(EgressForbiddenError);
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
   it('refuses a hostname that resolves to a private address (DNS rebinding)', async () => {
     const baseFetch = vi.fn();
     const egressFetch = createEgressSafeFetch(baseFetch, {
@@ -60,6 +70,38 @@ describe('createEgressSafeFetch', () => {
     const response = await egressFetch('https://a.example.com/start');
     expect(response.status).toBe(200);
     expect(baseFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('strips caller-supplied headers before following a redirect into a different origin', async () => {
+    const baseFetch = vi.fn()
+      .mockResolvedValueOnce(redirectResponse('https://b.example.com/next', 302))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    const egressFetch = createEgressSafeFetch(baseFetch, {
+      resolveHost: fakeResolver({ 'a.example.com': ['203.0.113.10'], 'b.example.com': ['203.0.113.11'] }),
+    });
+
+    await egressFetch('https://a.example.com/start', {
+      headers: { 'x-payment-receipt': 'secret-receipt', 'x-idempotency-key': 'secret-key', accept: 'application/json' },
+    });
+
+    const secondCallHeaders = new Headers((baseFetch.mock.calls[1]?.[1] as { headers?: HeadersInit }).headers);
+    expect(secondCallHeaders.get('x-payment-receipt')).toBeNull();
+    expect(secondCallHeaders.get('x-idempotency-key')).toBeNull();
+    expect(secondCallHeaders.get('accept')).toBe('application/json');
+  });
+
+  it('keeps caller-supplied headers across a same-origin redirect', async () => {
+    const baseFetch = vi.fn()
+      .mockResolvedValueOnce(redirectResponse('https://a.example.com/next', 302))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    const egressFetch = createEgressSafeFetch(baseFetch, {
+      resolveHost: fakeResolver({ 'a.example.com': ['203.0.113.10'] }),
+    });
+
+    await egressFetch('https://a.example.com/start', { headers: { 'x-payment-receipt': 'secret-receipt' } });
+
+    const secondCallHeaders = new Headers((baseFetch.mock.calls[1]?.[1] as { headers?: HeadersInit }).headers);
+    expect(secondCallHeaders.get('x-payment-receipt')).toBe('secret-receipt');
   });
 
   it('refuses to follow a redirect into a forbidden host mid-chain', async () => {

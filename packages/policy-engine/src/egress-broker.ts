@@ -44,7 +44,15 @@ export function createEgressSafeFetch(
 
       const location = response.headers.get('location');
       if (!location) return response;
-      url = new URL(location, url);
+      const nextUrl = new URL(location, url);
+      if (nextUrl.origin !== url.origin) {
+        // Anything the caller put in headers (payment receipts, idempotency keys, auth tokens)
+        // was meant for the origin they asked for, not for wherever a 3xx from that origin points
+        // next -- a compromised or malicious target could otherwise redirect to a host it controls
+        // and simply read those secrets back out of the replayed request.
+        currentInit = stripCrossOriginHeaders(currentInit);
+      }
+      url = nextUrl;
       currentInit = downgradeForRedirect(response.status, currentInit);
     }
     throw new EgressForbiddenError(`Refused to follow more than ${maxRedirects} redirects`);
@@ -71,6 +79,19 @@ async function defaultResolveHost(hostname: string): Promise<readonly string[]> 
   const results = await lookup(hostname, { all: true, verbatim: true });
   if (results.length === 0) throw new EgressForbiddenError(`DNS resolution returned no addresses for ${hostname}`);
   return results.map((result) => result.address);
+}
+
+// Content negotiation headers are safe to keep pointed at a new origin; everything else the
+// caller supplied (auth tokens, payment receipts, idempotency keys, cookies) is not.
+const CROSS_ORIGIN_SAFE_HEADERS = new Set(['accept', 'content-type']);
+
+function stripCrossOriginHeaders(init: FetchInit): FetchInit {
+  if (!init?.headers) return init;
+  const filtered = new Headers();
+  for (const [name, value] of new Headers(init.headers)) {
+    if (CROSS_ORIGIN_SAFE_HEADERS.has(name.toLowerCase())) filtered.set(name, value);
+  }
+  return { ...init, headers: filtered };
 }
 
 function toUrl(input: FetchInput): URL {
