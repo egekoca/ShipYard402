@@ -4,10 +4,21 @@
 # dev workers never do, so without this a production run just sits stuck forever with no worker
 # watching it. Restarts either process a few seconds after it exits for any reason (a dropped
 # pooled connection, a transient network blip) instead of leaving production unattended.
+#
+# Never hardcode the connection string here -- this file is committed to a public repo. Pass it
+# in the environment instead, e.g.:
+#   DATABASE_URL="$(vercel env pull --environment=production -y /dev/stdout 2>/dev/null | grep '^DATABASE_URL=' | cut -d= -f2- | tr -d '"')" \
+#     ./scripts/vercel-prod-workers-supervisor.sh
 set -uo pipefail
 
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "DATABASE_URL is not set. Pass the real Neon production connection string in the environment," >&2
+  echo "never hardcode it in this file. See the comment at the top of this script." >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export DATABASE_URL="postgresql://neondb_owner:REDACTED-ROTATED-CREDENTIAL@ep-icy-leaf-avbxe6rb-pooler.c-11.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require"
+export DATABASE_URL
 export DATABASE_TLS=true
 
 run_payment_worker() {
