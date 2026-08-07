@@ -78,12 +78,12 @@ function testApp(
     quoteEngine: new QuoteEngine(
       {
         pricingStatus: 'HYPOTHESIS',
-        baseOrchestrationFeeAtomic: '2000000',
-        mandatoryToolBudgetAtomic: '1200000',
-        dynamicToolBudgetAtomic: '600000',
-        modelInfrastructureReserveAtomic: '350000',
-        chainStorageReserveAtomic: '150000',
-        riskSupportReserveAtomic: '400000',
+        feeRateBps: 500,
+        mandatoryToolBudgetAtomic: '800000',
+        dynamicToolBudgetAtomic: '300000',
+        modelInfrastructureReserveAtomic: '100000',
+        chainStorageReserveAtomic: '50000',
+        riskSupportReserveAtomic: '100000',
         quoteTtlSeconds: 900,
       },
       () => 'quote-fixed',
@@ -110,7 +110,7 @@ describe('api gateway vertical slice', () => {
       capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
       quoteEngine: new QuoteEngine({
         pricingStatus: 'HYPOTHESIS',
-        baseOrchestrationFeeAtomic: '1',
+        feeRateBps: 500,
         mandatoryToolBudgetAtomic: '1',
         dynamicToolBudgetAtomic: '1',
         modelInfrastructureReserveAtomic: '1',
@@ -144,7 +144,7 @@ describe('api gateway vertical slice', () => {
       capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
       quoteEngine: new QuoteEngine({
         pricingStatus: 'HYPOTHESIS',
-        baseOrchestrationFeeAtomic: '1',
+        feeRateBps: 500,
         mandatoryToolBudgetAtomic: '1',
         dynamicToolBudgetAtomic: '1',
         modelInfrastructureReserveAtomic: '1',
@@ -198,7 +198,7 @@ describe('api gateway vertical slice', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
       pricingStatus: 'HYPOTHESIS',
-      totalAtomicAmount: '4700000',
+      totalAtomicAmount: '1421052',
       nextAction: 'CREATE_GOAT_FLOW_ERC20_DIRECT_ORDER',
     });
   });

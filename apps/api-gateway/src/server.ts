@@ -182,12 +182,14 @@ export async function buildApp(): Promise<BuiltApp> {
     capabilityProvider,
     quoteEngine: new QuoteEngine({
       pricingStatus: 'HYPOTHESIS',
-      baseOrchestrationFeeAtomic: '2000000',
-      mandatoryToolBudgetAtomic: '1200000',
-      dynamicToolBudgetAtomic: '600000',
-      modelInfrastructureReserveAtomic: '350000',
-      chainStorageReserveAtomic: '150000',
-      riskSupportReserveAtomic: '400000',
+      // Shipyard's revenue is a 5% take rate on the run's actual pass-through costs below, not a
+      // flat fee -- those costs are themselves kept minimal (AI call, chain gas, contingency).
+      feeRateBps: 500,
+      mandatoryToolBudgetAtomic: '800000',
+      dynamicToolBudgetAtomic: '300000',
+      modelInfrastructureReserveAtomic: '100000',
+      chainStorageReserveAtomic: '50000',
+      riskSupportReserveAtomic: '100000',
       quoteTtlSeconds: 900,
     }),
     quoteRepository,

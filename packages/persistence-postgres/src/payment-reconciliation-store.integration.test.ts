@@ -164,7 +164,7 @@ async function createPaymentRequiredRun(pool: Pool, label: string): Promise<Paym
 
   const quote = new QuoteEngine({
     pricingStatus: 'HYPOTHESIS',
-    baseOrchestrationFeeAtomic: '100',
+    feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
     mandatoryToolBudgetAtomic: '100',
     dynamicToolBudgetAtomic: '100',
     modelInfrastructureReserveAtomic: '100',

@@ -15,16 +15,18 @@ Shipyard402 sells a single, narrow product: **version-scoped, policy-scoped, exp
 
 ## Revenue mechanics
 
-`packages/quote-engine` computes every quote as a sum of line items (`QuoteEngine.createQuote`), capped by the requester's declared `maximumCustomerBudgetAtomic`. This is implemented and unit-tested, not aspirational. The numbers currently wired into `apps/api-gateway/src/server.ts` are explicitly marked `pricingStatus: 'HYPOTHESIS'` — placeholder testnet figures, not launch pricing:
+`packages/quote-engine` computes every quote as a sum of line items (`QuoteEngine.createQuote`), capped by the requester's declared `maximumCustomerBudgetAtomic`. This is implemented and unit-tested, not aspirational. Shipyard's own fee is a **5% take rate** on the pass-through costs below (`feeRateBps: 500`), not a flat charge — it is solved so `baseOrchestrationFeeAtomic / totalAtomicAmount == 5%` for every quote, so a cheap run isn't overcharged and an expensive one isn't undercharged. The numbers currently wired into `apps/api-gateway/src/server.ts` are explicitly marked `pricingStatus: 'HYPOTHESIS'` — placeholder testnet figures, not launch pricing, and deliberately kept minimal:
 
 | Line item | Atomic amount | What it actually is |
 |---|---|---|
-| `baseOrchestrationFeeAtomic` | 2,000,000 | Shipyard's actual take — the only line that is pure revenue |
-| `mandatoryToolBudgetAtomic` | 1,200,000 | Pass-through: pays the target service for the paid call(s) the mandatory scenario makes against it |
-| `dynamicToolBudgetAtomic` | 600,000 | Pass-through: headroom for AI-proposed scenarios, clamped by the deterministic compiler (ADR-0006) |
-| `modelInfrastructureReserveAtomic` | 350,000 | Covers the OpenAI risk-classification call |
-| `chainStorageReserveAtomic` | 150,000 | Covers attestation-transaction gas |
-| `riskSupportReserveAtomic` | 400,000 | Contingency buffer |
+| `mandatoryToolBudgetAtomic` | 800,000 | Pass-through: pays the target service for the paid call(s) the mandatory scenario makes against it |
+| `dynamicToolBudgetAtomic` | 300,000 | Pass-through: headroom for AI-proposed scenarios, clamped by the deterministic compiler (ADR-0006) |
+| `modelInfrastructureReserveAtomic` | 100,000 | Covers the OpenAI risk-classification call |
+| `chainStorageReserveAtomic` | 50,000 | Covers attestation-transaction gas |
+| `riskSupportReserveAtomic` | 100,000 | Contingency buffer |
+| `baseOrchestrationFeeAtomic` | 71,052 (derived) | Shipyard's actual take — 5% of the 1,350,000 pass-through total above, the only line that is pure revenue |
+
+Total for the current placeholder configuration: 1,421,052 atomic units (down from an earlier flat-fee version that totaled 4,700,000) — most of that drop is the reserve lines above being cut to more realistic minimums, not just the fee switching from flat to percentage.
 
 `mandatoryToolBudgetAtomic + dynamicToolBudgetAtomic` is reported back to the customer as `refundableToolBudgetAtomic` — the ceiling of what *could* be spent testing the target, not what necessarily will be. Once procurement spends its (typically much smaller) fixed amount, `apps/orchestrator-worker` sends the unspent difference back to the requester as a real ERC20 transfer, checkpointed the same way as the procurement payment and attestation so a resumed run never double-refunds. This is wired but disabled by default (`ORCHESTRATOR_REFUNDS_ENABLED=false`) — see **Known gaps** for why.
 

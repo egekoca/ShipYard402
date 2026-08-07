@@ -24,7 +24,7 @@ const capability = {
 } as const;
 
 const quote: Quote = new QuoteEngine({
-  pricingStatus: 'HYPOTHESIS', baseOrchestrationFeeAtomic: '100', mandatoryToolBudgetAtomic: '100',
+  pricingStatus: 'HYPOTHESIS', feeRateBps: 1667, mandatoryToolBudgetAtomic: '100',
   dynamicToolBudgetAtomic: '100', modelInfrastructureReserveAtomic: '100',
   chainStorageReserveAtomic: '100', riskSupportReserveAtomic: '100', quoteTtlSeconds: 900,
 }, () => 'fixed').createQuote({

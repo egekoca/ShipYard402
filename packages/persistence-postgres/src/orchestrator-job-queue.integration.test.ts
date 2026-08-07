@@ -52,7 +52,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     const now = new Date();
     const quote = new QuoteEngine({
       pricingStatus: 'HYPOTHESIS',
-      baseOrchestrationFeeAtomic: '100',
+      feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
       mandatoryToolBudgetAtomic: '100',
       dynamicToolBudgetAtomic: '100',
       modelInfrastructureReserveAtomic: '100',

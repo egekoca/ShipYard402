@@ -27,7 +27,12 @@ export type QuoteRequest = z.infer<typeof quoteRequestSchema>;
 
 export type QuotePricingPolicy = Readonly<{
   pricingStatus: 'HYPOTHESIS';
-  baseOrchestrationFeeAtomic: string;
+  /**
+   * Shipyard's take rate, in basis points (500 = 5%), applied to the sum of the pass-through
+   * cost line items below -- not a flat fee. A flat fee overcharges a cheap run and undercharges
+   * an expensive one; a take rate scales with what the run actually costs to operate.
+   */
+  feeRateBps: number;
   mandatoryToolBudgetAtomic: string;
   dynamicToolBudgetAtomic: string;
   modelInfrastructureReserveAtomic: string;
@@ -78,15 +83,21 @@ export class QuoteEngine {
 
   createQuote(input: QuoteRequest, capability: FlowRuntimeCapability, now: Date): Quote {
     const request = quoteRequestSchema.parse(input);
-    const lineItems = {
-      baseOrchestrationFeeAtomic: this.#pricing.baseOrchestrationFeeAtomic,
+    const passThroughCosts = {
       mandatoryToolBudgetAtomic: this.#pricing.mandatoryToolBudgetAtomic,
       dynamicToolBudgetAtomic: this.#pricing.dynamicToolBudgetAtomic,
       modelInfrastructureReserveAtomic: this.#pricing.modelInfrastructureReserveAtomic,
       chainStorageReserveAtomic: this.#pricing.chainStorageReserveAtomic,
       riskSupportReserveAtomic: this.#pricing.riskSupportReserveAtomic,
     };
-    const total = Object.values(lineItems).reduce((sum, value) => sum + parseAtomicAmount(value), 0n);
+    const passThroughTotal = Object.values(passThroughCosts).reduce((sum, value) => sum + parseAtomicAmount(value), 0n);
+    // Solving fee / (fee + passThroughTotal) = feeRateBps / 10_000 for fee.
+    const feeAtomic = (passThroughTotal * BigInt(this.#pricing.feeRateBps)) / BigInt(10_000 - this.#pricing.feeRateBps);
+    const lineItems = {
+      baseOrchestrationFeeAtomic: feeAtomic.toString(),
+      ...passThroughCosts,
+    };
+    const total = passThroughTotal + feeAtomic;
     if (total > parseAtomicAmount(request.maximumCustomerBudgetAtomic)) {
       throw new QuoteBudgetExceededError(total.toString(), request.maximumCustomerBudgetAtomic);
     }
@@ -118,6 +129,9 @@ export class QuoteEngine {
 function validatePricing(pricing: QuotePricingPolicy): QuotePricingPolicy {
   for (const [key, value] of Object.entries(pricing)) {
     if (key.endsWith('Atomic')) parseAtomicAmount(String(value));
+  }
+  if (!Number.isInteger(pricing.feeRateBps) || pricing.feeRateBps <= 0 || pricing.feeRateBps >= 10_000) {
+    throw new Error('Fee rate must be an integer number of basis points strictly between 0 and 10000');
   }
   if (!Number.isInteger(pricing.quoteTtlSeconds) || pricing.quoteTtlSeconds < 60 || pricing.quoteTtlSeconds > 86_400) {
     throw new Error('Quote TTL must be between 60 seconds and 24 hours');
