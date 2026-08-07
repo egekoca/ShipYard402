@@ -4,7 +4,6 @@ import { AnimatedWorkflow } from '../components/animated-workflow';
 import { NetworkMark } from '../components/icons';
 import { HeroRadar } from '../components/logo';
 import { ProblemSolution } from '../components/problem-solution';
-import { ReleaseRunForm } from '../components/release-run-form';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
 import { SiteHeader } from '../components/site-header';
 import { ThreatCoverage } from '../components/threat-coverage';
@@ -53,6 +52,9 @@ export default function HomePage() {
           <strong>What a PASS means</strong>
           <span>Tested under a named policy at a recorded time. It is not a blanket security certificate.</span>
         </div>
+        <a className="primary-button hero-cta hero-in" style={delayStyle(560)} href="/app">
+          Run a live test →
+        </a>
       </section>
 
       <ProblemSolution />
@@ -63,7 +65,7 @@ export default function HomePage() {
 
       <ReplayDefenseDemo />
 
-      <section className="run-section">
+      <section className="run-section closing-cta">
         <div className="section-heading">
           <div>
             <span className="eyebrow"><i>[05]</i> RELEASE GATE</span>
@@ -71,7 +73,7 @@ export default function HomePage() {
           </div>
           <p>The quote is created from a verified merchant capability. No token or recipient is assumed by this interface.</p>
         </div>
-        <ReleaseRunForm />
+        <a className="primary-button" href="/app">Try the app →</a>
       </section>
 
       <footer>

@@ -1,4 +1,11 @@
-export function SiteHeader({ homeHref }: Readonly<{ homeHref: string }>) {
+export function SiteHeader({
+  homeHref,
+  showTryApp = true,
+}: Readonly<{
+  homeHref: string;
+  /** Hide on the page the button would just link back to itself (the /app page). */
+  showTryApp?: boolean;
+}>) {
   return (
     <header className="nav-bar">
       <div className="nav-shell">
@@ -7,7 +14,10 @@ export function SiteHeader({ homeHref }: Readonly<{ homeHref: string }>) {
           <span className="brand-mark"><img src="/logo-mark.png" alt="" className="brand-mark-icon" /></span>
           <span>SHIPYARD402</span>
         </a>
-        <div className="network-pill"><span /> GOAT TESTNET3</div>
+        <div className="nav-actions">
+          <div className="network-pill"><span /> GOAT TESTNET3</div>
+          {showTryApp && <a className="try-app-button" href="/app">Try the app</a>}
+        </div>
       </div>
     </header>
   );

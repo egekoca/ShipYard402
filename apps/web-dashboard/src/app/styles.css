@@ -90,6 +90,9 @@ main { min-height: 100vh; overflow-x: clip; }
 .network-pill:hover { border-color: rgba(240, 196, 25, .4); background: rgba(240, 196, 25, .1); }
 .network-pill span { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(240, 196, 25, .18); }
 .network-pill span::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: var(--gold); animation: pulse-ring 2.2s ease-out infinite; }
+.nav-actions { display: flex; align-items: center; gap: 14px; }
+.try-app-button { padding: 9px 20px; border-radius: 99px; background: var(--gold); color: var(--gold-ink); font-size: 12px; font-weight: 900; letter-spacing: .04em; text-decoration: none; white-space: nowrap; transition: filter .2s ease, transform .2s ease; }
+.try-app-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
 .hero { max-width: 1280px; margin: 0 auto; padding: 100px 36px 70px; position: relative; }
 .hero::after { content: '402'; position: absolute; z-index: -1; top: 5px; right: -20px; color: transparent; -webkit-text-stroke: 1px #1c1d20; font-size: clamp(180px, 28vw, 430px); font-weight: 900; line-height: 1; animation: watermark-drift 16s ease-in-out infinite; }
@@ -138,6 +141,8 @@ h1 em { color: var(--gold); font-weight: 900; font-style: normal; }
 .hero-copy { max-width: 690px; margin: 0; color: var(--muted); font-size: clamp(17px, 1.8vw, 21px); line-height: 1.55; }
 .scope-note { display: flex; align-items: baseline; gap: 22px; max-width: 760px; margin-top: 38px; padding: 18px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--ink); }
 .scope-note strong { min-width: 140px; color: var(--gold); text-transform: uppercase; font-size: 10px; letter-spacing: .1em; }
+.hero-cta { margin-top: 34px; text-decoration: none; }
+.closing-cta .primary-button { text-decoration: none; }
 
 .workflow-section { max-width: 1280px; margin: 0 auto; padding: 90px 36px 100px; }
 .workflow-eyebrow { display: block; margin-bottom: 42px; }
@@ -469,6 +474,7 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 @media (max-width: 800px) {
   .nav-shell, .hero, footer { padding-left: 20px; padding-right: 20px; }
   .hero { padding-top: 70px; }
+  .network-pill { display: none; }
   .scope-note, .section-heading, footer { flex-direction: column; align-items: flex-start; }
   .workflow-section { padding: 60px 20px 70px; }
   .pipeline-rail { display: none; }
