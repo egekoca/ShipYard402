@@ -36,7 +36,7 @@ export function ProblemSolution() {
             {WITHOUT.map((item) => (
               <li key={item.lead}>
                 <span className="compare-mark compare-mark--bad" aria-hidden="true">&#10005;</span>
-                {item.lead} <strong className="compare-highlight compare-highlight--bad">{item.highlight}</strong>
+                <span className="compare-line-text">{item.lead} <strong className="compare-highlight compare-highlight--bad">{item.highlight}</strong></span>
               </li>
             ))}
           </ul>
@@ -48,7 +48,7 @@ export function ProblemSolution() {
             {WITH.map((item) => (
               <li key={item.lead}>
                 <span className="compare-mark compare-mark--good" aria-hidden="true">&#10003;</span>
-                {item.lead} <strong className="compare-highlight compare-highlight--good">{item.highlight}</strong>
+                <span className="compare-line-text">{item.lead} <strong className="compare-highlight compare-highlight--good">{item.highlight}</strong></span>
               </li>
             ))}
           </ul>

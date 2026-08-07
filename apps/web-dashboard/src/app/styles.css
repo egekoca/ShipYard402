@@ -393,6 +393,11 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .compare-label--after { color: var(--gold); }
 .compare-card ul { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
 .compare-card li { display: flex; align-items: flex-start; gap: 12px; color: #b7b9c0; font-size: 15px; font-weight: 500; line-height: 1.6; }
+/* Without this, the lead text and the bold highlight were two separate flex items sitting side by
+   side in the row instead of one wrapping sentence -- the highlight floated off to the right with
+   a huge gap instead of flowing right after the words before it. One shared box lets them wrap
+   together as normal text, with the highlight only ever breaking onto its own line if it must. */
+.compare-line-text { flex: 1; min-width: 0; }
 .compare-card--after li { color: var(--ink); font-weight: 600; }
 .compare-mark { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; font-size: 10px; font-weight: 900; }
 .compare-mark--bad { color: var(--danger); background: var(--danger-deep); }
