@@ -150,7 +150,10 @@ export interface AttestationStorePort {
 
 export interface CheckpointStorePort {
   load(runId: string): Promise<OrchestratorRunCheckpoint>;
-  merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<void>;
+  /** Returns the row as it actually persisted -- see PostgresOrchestratorCheckpointStore's doc
+   * comment. A caller gating a spend-once side effect on a merged field must use the returned
+   * value, not its own local variable, or a losing writer in a race acts on a value nobody kept. */
+  merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<OrchestratorRunCheckpoint>;
 }
 
 export type DemoTargetConfig = Readonly<{
@@ -356,9 +359,17 @@ export async function runOrchestratorPipeline(
 
       let paymentNonce = checkpoint.paymentNonce;
       if (paymentNonce === undefined) {
-        paymentNonce = await deps.paymentSender.reserveNonce();
-        await deps.checkpointStore.merge(runId, { paymentNonce });
-      } else if (await deps.paymentSender.isNonceConsumed(paymentNonce)) {
+        const reserved = await deps.paymentSender.reserveNonce();
+        // merge() can lose a race to a concurrent resumed attempt of this same run (e.g. a
+        // reclaimed job lease while the original worker is still alive and slow) -- COALESCE
+        // keeps whichever value landed first, and the returned row is the only way to find out
+        // which one that was. Using the local `reserved` value here regardless would let the
+        // loser broadcast a second, differently-nonced payment: the exact double-spend this
+        // checkpointing exists to prevent.
+        const persisted = await deps.checkpointStore.merge(runId, { paymentNonce: reserved });
+        paymentNonce = persisted.paymentNonce ?? reserved;
+      }
+      if (await deps.paymentSender.isNonceConsumed(paymentNonce)) {
         throw new PaymentSendAmbiguousError(runId, paymentNonce, 'payment');
       }
 
@@ -386,9 +397,11 @@ export async function runOrchestratorPipeline(
       if (refundAmount > 0n && !checkpoint.refundTransactionHash) {
         let refundNonce = checkpoint.refundNonce;
         if (refundNonce === undefined) {
-          refundNonce = await deps.refundSender.reserveNonce();
-          await deps.checkpointStore.merge(runId, { refundNonce });
-        } else if (await deps.refundSender.isNonceConsumed(refundNonce)) {
+          const reserved = await deps.refundSender.reserveNonce();
+          const persisted = await deps.checkpointStore.merge(runId, { refundNonce: reserved });
+          refundNonce = persisted.refundNonce ?? reserved;
+        }
+        if (await deps.refundSender.isNonceConsumed(refundNonce)) {
           throw new PaymentSendAmbiguousError(runId, refundNonce, 'refund');
         }
 

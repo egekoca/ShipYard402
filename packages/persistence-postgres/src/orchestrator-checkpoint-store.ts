@@ -31,7 +31,14 @@ export type OrchestratorRunCheckpoint = Readonly<{
 
 export interface OrchestratorCheckpointStore {
   load(runId: string): Promise<OrchestratorRunCheckpoint>;
-  merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<void>;
+  /**
+   * Returns the row as it actually ended up after the upsert, not the caller's patch -- on a
+   * race between two writers, COALESCE keeps whichever value landed first, and the loser has no
+   * way to know its own value didn't stick without reading this back. Callers gating a spend-once
+   * side effect on a merged field (e.g. paymentNonce) must use the returned value, not their own
+   * local variable, or a losing writer can go on to act on a nonce nobody actually persisted.
+   */
+  merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<OrchestratorRunCheckpoint>;
 }
 
 type CheckpointRow = QueryResultRow & {
@@ -72,8 +79,8 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
     return row ? parseRow(row) : EMPTY_CHECKPOINT;
   }
 
-  async merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<void> {
-    await this.#pool.query(
+  async merge(runId: string, patch: OrchestratorRunCheckpoint): Promise<OrchestratorRunCheckpoint> {
+    const result = await this.#pool.query<CheckpointRow>(
       `INSERT INTO orchestrator_run_checkpoints (
          run_id, risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal,
          payment_nonce, payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
@@ -94,7 +101,10 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
          attestation_transaction_hash = COALESCE(orchestrator_run_checkpoints.attestation_transaction_hash, EXCLUDED.attestation_transaction_hash),
          refund_nonce = COALESCE(orchestrator_run_checkpoints.refund_nonce, EXCLUDED.refund_nonce),
          refund_transaction_hash = COALESCE(orchestrator_run_checkpoints.refund_transaction_hash, EXCLUDED.refund_transaction_hash),
-         updated_at = now()`,
+         updated_at = now()
+       RETURNING risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal, payment_nonce,
+                 payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
+                 attestation_transaction_hash, refund_nonce, refund_transaction_hash`,
       [
         runId,
         patch.plan?.riskLevel ?? null,
@@ -113,6 +123,7 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
         patch.refundTransactionHash ? hexToBuffer(patch.refundTransactionHash) : null,
       ],
     );
+    return parseRow(result.rows[0]!);
   }
 }
 

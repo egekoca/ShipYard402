@@ -90,7 +90,14 @@ function fakeCheckpointStore(initial: OrchestratorRunCheckpoint = {}): Checkpoin
       return store.state;
     },
     async merge(_runId: string, patch: OrchestratorRunCheckpoint) {
-      store.state = { ...store.state, ...patch };
+      // Matches the real store's COALESCE semantics: an already-persisted field wins over a
+      // new writer's value, and the caller gets back the authoritative merged row.
+      const merged: Record<string, unknown> = { ...store.state };
+      for (const [key, value] of Object.entries(patch)) {
+        if (merged[key] === undefined) merged[key] = value;
+      }
+      store.state = merged as OrchestratorRunCheckpoint;
+      return store.state;
     },
   };
   return store;
@@ -607,6 +614,41 @@ describe('runOrchestratorPipeline', () => {
       },
     });
     await expect(runOrchestratorPipeline(RUN_ID, deps)).rejects.toBeInstanceOf(PaymentSendAmbiguousError);
+  });
+
+  it('uses the checkpoint store\'s authoritative nonce, not its own reservation, when it loses a concurrent-merge race', async () => {
+    // Simulates a concurrent resumed attempt of this same run (e.g. a reclaimed job lease while
+    // the original worker is still alive) already having reserved and checkpointed nonce 9 by the
+    // time this attempt's own merge() call lands -- the real store's COALESCE would keep 9, not
+    // this attempt's own locally-reserved 7.
+    const base = fakeCheckpointStore();
+    const checkpointStore: CheckpointStorePort = {
+      load: base.load,
+      async merge(runId, patch) {
+        if (patch.paymentNonce !== undefined) {
+          expect(patch.paymentNonce).toBe(7); // this attempt really did try to reserve its own value
+          return { ...(await base.merge(runId, { paymentNonce: 9 })) }; // but the winner's row has 9
+        }
+        return base.merge(runId, patch);
+      },
+    };
+    const deps = baseDeps({
+      checkpointStore,
+      paymentSender: {
+        async reserveNonce() { return 7; },
+        async isNonceConsumed(nonce) { expect(nonce).toBe(9); return false; },
+        async sendPayment(input) {
+          // Must send with the winner's nonce (9), never its own losing reservation (7) -- using
+          // 7 here would broadcast a second, independently-nonced payment for the same run.
+          expect(input.nonce).toBe(9);
+          return `0x${'55'.repeat(32)}`;
+        },
+        async waitForConfirmation(transactionHash) {
+          return { transactionHash, confirmations: 1 };
+        },
+      },
+    });
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
   });
 
   it('resumes from EVIDENCE_BUILDING without re-running the already-spent replay probe', async () => {
