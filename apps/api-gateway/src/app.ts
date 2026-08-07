@@ -339,8 +339,13 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     }
     try {
       const onboarded = await dependencies.serviceOnboardingProvider.onboard({
-        ...parsed.data,
+        organizationName: parsed.data.organizationName,
         requesterAddress: parsed.data.requesterAddress as `0x${string}`,
+        externalServiceId: parsed.data.externalServiceId,
+        serviceName: parsed.data.serviceName,
+        x402Endpoint: parsed.data.x402Endpoint,
+        openApiUrl: parsed.data.openApiUrl,
+        version: parsed.data.version,
       });
       return reply.code(201).send(onboarded);
     } catch (error) {
