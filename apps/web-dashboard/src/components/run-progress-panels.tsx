@@ -73,11 +73,16 @@ export function RunProgressPanels({
     ? (evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready')
     : activeStep >= 2 ? 'active' : 'pending';
   const attestationState: PanelState = attestation ? 'ready' : activeStep >= 4 ? 'active' : 'pending';
+  // activeStep stays -1 while the run is only PAYMENT_REQUIRED (used above so the payment card
+  // itself doesn't flip to "ready" early). The stepper is about showing where the run visibly is
+  // right now though, and a real payment challenge sitting there awaiting confirmation is step 1
+  // in progress, not "nothing started" -- so it gets its own, purely visual, active index.
+  const pipelineActiveIndex = activeStep < 0 && run.payment.paymentRequired ? 0 : activeStep;
 
   return (
     <>
       <div className="workflow-section" aria-label="Run progress">
-        <Pipeline steps={STEPS} activeIndex={activeStep} stepEtas={stepEtas} />
+        <Pipeline steps={STEPS} activeIndex={pipelineActiveIndex} stepEtas={stepEtas} />
       </div>
 
       {isTerminal && (

@@ -54,7 +54,9 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
               key={fillResetKey !== undefined ? `${fillResetKey}-${step}` : step}
               className={`pipeline-dot${isDone ? ' is-done' : ''}${isActive ? ' is-active' : ''}`}
               style={{ left: `${dotPosition * 100}%` }}
-            />
+            >
+              {isActive && <RadarMark className="pipeline-dot-radar" aria-hidden="true" />}
+            </span>
           );
         })}
       </div>
@@ -68,7 +70,7 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
               style={{ '--delay': `${index * 90}ms` } as CSSProperties}
             >
               <span className="pipeline-label-index">{String(index + 1).padStart(2, '0')}</span>
-              <p>{step}{isActive && <RadarMark className="pipeline-label-radar" />}</p>
+              <p>{step}</p>
               {stepEtas?.[index] && <span className="pipeline-label-eta">{stepEtas[index]} typical</span>}
             </div>
           );
