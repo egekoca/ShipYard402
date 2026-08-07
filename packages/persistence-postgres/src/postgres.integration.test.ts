@@ -21,6 +21,7 @@ const targetServiceId = `service:postgres:${fixtureSuffix}`;
 const x402Endpoint = `https://target.example/${fixtureSuffix}/paid`;
 const openApiUrl = `https://target.example/${fixtureSuffix}/openapi.json`;
 const runId = `run_${fixtureSuffix}`;
+const staleExhaustedRunId = `run_stale_${fixtureSuffix}`;
 
 const pool = databaseUrl
   ? createShipyardPool({ connectionString: databaseUrl, useTls: false, maximumConnections: 4 })
@@ -30,8 +31,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
   beforeAll(async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     await pool.query(
+      // billing_wallet is now unique per organization (see 0009_organizations_unique_billing_wallet.sql)
+      // -- each integration test file needs its own synthetic wallet, not the shared fixture address
+      // used elsewhere in this file for quote.request.requesterAddress.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Integration ${fixtureSuffix}`, hexBuffer('0x2000000000000000000000000000000000000002')],
+      [organizationId, `Integration ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
     );
     await pool.query(
       `INSERT INTO services (
@@ -54,9 +58,12 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
   afterAll(async () => {
     if (!pool) return;
     await pool.query(`DELETE FROM payment_reconciliation_jobs WHERE run_id = $1`, [runId]);
+    await pool.query(`DELETE FROM payment_reconciliation_jobs WHERE run_id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM outbox_events WHERE aggregate_id = $1`, [runId]);
     await pool.query(`DELETE FROM run_events WHERE run_id = $1`, [runId]);
+    await pool.query(`DELETE FROM run_events WHERE run_id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM runs WHERE id = $1`, [runId]);
+    await pool.query(`DELETE FROM runs WHERE id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM quotes WHERE organization_id = $1`, [organizationId]);
     await pool.query(`DELETE FROM releases WHERE id = $1`, [releaseId]);
     await pool.query(`DELETE FROM services WHERE id = $1`, [serviceId]);
@@ -148,13 +155,13 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
 
     const queue = new PostgresPaymentReconciliationJobQueue(pool);
     const firstClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
-    expect(firstClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 8 });
+    expect(firstClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 24 });
     await expect(queue.claimNext({
       workerId: 'competing-worker', leaseDurationSeconds: 30,
     })).resolves.toBeNull();
     await queue.markRetry(firstClaim!, 0, 'PAYMENT_NOT_READY');
     const retryClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
-    expect(retryClaim).toMatchObject({ runId, attempt: 2, maximumAttempts: 8 });
+    expect(retryClaim).toMatchObject({ runId, attempt: 2, maximumAttempts: 24 });
     await queue.markCompleted(retryClaim!);
     const completedJob = await queue.findByRunId(runId);
     expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
@@ -163,6 +170,77 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
       `SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = $1 AND event_type = 'run.transitioned'`,
       [runId],
     )).resolves.toMatchObject({ rows: [{ count: 2 }] });
+  });
+
+  it('dead-letters a stale PROCESSING payment job whose attempts are already exhausted instead of reclaiming it forever', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const now = new Date();
+    const staleQuote = new QuoteEngine({
+      pricingStatus: 'HYPOTHESIS',
+      feeRateBps: 1667,
+      mandatoryToolBudgetAtomic: '100',
+      dynamicToolBudgetAtomic: '100',
+      modelInfrastructureReserveAtomic: '100',
+      chainStorageReserveAtomic: '100',
+      riskSupportReserveAtomic: '100',
+      quoteTtlSeconds: 900,
+    }, () => `${fixtureSuffix}-stale`).createQuote({
+      organizationId,
+      requesterAddress: '0x2000000000000000000000000000000000000002',
+      targetAgentId: 'agent:external',
+      targetServiceId,
+      targetVersionHash,
+      policyHash,
+      x402Endpoint,
+      openApiUrl,
+      maximumCustomerBudgetAtomic: '1000',
+    }, {
+      environment: 'mainnet',
+      merchantId: 'integration-merchant',
+      mode: 'ERC20_DIRECT',
+      chainId: 2345,
+      tokenAddress: '0x1000000000000000000000000000000000000001',
+      tokenSymbol: 'INTEGRATION_ONLY',
+      tokenDecimals: 6,
+      receivingAddress: '0x3000000000000000000000000000000000000003',
+      minimumAtomicAmount: '1',
+      maximumAtomicAmount: '100000000',
+      discoveredAt: now.toISOString(),
+      source: 'PORTAL_REVIEW',
+    }, now);
+    await new PostgresQuoteRepository(pool).save(staleQuote);
+
+    const draft = createDraftRun(staleExhaustedRunId, now.toISOString());
+    const transition = transitionRun(draft, {
+      actor: 'QUOTE_ENGINE',
+      expectedRevision: 0,
+      idempotencyKey: `quoted-stale:${fixtureSuffix}`,
+      occurredAt: now.toISOString(),
+      to: 'QUOTED',
+    });
+    if (!transition.event) throw new Error('Expected QUOTED domain event');
+    await new PostgresRunRepository(pool).save({
+      aggregate: transition.run,
+      quoteId: staleQuote.id,
+      requestIdempotencyKey: `request-stale:${fixtureSuffix}`,
+      uncommittedEvent: transition.event,
+    });
+    // Simulates a payment worker that hard-crashed while holding the lease on its final attempt.
+    await pool.query(
+      `INSERT INTO payment_reconciliation_jobs (run_id, status, attempts, maximum_attempts, locked_at, locked_by)
+       VALUES ($1, 'PROCESSING', 3, 3, now() - interval '1 hour', 'crashed-worker')`,
+      [staleExhaustedRunId],
+    );
+
+    const queue = new PostgresPaymentReconciliationJobQueue(pool);
+    const claimed = await queue.claimNext({ workerId: 'sweep-worker', leaseDurationSeconds: 5 });
+    expect(claimed?.runId).not.toBe(staleExhaustedRunId);
+
+    await expect(queue.findByRunId(staleExhaustedRunId)).resolves.toMatchObject({
+      status: 'DEAD_LETTER',
+      attempts: 3,
+      lastErrorCode: 'STALE_LEASE_ATTEMPTS_EXHAUSTED',
+    });
   });
 });
 

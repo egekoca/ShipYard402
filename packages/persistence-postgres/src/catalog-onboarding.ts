@@ -109,15 +109,16 @@ export async function onboardService(pool: Pool, input: OnboardServiceInput): Pr
     );
 
     // One organization per requester wallet: repeat onboarding from the same address reuses it
-    // rather than accumulating a fresh, empty organization on every call.
+    // rather than accumulating a fresh, empty organization on every call. This must be one atomic
+    // upsert, not a SELECT followed by an INSERT -- two concurrent onboarding calls for the same
+    // wallet (an ordinary client retry, or two near-simultaneous requests) would otherwise both
+    // see no existing row and both insert, creating two organizations for one wallet.
     const requesterBuffer = hexToBuffer(input.requesterAddress);
-    const existingOrg = await client.query<{ id: string }>(
-      `SELECT id FROM organizations WHERE billing_wallet = $1 LIMIT 1`,
-      [requesterBuffer],
-    );
-    const organizationId = existingOrg.rows[0]?.id ?? (
+    const organizationId = (
       await client.query<{ id: string }>(
-        `INSERT INTO organizations (name, billing_wallet) VALUES ($1, $2) RETURNING id`,
+        `INSERT INTO organizations (name, billing_wallet) VALUES ($1, $2)
+         ON CONFLICT (billing_wallet) DO UPDATE SET name = organizations.name
+         RETURNING id`,
         [input.organizationName, requesterBuffer],
       )
     ).rows[0]!.id;

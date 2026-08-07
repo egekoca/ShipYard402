@@ -30,8 +30,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
   beforeAll(async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     await pool.query(
+      // billing_wallet is now unique per organization (see 0009_organizations_unique_billing_wallet.sql)
+      // -- each integration test file needs its own synthetic wallet, not the shared fixture address
+      // used elsewhere in this file for the payer/requester address.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Duplicate-charge ${fixtureSuffix}`, hexBuffer('0x2000000000000000000000000000000000000002')],
+      [organizationId, `Duplicate-charge ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
     );
     await pool.query(
       `INSERT INTO services (

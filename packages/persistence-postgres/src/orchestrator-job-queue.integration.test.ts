@@ -21,6 +21,7 @@ const targetServiceId = `service:orchestrator-jobs:${fixtureSuffix}`;
 const x402Endpoint = `https://target.example/${fixtureSuffix}/paid`;
 const openApiUrl = `https://target.example/${fixtureSuffix}/openapi.json`;
 const runId = `run_orchestrator_${fixtureSuffix}`;
+const staleExhaustedRunId = `run_orchestrator_stale_${fixtureSuffix}`;
 
 const pool = databaseUrl
   ? createShipyardPool({ connectionString: databaseUrl, useTls: false, maximumConnections: 4 })
@@ -30,8 +31,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
   beforeAll(async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     await pool.query(
+      // billing_wallet is now unique per organization (see 0009_organizations_unique_billing_wallet.sql)
+      // -- each integration test file needs its own synthetic wallet, not the shared fixture address
+      // used elsewhere in this file for quote.request.requesterAddress.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Orchestrator jobs ${fixtureSuffix}`, hexBuffer('0x2000000000000000000000000000000000000002')],
+      [organizationId, `Orchestrator jobs ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
     );
     await pool.query(
       `INSERT INTO services (id, organization_id, external_service_id, name, x402_endpoint, openapi_url)
@@ -102,6 +106,30 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     });
 
     await pool.query(`INSERT INTO orchestrator_jobs (run_id) VALUES ($1)`, [runId]);
+
+    const staleDraft = createDraftRun(staleExhaustedRunId, now.toISOString());
+    const staleQuoted = transitionRun(staleDraft, {
+      actor: 'QUOTE_ENGINE',
+      expectedRevision: 0,
+      idempotencyKey: `quoted-stale:${fixtureSuffix}`,
+      occurredAt: now.toISOString(),
+      to: 'QUOTED',
+    });
+    if (!staleQuoted.event) throw new Error('Expected QUOTED domain event');
+    await new PostgresRunRepository(pool).save({
+      aggregate: staleQuoted.run,
+      quoteId: quote.id,
+      requestIdempotencyKey: `request-stale:${fixtureSuffix}`,
+      uncommittedEvent: staleQuoted.event,
+    });
+    // Simulates a worker that hard-crashed while holding the lease on its final attempt: locked
+    // in the past (already stale by the time a claimNext with even a 1s lease runs), with
+    // attempts already at the maximum_attempts cap.
+    await pool.query(
+      `INSERT INTO orchestrator_jobs (run_id, status, attempts, maximum_attempts, locked_at, locked_by)
+       VALUES ($1, 'PROCESSING', 3, 3, now() - interval '1 hour', 'crashed-worker')`,
+      [staleExhaustedRunId],
+    );
   });
 
   afterAll(async () => {
@@ -110,8 +138,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     await pool.query(`DELETE FROM attestations WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM evidence_packs WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM orchestrator_jobs WHERE run_id = $1`, [runId]);
+    await pool.query(`DELETE FROM orchestrator_jobs WHERE run_id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM run_events WHERE run_id = $1`, [runId]);
+    await pool.query(`DELETE FROM run_events WHERE run_id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM runs WHERE id = $1`, [runId]);
+    await pool.query(`DELETE FROM runs WHERE id = $1`, [staleExhaustedRunId]);
     await pool.query(`DELETE FROM quotes WHERE organization_id = $1`, [organizationId]);
     await pool.query(`DELETE FROM releases WHERE id = $1`, [releaseId]);
     await pool.query(`DELETE FROM services WHERE id = $1`, [serviceId]);
@@ -138,6 +169,23 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     const completedJob = await queue.findByRunId(runId);
     expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
     expect(completedJob).not.toHaveProperty('lastErrorCode');
+  });
+
+  it('dead-letters a stale PROCESSING job whose attempts are already exhausted instead of reclaiming it forever', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const queue = new PostgresOrchestratorJobQueue(pool);
+
+    // claimNext must never hand this job back out (it's stale, but attempts are already at cap)...
+    const claimed = await queue.claimNext({ workerId: 'sweep-worker', leaseDurationSeconds: 5 });
+    expect(claimed?.runId).not.toBe(staleExhaustedRunId);
+
+    // ...and the sweep inside claimNext must have moved it to DEAD_LETTER rather than leaving it
+    // stuck in PROCESSING forever with a stale lock nobody will ever notice.
+    await expect(queue.findByRunId(staleExhaustedRunId)).resolves.toMatchObject({
+      status: 'DEAD_LETTER',
+      attempts: 3,
+      lastErrorCode: 'STALE_LEASE_ATTEMPTS_EXHAUSTED',
+    });
   });
 
   it('round-trips an evidence pack through PostgresEvidencePackStore', async () => {
