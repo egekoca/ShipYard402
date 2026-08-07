@@ -50,6 +50,19 @@ export class PostgresPaymentReconciliationJobQueue {
     if (!Number.isInteger(input.leaseDurationSeconds) || input.leaseDurationSeconds < 5 || input.leaseDurationSeconds > 600) {
       throw new Error('Payment job lease duration must be between 5 and 600 seconds');
     }
+    // A worker that hard-crashes while holding the lease on its last allowed attempt leaves a
+    // PROCESSING row with a stale lock and attempts already at the cap. The reclaim branch below
+    // only ever picks up rows with attempts < maximum_attempts, so without this sweep such a row
+    // would sit in PROCESSING forever -- never retried, never dead-lettered, invisible to anyone.
+    await this.#pool.query(
+      `UPDATE payment_reconciliation_jobs SET
+         status = 'DEAD_LETTER', locked_at = NULL, locked_by = NULL,
+         last_error_code = 'STALE_LEASE_ATTEMPTS_EXHAUSTED', updated_at = now()
+       WHERE status = 'PROCESSING'
+         AND locked_at <= now() - make_interval(secs => $1::int)
+         AND attempts >= maximum_attempts`,
+      [input.leaseDurationSeconds],
+    );
     const result = await this.#pool.query<JobRow>(
       `WITH candidate AS (
          SELECT run_id, status
@@ -61,6 +74,7 @@ export class PostgresPaymentReconciliationJobQueue {
          ) OR (
            status = 'PROCESSING'
            AND locked_at <= now() - make_interval(secs => $2::int)
+           AND attempts < maximum_attempts
          )
          ORDER BY available_at, created_at
          FOR UPDATE SKIP LOCKED
