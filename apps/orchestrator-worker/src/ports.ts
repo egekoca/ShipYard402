@@ -37,7 +37,11 @@ export interface PurchaseClient {
 }
 
 export interface NativePaymentSender {
-  sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint }>): Promise<`0x${string}`>;
+  /** Reserves the wallet's next nonce so it can be checkpointed before the send is broadcast. */
+  reserveNonce(): Promise<number>;
+  /** True if a transaction using this nonce has already landed on-chain (pending or mined). */
+  isNonceConsumed(nonce: number): Promise<boolean>;
+  sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>): Promise<`0x${string}`>;
   waitForConfirmation(transactionHash: `0x${string}`, minimumConfirmations: number): Promise<ConfirmedPayment>;
 }
 
@@ -47,7 +51,9 @@ export interface ToolReceiptSigner {
 }
 
 export interface RefundSender {
-  sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint }>): Promise<`0x${string}`>;
+  reserveNonce(): Promise<number>;
+  isNonceConsumed(nonce: number): Promise<boolean>;
+  sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>): Promise<`0x${string}`>;
 }
 
 export type RunAttestationInput = Readonly<{

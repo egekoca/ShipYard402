@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   OrchestratorPipelineError,
+  PaymentSendAmbiguousError,
   RunNotReadyForOrchestrationError,
   runOrchestratorPipeline,
   type AttestationStorePort,
@@ -210,6 +211,8 @@ function baseDeps(overrides: Partial<OrchestratorPipelineDependencies> = {}): Or
       },
     },
     paymentSender: {
+      async reserveNonce() { return 0; },
+      async isNonceConsumed() { return false; },
       async sendPayment() {
         return `0x${'55'.repeat(32)}`;
       },
@@ -430,9 +433,11 @@ describe('runOrchestratorPipeline', () => {
   });
 
   it('refunds the unspent tool budget when a refund sender is configured', async () => {
-    const refundCalls: Array<{ tokenAddress: string; toAddress: string; valueAtomic: bigint }> = [];
+    const refundCalls: Array<{ tokenAddress: string; toAddress: string; valueAtomic: bigint; nonce: number }> = [];
     const deps = baseDeps({
       refundSender: {
+        async reserveNonce() { return 0; },
+        async isNonceConsumed() { return false; },
         async sendRefund(input) {
           refundCalls.push(input);
           return `0x${'88'.repeat(32)}`;
@@ -447,6 +452,7 @@ describe('runOrchestratorPipeline', () => {
       tokenAddress: '0x1000000000000000000000000000000000000001',
       toAddress: '0x2000000000000000000000000000000000000002',
       valueAtomic: 100n,
+      nonce: 0,
     }]);
   });
 
@@ -468,6 +474,8 @@ describe('runOrchestratorPipeline', () => {
         refundTransactionHash: `0x${'88'.repeat(32)}`,
       }),
       refundSender: {
+        async reserveNonce() { return 0; },
+        async isNonceConsumed() { return false; },
         async sendRefund() {
           refundCalls += 1;
           return `0x${'99'.repeat(32)}`;
@@ -494,6 +502,8 @@ describe('runOrchestratorPipeline', () => {
         },
       },
       refundSender: {
+        async reserveNonce() { return 0; },
+        async isNonceConsumed() { return false; },
         async sendRefund(input) {
           refundCalls.push(input);
           return `0x${'88'.repeat(32)}`;
@@ -522,6 +532,8 @@ describe('runOrchestratorPipeline', () => {
   it('wraps a mid-pipeline failure with advancedPastFunded=true', async () => {
     const deps = baseDeps({
       paymentSender: {
+        async reserveNonce() { return 0; },
+        async isNonceConsumed() { return false; },
         async sendPayment() {
           throw new Error('RPC unreachable');
         },
@@ -544,6 +556,8 @@ describe('runOrchestratorPipeline', () => {
         paymentTransactionHash: `0x${'55'.repeat(32)}`,
       }),
       paymentSender: {
+        async reserveNonce() { return 0; },
+        async isNonceConsumed() { return false; },
         async sendPayment() {
           sendPaymentCalls += 1;
           return `0x${'55'.repeat(32)}`;
@@ -556,6 +570,43 @@ describe('runOrchestratorPipeline', () => {
     const result = await runOrchestratorPipeline(RUN_ID, deps);
     expect(result.finalStatus).toBe('DELIVERED_PASS');
     expect(sendPaymentCalls).toBe(0);
+  });
+
+  it('reserves and checkpoints a payment nonce before broadcasting the send', async () => {
+    const checkpointStore = fakeCheckpointStore();
+    const deps = baseDeps({
+      checkpointStore,
+      paymentSender: {
+        async reserveNonce() { return 7; },
+        async isNonceConsumed() { return false; },
+        async sendPayment(input) {
+          // The nonce must already be durably checkpointed before the send is broadcast, so a
+          // crash right after this call still leaves enough state to detect it on resume.
+          expect(checkpointStore.state.paymentNonce).toBe(7);
+          expect(input.nonce).toBe(7);
+          return `0x${'55'.repeat(32)}`;
+        },
+        async waitForConfirmation(transactionHash) {
+          return { transactionHash, confirmations: 1 };
+        },
+      },
+    });
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_PASS' });
+  });
+
+  it('refuses to resend a payment whose reserved nonce was already consumed on-chain without a checkpointed hash', async () => {
+    const deps = baseDeps({
+      checkpointStore: fakeCheckpointStore({ paymentNonce: 3 }),
+      paymentSender: {
+        async reserveNonce() { throw new Error('should not reserve a new nonce when one is already checkpointed'); },
+        async isNonceConsumed(nonce) { return nonce === 3; },
+        async sendPayment() { throw new Error('should not resend once the nonce is known to be ambiguous'); },
+        async waitForConfirmation(transactionHash) {
+          return { transactionHash, confirmations: 1 };
+        },
+      },
+    });
+    await expect(runOrchestratorPipeline(RUN_ID, deps)).rejects.toBeInstanceOf(PaymentSendAmbiguousError);
   });
 
   it('resumes from EVIDENCE_BUILDING without re-running the already-spent replay probe', async () => {

@@ -17,7 +17,15 @@ export class EthersNativePaymentSender implements NativePaymentSender {
     this.#maximumValueWei = maximumValueWei;
   }
 
-  async sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint }>): Promise<`0x${string}`> {
+  async reserveNonce(): Promise<number> {
+    return this.#wallet.getNonce('pending');
+  }
+
+  async isNonceConsumed(nonce: number): Promise<boolean> {
+    return (await this.#provider.getTransactionCount(this.#wallet.address, 'pending')) > nonce;
+  }
+
+  async sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>): Promise<`0x${string}`> {
     if (input.valueWei <= 0n || input.valueWei > this.#maximumValueWei) {
       throw new Error('Procurement payment amount is outside the configured safety bound');
     }
@@ -25,6 +33,7 @@ export class EthersNativePaymentSender implements NativePaymentSender {
     const transaction = await this.#wallet.sendTransaction({
       to: input.toAddress,
       value: input.valueWei,
+      nonce: input.nonce,
       ...(feeData.maxFeePerGas ? { maxFeePerGas: feeData.maxFeePerGas } : {}),
       ...(feeData.maxPriorityFeePerGas ? { maxPriorityFeePerGas: feeData.maxPriorityFeePerGas } : {}),
     });
@@ -43,15 +52,25 @@ export class EthersNativePaymentSender implements NativePaymentSender {
 
 export class EthersErc20RefundSender implements RefundSender {
   readonly #wallet: Wallet;
+  readonly #provider: JsonRpcProvider;
 
-  constructor(wallet: Wallet) {
+  constructor(wallet: Wallet, provider: JsonRpcProvider) {
     this.#wallet = wallet;
+    this.#provider = provider;
   }
 
-  async sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint }>): Promise<`0x${string}`> {
+  async reserveNonce(): Promise<number> {
+    return this.#wallet.getNonce('pending');
+  }
+
+  async isNonceConsumed(nonce: number): Promise<boolean> {
+    return (await this.#provider.getTransactionCount(this.#wallet.address, 'pending')) > nonce;
+  }
+
+  async sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>): Promise<`0x${string}`> {
     if (input.valueAtomic <= 0n) throw new Error('Refund amount must be positive');
     const token = new Contract(getAddress(input.tokenAddress), ERC20_TRANSFER_ABI, this.#wallet);
-    const tx = await token['transfer']!(getAddress(input.toAddress), input.valueAtomic);
+    const tx = await token['transfer']!(getAddress(input.toAddress), input.valueAtomic, { nonce: input.nonce });
     const receipt = await tx.wait(1);
     if (!receipt || receipt.status !== 1) {
       throw new Error(`Refund transaction did not confirm successfully: ${tx.hash}`);

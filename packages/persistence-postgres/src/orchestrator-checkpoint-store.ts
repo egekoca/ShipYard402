@@ -13,12 +13,19 @@ export type OrchestratorRunCheckpoint = Readonly<{
    * authority for what actually runs.
    */
   proposal?: unknown;
+  /**
+   * Reserved before the corresponding send is broadcast, so a crash between broadcast and
+   * checkpointing the resulting hash can be detected on resume (the reserved nonce will already
+   * be consumed on-chain) instead of blindly resending and risking a double payment.
+   */
+  paymentNonce?: number;
   paymentTransactionHash?: `0x${string}`;
   purchaseReceipt?: string;
   evidence?: unknown;
   startedAt?: number;
   completedAt?: number;
   attestationTransactionHash?: `0x${string}`;
+  refundNonce?: number;
   refundTransactionHash?: `0x${string}`;
 }>;
 
@@ -33,12 +40,14 @@ type CheckpointRow = QueryResultRow & {
   tool_budget_atomic: string | null;
   rationale: string | null;
   ai_proposal: unknown;
+  payment_nonce: number | null;
   payment_transaction_hash: Buffer | null;
   purchase_receipt: string | null;
   evidence: unknown;
   started_at: string | null;
   completed_at: string | null;
   attestation_transaction_hash: Buffer | null;
+  refund_nonce: number | null;
   refund_transaction_hash: Buffer | null;
 };
 
@@ -53,9 +62,9 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
 
   async load(runId: string): Promise<OrchestratorRunCheckpoint> {
     const result = await this.#pool.query<CheckpointRow>(
-      `SELECT risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal, payment_transaction_hash,
-              purchase_receipt, evidence, started_at, completed_at, attestation_transaction_hash,
-              refund_transaction_hash
+      `SELECT risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal, payment_nonce,
+              payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
+              attestation_transaction_hash, refund_nonce, refund_transaction_hash
        FROM orchestrator_run_checkpoints WHERE run_id = $1`,
       [runId],
     );
@@ -67,21 +76,23 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
     await this.#pool.query(
       `INSERT INTO orchestrator_run_checkpoints (
          run_id, risk_level, scenarios, tool_budget_atomic, rationale, ai_proposal,
-         payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
-         attestation_transaction_hash, refund_transaction_hash
-       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10, $11, $12, $13)
+         payment_nonce, payment_transaction_hash, purchase_receipt, evidence, started_at, completed_at,
+         attestation_transaction_hash, refund_nonce, refund_transaction_hash
+       ) VALUES ($1, $2, $3::jsonb, $4, $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15)
        ON CONFLICT (run_id) DO UPDATE SET
          risk_level = COALESCE(orchestrator_run_checkpoints.risk_level, EXCLUDED.risk_level),
          scenarios = COALESCE(orchestrator_run_checkpoints.scenarios, EXCLUDED.scenarios),
          tool_budget_atomic = COALESCE(orchestrator_run_checkpoints.tool_budget_atomic, EXCLUDED.tool_budget_atomic),
          rationale = COALESCE(orchestrator_run_checkpoints.rationale, EXCLUDED.rationale),
          ai_proposal = COALESCE(orchestrator_run_checkpoints.ai_proposal, EXCLUDED.ai_proposal),
+         payment_nonce = COALESCE(orchestrator_run_checkpoints.payment_nonce, EXCLUDED.payment_nonce),
          payment_transaction_hash = COALESCE(orchestrator_run_checkpoints.payment_transaction_hash, EXCLUDED.payment_transaction_hash),
          purchase_receipt = COALESCE(orchestrator_run_checkpoints.purchase_receipt, EXCLUDED.purchase_receipt),
          evidence = COALESCE(orchestrator_run_checkpoints.evidence, EXCLUDED.evidence),
          started_at = COALESCE(orchestrator_run_checkpoints.started_at, EXCLUDED.started_at),
          completed_at = COALESCE(orchestrator_run_checkpoints.completed_at, EXCLUDED.completed_at),
          attestation_transaction_hash = COALESCE(orchestrator_run_checkpoints.attestation_transaction_hash, EXCLUDED.attestation_transaction_hash),
+         refund_nonce = COALESCE(orchestrator_run_checkpoints.refund_nonce, EXCLUDED.refund_nonce),
          refund_transaction_hash = COALESCE(orchestrator_run_checkpoints.refund_transaction_hash, EXCLUDED.refund_transaction_hash),
          updated_at = now()`,
       [
@@ -91,12 +102,14 @@ export class PostgresOrchestratorCheckpointStore implements OrchestratorCheckpoi
         patch.plan?.toolBudgetAtomic ?? null,
         patch.plan?.rationale ?? null,
         patch.proposal !== undefined ? JSON.stringify(patch.proposal) : null,
+        patch.paymentNonce ?? null,
         patch.paymentTransactionHash ? hexToBuffer(patch.paymentTransactionHash) : null,
         patch.purchaseReceipt ?? null,
         patch.evidence !== undefined ? JSON.stringify(patch.evidence) : null,
         patch.startedAt ?? null,
         patch.completedAt ?? null,
         patch.attestationTransactionHash ? hexToBuffer(patch.attestationTransactionHash) : null,
+        patch.refundNonce ?? null,
         patch.refundTransactionHash ? hexToBuffer(patch.refundTransactionHash) : null,
       ],
     );
@@ -116,12 +129,14 @@ function parseRow(row: CheckpointRow): OrchestratorRunCheckpoint {
         }
       : {}),
     ...(row.ai_proposal !== null && row.ai_proposal !== undefined ? { proposal: row.ai_proposal } : {}),
+    ...(row.payment_nonce !== null ? { paymentNonce: row.payment_nonce } : {}),
     ...(row.payment_transaction_hash ? { paymentTransactionHash: bufferToHex(row.payment_transaction_hash) } : {}),
     ...(row.purchase_receipt ? { purchaseReceipt: row.purchase_receipt } : {}),
     ...(row.evidence !== null && row.evidence !== undefined ? { evidence: row.evidence } : {}),
     ...(row.started_at !== null ? { startedAt: Number(row.started_at) } : {}),
     ...(row.completed_at !== null ? { completedAt: Number(row.completed_at) } : {}),
     ...(row.attestation_transaction_hash ? { attestationTransactionHash: bufferToHex(row.attestation_transaction_hash) } : {}),
+    ...(row.refund_nonce !== null ? { refundNonce: row.refund_nonce } : {}),
     ...(row.refund_transaction_hash ? { refundTransactionHash: bufferToHex(row.refund_transaction_hash) } : {}),
   };
 }

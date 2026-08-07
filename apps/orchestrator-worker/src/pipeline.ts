@@ -214,6 +214,19 @@ export class ProcurementDeniedError extends Error {
 }
 
 /**
+ * A reserved payment/refund nonce was already consumed on-chain, but no transaction hash was
+ * checkpointed for it -- almost certainly because the process crashed between broadcasting and
+ * checkpointing. Resending would either be rejected or, worse, silently succeed as a genuine
+ * second payment, so this halts the run for manual reconciliation instead of guessing.
+ */
+export class PaymentSendAmbiguousError extends Error {
+  constructor(runId: string, nonce: number, purpose: 'payment' | 'refund') {
+    super(`Run ${runId}: ${purpose} nonce ${nonce} was already consumed on-chain but no transaction hash was checkpointed. Manual reconciliation required before retrying.`);
+    this.name = 'PaymentSendAmbiguousError';
+  }
+}
+
+/**
  * Whether the run was mutated past FUNDED before failure. Kept for observability/logging — the
  * pipeline is checkpoint-resumable (see CheckpointStorePort), so the job handler no longer treats
  * this as a signal to skip retrying: a re-claimed job re-enters runOrchestratorPipeline, which
@@ -341,9 +354,18 @@ export async function runOrchestratorPipeline(
       const authorization = authorizePurchase(mandate, intent, purchaseContext);
       if (!authorization.authorized) throw new ProcurementDeniedError(authorization.denialCodes);
 
+      let paymentNonce = checkpoint.paymentNonce;
+      if (paymentNonce === undefined) {
+        paymentNonce = await deps.paymentSender.reserveNonce();
+        await deps.checkpointStore.merge(runId, { paymentNonce });
+      } else if (await deps.paymentSender.isNonceConsumed(paymentNonce)) {
+        throw new PaymentSendAmbiguousError(runId, paymentNonce, 'payment');
+      }
+
       paymentTransactionHash = await deps.paymentSender.sendPayment({
         toAddress: deps.demoTarget.receivingAddress,
         valueWei: purchaseAmount,
+        nonce: paymentNonce,
       });
       await deps.checkpointStore.merge(runId, { paymentTransactionHash });
     }
@@ -362,10 +384,19 @@ export async function runOrchestratorPipeline(
     if (deps.refundSender) {
       const refundAmount = BigInt(quote.refundableToolBudgetAtomic) - purchaseAmount;
       if (refundAmount > 0n && !checkpoint.refundTransactionHash) {
+        let refundNonce = checkpoint.refundNonce;
+        if (refundNonce === undefined) {
+          refundNonce = await deps.refundSender.reserveNonce();
+          await deps.checkpointStore.merge(runId, { refundNonce });
+        } else if (await deps.refundSender.isNonceConsumed(refundNonce)) {
+          throw new PaymentSendAmbiguousError(runId, refundNonce, 'refund');
+        }
+
         const refundTransactionHash = await deps.refundSender.sendRefund({
           tokenAddress: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
           toAddress: quote.request.requesterAddress as `0x${string}`,
           valueAtomic: refundAmount,
+          nonce: refundNonce,
         });
         await deps.checkpointStore.merge(runId, { refundTransactionHash });
       }
@@ -528,7 +559,7 @@ export async function runOrchestratorPipeline(
 
     return { runId, finalStatus, attestationTransactionHash };
   } catch (error) {
-    if (error instanceof ProcurementDeniedError) throw error;
+    if (error instanceof ProcurementDeniedError || error instanceof PaymentSendAmbiguousError) throw error;
     throw new OrchestratorPipelineError(`Orchestrator pipeline failed for run ${runId}`, advancedPastFunded, { cause: error });
   }
 }

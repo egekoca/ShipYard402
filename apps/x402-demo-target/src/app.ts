@@ -1,8 +1,10 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import { recoverMessageAddress } from 'viem';
 import { z } from 'zod';
 
 import type { NativeTransferReader } from './native-payment-verifier.js';
 import { createProviderSigner, signResponseBody } from './provider-signing.js';
+import { purchaseClaimMessage } from './purchase-claim.js';
 import { DemoReceiptInvalidError, issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
 
 export type DemoTargetMode = 'V1_VULNERABLE' | 'V2_PROTECTED';
@@ -11,7 +13,8 @@ const PAID_RESOURCE_ROUTE = '/paid/resource';
 const RECEIPT_HEADER = 'x-payment-receipt';
 const PROVIDER_SIGNATURE_HEADER = 'x-provider-signature';
 const transactionHashSchema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
-const purchaseRequestSchema = z.object({ transactionHash: transactionHashSchema }).strict();
+const signatureSchema = z.string().regex(/^0x[a-fA-F0-9]{130}$/);
+const purchaseRequestSchema = z.object({ transactionHash: transactionHashSchema, signature: signatureSchema }).strict();
 
 export interface RedemptionStore {
   /** Returns true the first time an orderId is seen, false on every replay. */
@@ -29,18 +32,25 @@ export class InMemoryRedemptionStore implements RedemptionStore {
 }
 
 export interface PurchaseLedger {
-  /** Returns true the first time a payment transaction hash is claimed, false on reuse. */
-  tryClaim(transactionHash: `0x${string}`): Promise<boolean>;
+  /**
+   * First-writer-wins claim keyed by transaction hash, scoped to the (signature-verified) payer
+   * address. Returns null the first time a transaction hash is claimed (the caller now owns it),
+   * or the address that already claimed it otherwise -- callers compare that against their own
+   * verified payer address to tell a legitimate retry (same payer) from someone else's competing
+   * claim (a different payer), rather than treating every repeat as an error.
+   */
+  tryClaim(transactionHash: `0x${string}`, payerAddress: `0x${string}`): Promise<`0x${string}` | null>;
 }
 
 export class InMemoryPurchaseLedger implements PurchaseLedger {
-  readonly #claimedTransactionHashes = new Set<string>();
+  readonly #claimedTransactionHashes = new Map<string, `0x${string}`>();
 
-  async tryClaim(transactionHash: `0x${string}`): Promise<boolean> {
+  async tryClaim(transactionHash: `0x${string}`, payerAddress: `0x${string}`): Promise<`0x${string}` | null> {
     const key = transactionHash.toLowerCase();
-    if (this.#claimedTransactionHashes.has(key)) return false;
-    this.#claimedTransactionHashes.add(key);
-    return true;
+    const existing = this.#claimedTransactionHashes.get(key);
+    if (existing) return existing;
+    this.#claimedTransactionHashes.set(key, payerAddress.toLowerCase() as `0x${string}`);
+    return null;
   }
 }
 
@@ -86,7 +96,7 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
 
     const parsedBody = purchaseRequestSchema.safeParse(request.body);
     if (!parsedBody.success) return reply.status(400).send({ error: 'INVALID_PURCHASE_REQUEST' });
-    const { transactionHash } = parsedBody.data;
+    const { transactionHash, signature } = parsedBody.data;
 
     const transfer = await purchase.transferReader.getConfirmedTransfer(transactionHash as `0x${string}`);
     if (!transfer) return reply.status(402).send({ error: 'PAYMENT_TRANSACTION_NOT_FOUND' });
@@ -101,8 +111,29 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
       return reply.status(402).send({ error: 'PAYMENT_INSUFFICIENT_AMOUNT' });
     }
 
-    const firstClaim = await purchaseLedger.tryClaim(transactionHash as `0x${string}`);
-    if (!firstClaim) return reply.status(409).send({ error: 'PAYMENT_TRANSACTION_ALREADY_CLAIMED' });
+    // Anyone can read a confirmed transaction's hash and sender off the public chain -- proof of
+    // control over `transfer.from` (a signature only its private key could produce) is what
+    // actually stops an observer from racing the real payer to claim the one-time receipt.
+    let recoveredSigner: `0x${string}`;
+    try {
+      recoveredSigner = await recoverMessageAddress({
+        message: purchaseClaimMessage(transactionHash),
+        signature: signature as `0x${string}`,
+      });
+    } catch {
+      return reply.status(401).send({ error: 'PURCHASE_SIGNATURE_INVALID' });
+    }
+    if (recoveredSigner.toLowerCase() !== transfer.from.toLowerCase()) {
+      return reply.status(401).send({ error: 'PURCHASE_SIGNATURE_DOES_NOT_MATCH_PAYER' });
+    }
+
+    const existingClaimant = await purchaseLedger.tryClaim(transactionHash as `0x${string}`, transfer.from);
+    if (existingClaimant && existingClaimant.toLowerCase() !== transfer.from.toLowerCase()) {
+      return reply.status(409).send({ error: 'PAYMENT_TRANSACTION_ALREADY_CLAIMED' });
+    }
+    // existingClaimant matching transfer.from means this is the same signature-verified payer
+    // retrying (e.g. after their own checkpoint write failed) -- issue a fresh receipt rather than
+    // erroring, instead of permanently stranding a payment that already succeeded.
 
     const receipt = issueDemoReceipt(
       {

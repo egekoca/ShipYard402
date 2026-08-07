@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProcurementDeniedError, RunNotReadyForOrchestrationError, OrchestratorPipelineError } from './pipeline.js';
+import { PaymentSendAmbiguousError, ProcurementDeniedError, RunNotReadyForOrchestrationError, OrchestratorPipelineError } from './pipeline.js';
 import { OrchestratorJobHandler, processNextOrchestratorJob, type LeasedOrchestratorJob, type OrchestratorJobQueue } from './worker.js';
 
 function handlerThatThrows(error: unknown): OrchestratorJobHandler {
@@ -21,6 +21,13 @@ describe('orchestrator job handler', () => {
     const handler = handlerThatThrows(new ProcurementDeniedError(['HOST_NOT_ALLOWED']));
     await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
       action: 'DEAD_LETTER', reason: 'PROCUREMENT_DENIED', failureCodes: ['HOST_NOT_ALLOWED'],
+    });
+  });
+
+  it('dead-letters an ambiguous payment send instead of ever retrying it, since a retry is the double-payment risk itself', async () => {
+    const handler = handlerThatThrows(new PaymentSendAmbiguousError('run-1', 3, 'payment'));
+    await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER', reason: 'PAYMENT_SEND_AMBIGUOUS_NEEDS_MANUAL_RECONCILIATION',
     });
   });
 

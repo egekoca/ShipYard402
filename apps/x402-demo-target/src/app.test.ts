@@ -5,12 +5,23 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDemoTargetApp, PAID_RESOURCE_ROUTE } from './app.js';
 import type { ConfirmedNativeTransfer, NativeTransferReader } from './native-payment-verifier.js';
+import { purchaseClaimMessage } from './purchase-claim.js';
 import { issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
 
 const SECRET = 'a'.repeat(32);
 const NOW = new Date('2026-08-05T00:00:00.000Z');
 const RECEIVING_ADDRESS = '0x3000000000000000000000000000000000000003' as const;
 const TX_HASH = `0x${'bb'.repeat(32)}` as const;
+// A syntactically valid (but never-recovering) signature, for tests whose rejection happens
+// before signature verification is ever reached.
+const DUMMY_SIGNATURE = `0x${'11'.repeat(65)}` as const;
+
+const PAYER_KEY = `0x${'22'.repeat(32)}` as const;
+const PAYER_ADDRESS = privateKeyToAccount(PAYER_KEY).address;
+
+async function signPurchaseClaim(transactionHash: string, key: `0x${string}` = PAYER_KEY): Promise<`0x${string}`> {
+  return privateKeyToAccount(key).signMessage({ message: purchaseClaimMessage(transactionHash) });
+}
 
 function fakeTransferReader(transfer: ConfirmedNativeTransfer | null): NativeTransferReader {
   return { getConfirmedTransfer: async () => transfer };
@@ -20,7 +31,7 @@ function confirmedTransfer(overrides: Partial<ConfirmedNativeTransfer> = {}): Co
   return {
     transactionHash: TX_HASH,
     status: 'success',
-    from: '0x2000000000000000000000000000000000000002',
+    from: PAYER_ADDRESS,
     to: RECEIVING_ADDRESS,
     valueWei: 1_000_000_000_000n,
     confirmations: 3n,
@@ -181,7 +192,10 @@ describe('x402 demo target app', () => {
         },
       });
 
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
+      });
       expect(response.statusCode).toBe(200);
       const { receipt } = response.json() as { receipt: string };
       expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH, resource: PAID_RESOURCE_ROUTE });
@@ -199,7 +213,10 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 1,
         },
       });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
+      });
       expect(response.statusCode).toBe(402);
       expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_NOT_FOUND' });
     });
@@ -216,7 +233,10 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 1,
         },
       });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
+      });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_REVERTED' });
     });
 
@@ -232,7 +252,10 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 2,
         },
       });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
+      });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_NOT_YET_CONFIRMED' });
     });
 
@@ -248,7 +271,10 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 1,
         },
       });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
+      });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_WRONG_RECIPIENT' });
     });
 
@@ -264,11 +290,14 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 1,
         },
       });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
+      });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_INSUFFICIENT_AMOUNT' });
     });
 
-    it('rejects reusing the same payment transaction for a second receipt', async () => {
+    it('rejects a claim whose signature does not recover to the transaction sender', async () => {
       app = createDemoTargetApp({
         mode: 'V2_PROTECTED',
         receiptSecret: SECRET,
@@ -280,11 +309,84 @@ describe('x402 demo target app', () => {
           minimumConfirmations: 1,
         },
       });
-      const first = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
+      // An observer who read the (public) transaction hash off-chain but does not hold the
+      // payer's private key cannot produce a signature that recovers to transfer.from.
+      const impostorKey = `0x${'99'.repeat(32)}` as const;
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_DOES_NOT_MATCH_PAYER' });
+    });
+
+    it('rejects a malformed signature without ever reaching the ledger', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer()),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const response = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: `0x${'ab'.repeat(65)}` },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_INVALID' });
+    });
+
+    it('re-issues a fresh receipt when the same verified payer retries a claim, instead of erroring', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer()),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const signature = await signPurchaseClaim(TX_HASH);
+      const first = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH, signature } });
       expect(first.statusCode).toBe(200);
-      const second = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
-      expect(second.statusCode).toBe(409);
-      expect(second.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_ALREADY_CLAIMED' });
+      // This is exactly what an orchestrator retry after a checkpoint-write failure looks like:
+      // the same signer re-submitting the same already-earned transaction hash.
+      const second = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH, signature } });
+      expect(second.statusCode).toBe(200);
+      const { receipt } = second.json() as { receipt: string };
+      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH });
+    });
+
+    it('an observer racing the real payer to claim their receipt cannot, even after the real payer has already claimed it', async () => {
+      app = createDemoTargetApp({
+        mode: 'V2_PROTECTED',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        purchase: {
+          transferReader: fakeTransferReader(confirmedTransfer()),
+          receivingAddress: RECEIVING_ADDRESS,
+          minimumValueWei: 1n,
+          minimumConfirmations: 1,
+        },
+      });
+      const first = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
+      });
+      expect(first.statusCode).toBe(200);
+      const impostorKey = `0x${'44'.repeat(32)}` as const;
+      const second = await app.inject({
+        method: 'POST', url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
+      });
+      expect(second.statusCode).toBe(401);
+      expect(second.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_DOES_NOT_MATCH_PAYER' });
     });
   });
 });

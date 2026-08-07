@@ -1,4 +1,5 @@
 import {
+  PaymentSendAmbiguousError,
   ProcurementDeniedError,
   RunNotReadyForOrchestrationError,
   runOrchestratorPipeline,
@@ -49,6 +50,11 @@ export class OrchestratorJobHandler {
       }
       if (error instanceof ProcurementDeniedError) {
         return { action: 'DEAD_LETTER', reason: 'PROCUREMENT_DENIED', failureCodes: error.denialCodes };
+      }
+      // Never auto-retry an ambiguous send: retrying is exactly the double-payment risk this
+      // error exists to prevent. This needs a human to check the chain before the run continues.
+      if (error instanceof PaymentSendAmbiguousError) {
+        return { action: 'DEAD_LETTER', reason: 'PAYMENT_SEND_AMBIGUOUS_NEEDS_MANUAL_RECONCILIATION' };
       }
       // A mid-pipeline failure (OrchestratorPipelineError with advancedPastFunded=true) is safe
       // to retry: the pipeline is checkpoint-resumable, so a re-claimed job picks up from the
