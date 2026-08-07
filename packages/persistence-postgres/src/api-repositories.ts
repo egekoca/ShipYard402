@@ -21,6 +21,11 @@ export type RunSummary = Readonly<{
   updatedAt: string;
 }>;
 
+export type RunSummaryPage = Readonly<{
+  runs: readonly RunSummary[];
+  hasMore: boolean;
+}>;
+
 export type ApiRunRecord = Readonly<{
   aggregate: RunAggregate;
   quoteId: string;
@@ -202,20 +207,22 @@ export class PostgresRunRepository {
     return this.#find('r.id = $1', id);
   }
 
-  /** Newest first, capped -- backs a customer's "your past runs" list once their wallet is
+  /** Newest first, paged -- backs a customer's "your past runs" list once their wallet is
    * connected. Deliberately lighter than #find: no payment-order/receipt joins, just enough to
-   * render a clickable summary row per run. */
-  async listByRequester(requesterAddress: string, limit = 20): Promise<readonly RunSummary[]> {
+   * render a clickable summary row per run. Fetches one extra row over the page size purely to
+   * know whether a next page exists, without a separate COUNT(*) query. */
+  async listByRequester(requesterAddress: string, limit = 20, offset = 0): Promise<RunSummaryPage> {
     const result = await this.#pool.query<RunSummaryRow>(
       `SELECT r.id, r.status, r.result, r.created_at, r.updated_at, s.external_service_id
        FROM runs r
        JOIN services s ON s.id = r.service_id
        WHERE r.requester = $1
        ORDER BY r.created_at DESC
-       LIMIT $2`,
-      [hexToBuffer(requesterAddress), limit],
+       LIMIT $2 OFFSET $3`,
+      [hexToBuffer(requesterAddress), limit + 1, offset],
     );
-    return result.rows.map((row) => ({
+    const hasMore = result.rows.length > limit;
+    const runs = result.rows.slice(0, limit).map((row) => ({
       id: row.id,
       status: parseStatus(row.status),
       ...(row.result === null ? {} : { result: parseResult(row.result) }),
@@ -223,6 +230,7 @@ export class PostgresRunRepository {
       createdAt: toIso(row.created_at),
       updatedAt: toIso(row.updated_at),
     }));
+    return { runs, hasMore };
   }
 
   async #find(predicate: string, value: string): Promise<ApiRunRecord | null> {

@@ -30,6 +30,30 @@ export type RunSummaryResponse = Readonly<{
   updatedAt: string;
 }>;
 
+export type RunSummaryPage = Readonly<{
+  runs: readonly RunSummaryResponse[];
+  hasMore: boolean;
+}>;
+
+export type ServiceOnboardingRequest = Readonly<{
+  organizationName: string;
+  requesterAddress: `0x${string}`;
+  externalServiceId: string;
+  serviceName: string;
+  x402Endpoint: string;
+  openApiUrl: string;
+  version: string;
+}>;
+
+export type ServiceOnboardingResponse = Readonly<{
+  organizationId: string;
+  targetServiceId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  x402Endpoint: string;
+  openApiUrl: string;
+}>;
+
 export type QuoteRequest = Readonly<{
   organizationId: string;
   requesterAddress: `0x${string}`;
@@ -223,6 +247,14 @@ export class ShipyardApiClient {
     this.#fetch = fetchImplementation;
   }
 
+  async onboardService(input: ServiceOnboardingRequest, signal?: AbortSignal): Promise<ServiceOnboardingResponse> {
+    return this.#request<ServiceOnboardingResponse>('/v1/services/onboard', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
   async createQuote(input: QuoteRequest, signal?: AbortSignal): Promise<QuoteResponse> {
     return this.#request<QuoteResponse>('/v1/quotes', {
       method: 'POST',
@@ -253,12 +285,18 @@ export class ShipyardApiClient {
     });
   }
 
-  async listRuns(requesterAddress: `0x${string}`, signal?: AbortSignal): Promise<readonly RunSummaryResponse[]> {
-    const result = await this.#request<{ runs: readonly RunSummaryResponse[] }>(
-      `/v1/runs?requester=${encodeURIComponent(requesterAddress)}`,
-      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
-    );
-    return result.runs;
+  async listRuns(
+    requesterAddress: `0x${string}`,
+    pagination?: Readonly<{ limit?: number; offset?: number }>,
+    signal?: AbortSignal,
+  ): Promise<RunSummaryPage> {
+    const params = new URLSearchParams({ requester: requesterAddress });
+    if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
+    if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
+    return this.#request<RunSummaryPage>(`/v1/runs?${params.toString()}`, {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
   }
 
   async getPlan(runId: string, signal?: AbortSignal): Promise<PlanResponse | null> {

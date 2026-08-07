@@ -16,6 +16,11 @@ export type RunSummary = Readonly<{
   updatedAt: string;
 }>;
 
+export type RunSummaryPage = Readonly<{
+  runs: readonly RunSummary[];
+  hasMore: boolean;
+}>;
+
 export type RunRecord = Readonly<{
   aggregate: RunAggregate;
   quoteId: string;
@@ -31,7 +36,7 @@ export interface RunRepository {
   save(record: RunRecord, expectedPersistedRevision?: number): Promise<void>;
   findByRequestIdempotencyKey(key: string): Promise<RunRecord | null>;
   findById(id: string): Promise<RunRecord | null>;
-  listByRequester(requesterAddress: string, limit?: number): Promise<readonly RunSummary[]>;
+  listByRequester(requesterAddress: string, limit?: number, offset?: number): Promise<RunSummaryPage>;
 }
 
 export class RunPersistenceConflictError extends Error {
@@ -82,8 +87,8 @@ export class InMemoryRunRepository implements RunRepository {
   // RunRecord never carried a requester address in-memory (only the persisted Postgres row does,
   // sourced from the quote), so this test double can't filter by it. Real filtering is exercised
   // against Postgres directly; this just keeps the interface satisfiable for route-level tests.
-  async listByRequester(): Promise<readonly RunSummary[]> {
-    return [];
+  async listByRequester(): Promise<RunSummaryPage> {
+    return { runs: [], hasMore: false };
   }
 }
 

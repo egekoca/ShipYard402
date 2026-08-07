@@ -6,6 +6,7 @@ import {
   type QuoteRequest,
   type QuoteResponse,
   type RunResponse,
+  type ServiceOnboardingResponse,
 } from '@shipyard402/public-api-client';
 import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -14,6 +15,7 @@ import { useRunProgress } from '../hooks/use-run-progress';
 import { connectWallet, ensureChain, formatWalletError, getAuthorizedAccount, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
+import { ServiceOnboarding } from './service-onboarding';
 
 type FormState = Readonly<{
   organizationId: string;
@@ -72,6 +74,19 @@ export function ReleaseRunForm() {
     () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
     [],
   );
+
+  // Ticks once a second only while a live, unspent quote exists -- a quote has a real 900s
+  // expiry (packages/quote-engine), and the only signal of that used to be a static clock-time
+  // string. A person who steps away mid-flow deserves visible warning, not a surprise error the
+  // moment they come back and click Create.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!quote || run) return;
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [quote, run]);
+  const quoteExpiresInMs = quote ? Date.parse(quote.expiresAt) - nowMs : null;
+  const quoteExpired = quoteExpiresInMs !== null && quoteExpiresInMs <= 0;
 
   // Restores the connected address after a full page navigation (e.g. back from a run's detail
   // page): the wallet extension's own permission grant survives navigation even though this
@@ -135,6 +150,23 @@ export function ReleaseRunForm() {
     }
   }
 
+  function handleOnboarded(onboarded: ServiceOnboardingResponse) {
+    setForm((current) => ({
+      ...current,
+      organizationId: onboarded.organizationId,
+      targetServiceId: onboarded.targetServiceId,
+      targetVersionHash: onboarded.targetVersionHash,
+      policyHash: onboarded.policyHash,
+      x402Endpoint: onboarded.x402Endpoint,
+      openApiUrl: onboarded.openApiUrl,
+    }));
+    setQuote(null);
+    setRun(null);
+    setRunRequestKey(null);
+    setError(null);
+    setShowTechnical(true);
+  }
+
   async function createRun() {
     if (!quote || !runRequestKey) return;
     setBusy(true);
@@ -171,12 +203,19 @@ export function ReleaseRunForm() {
           <div className="form-body">
             <div className="target-summary">
               <p>
-                Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant
-                service on GOAT Testnet3. Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
+                {form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
+                  <>Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on GOAT Testnet3.</>
+                ) : (
+                  <>Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding below.</>
+                )}
+                {' '}Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
               </p>
               <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
                 {showTechnical ? 'Hide' : 'Show'} technical identifiers
               </button>
+              {form.requesterAddress && (
+                <ServiceOnboarding requesterAddress={form.requesterAddress as `0x${string}`} onOnboarded={handleOnboarded} />
+              )}
             </div>
             {showTechnical && (
               <div className="technical-fields">
@@ -216,7 +255,14 @@ export function ReleaseRunForm() {
           )}
           {quote && (
             <div className="quote-result state-in" key={quote.id}>
-              <div className="quote-status"><span>HYPOTHESIS</span><small>expires {new Date(quote.expiresAt).toLocaleTimeString()}</small></div>
+              <div className="quote-status">
+                <span>HYPOTHESIS</span>
+                {!run && quoteExpiresInMs !== null && (
+                  <small className={quoteExpiresInMs <= 60_000 ? 'quote-countdown quote-countdown--low' : 'quote-countdown'}>
+                    {quoteExpired ? 'expired' : `expires in ${formatCountdown(quoteExpiresInMs)}`}
+                  </small>
+                )}
+              </div>
               <p className="amount">{formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)} <small>{quote.capabilitySnapshot.tokenSymbol}</small></p>
               <dl>
                 <div><dt>Network</dt><dd>GOAT / {quote.capabilitySnapshot.chainId}</dd></div>
@@ -224,10 +270,17 @@ export function ReleaseRunForm() {
                 <div><dt>Refundable tool budget</dt><dd>{quote.refundableToolBudgetAtomic}</dd></div>
                 <div><dt>Commitment</dt><dd className="mono">{shortHash(quote.quoteCommitment)}</dd></div>
               </dl>
-              <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
-                {busy && <span className="spinner" aria-hidden="true" />}
-                {run ? `Run ${progress.run?.run.status ?? run.run.status}` : 'Create idempotent run'}
-              </button>
+              {quoteExpired && !run ? (
+                <div className="quote-expired-notice">
+                  <p>This quote expired before a run was created. Request a fresh one to continue.</p>
+                  <button className="primary-button" type="button" onClick={() => setQuote(null)}>Request a new quote</button>
+                </div>
+              ) : (
+                <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
+                  {busy && <span className="spinner" aria-hidden="true" />}
+                  {run ? `Run ${progress.run?.run.status ?? run.run.status}` : 'Create idempotent run'}
+                </button>
+              )}
             </div>
           )}
         </aside>
@@ -285,6 +338,13 @@ function formatError(error: unknown): string {
 
 function shortHash(value: string): string {
   return `${value.slice(0, 12)}…${value.slice(-8)}`;
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function formatAtomic(value: string, decimals: number): string {

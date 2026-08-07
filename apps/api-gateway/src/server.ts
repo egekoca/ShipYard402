@@ -3,6 +3,7 @@ import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import {
   createShipyardPool,
   assertShipyardSchemaReady,
+  onboardService,
   PostgresAttestationStore,
   PostgresEvidencePackStore,
   PostgresFlowOrderContextStore,
@@ -16,10 +17,13 @@ import { QuoteEngine } from '@shipyard402/quote-engine';
 
 import {
   createApp,
+  type OnboardedService,
   type PlanProvider,
   type PublicPlan,
   type RuntimeCapabilityProvider,
   type RuntimeStatusProvider,
+  type ServiceOnboardingInput,
+  type ServiceOnboardingProvider,
 } from './app.js';
 import { parseRuntimeConfig } from './runtime-config.js';
 
@@ -75,6 +79,18 @@ class CheckpointPlanProvider implements PlanProvider {
       rationale: checkpoint.plan.rationale,
       ...(checkpoint.proposal !== undefined ? { aiProposal: checkpoint.proposal } : {}),
     };
+  }
+}
+
+class PostgresServiceOnboardingProvider implements ServiceOnboardingProvider {
+  readonly #pool: ReturnType<typeof createShipyardPool>;
+
+  constructor(pool: ReturnType<typeof createShipyardPool>) {
+    this.#pool = pool;
+  }
+
+  async onboard(input: ServiceOnboardingInput): Promise<OnboardedService> {
+    return onboardService(this.#pool, input);
   }
 }
 
@@ -198,6 +214,7 @@ export async function buildApp(): Promise<BuiltApp> {
     attestationProvider: new PostgresAttestationStore(pool),
     planProvider: new CheckpointPlanProvider(new PostgresOrchestratorCheckpointStore(pool)),
     stepDurationStatsProvider: new PostgresStepDurationStatsStore(pool),
+    serviceOnboardingProvider: new PostgresServiceOnboardingProvider(pool),
     runtimeStatusProvider: new PostgresRuntimeStatusProvider(
       pool,
       config.environment,

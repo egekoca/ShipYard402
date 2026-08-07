@@ -342,6 +342,9 @@ importers:
       '@shipyard402/payment-reconciliation':
         specifier: workspace:*
         version: link:../payment-reconciliation
+      '@shipyard402/policy-engine':
+        specifier: workspace:*
+        version: link:../policy-engine
       '@shipyard402/quote-engine':
         specifier: workspace:*
         version: link:../quote-engine

@@ -29,7 +29,25 @@ const createRunRequestSchema = z
 const runParamsSchema = z.object({ runId: z.string().min(8).max(200) }).strict();
 
 const listRunsQuerySchema = z
-  .object({ requester: z.string().regex(/^0x[a-fA-F0-9]{40}$/) })
+  .object({
+    requester: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    limit: z.coerce.number().int().min(1).max(50).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  })
+  .strict();
+
+const onboardingHttpsUrlSchema = z.string().url().refine((value) => new URL(value).protocol === 'https:', 'HTTPS is required');
+
+const onboardServiceRequestSchema = z
+  .object({
+    organizationName: z.string().min(1).max(200),
+    requesterAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    externalServiceId: z.string().min(1).max(200),
+    serviceName: z.string().min(1).max(200),
+    x402Endpoint: onboardingHttpsUrlSchema,
+    openApiUrl: onboardingHttpsUrlSchema,
+    version: z.string().min(1).max(100),
+  })
   .strict();
 
 export interface RuntimeCapabilityProvider {
@@ -117,6 +135,34 @@ export interface StepDurationStatsProvider {
   getRecentMedianDurations(): Promise<PublicStepDurationStats | null>;
 }
 
+export type OnboardedService = Readonly<{
+  organizationId: string;
+  targetServiceId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  x402Endpoint: string;
+  openApiUrl: string;
+}>;
+
+export type ServiceOnboardingInput = Readonly<{
+  organizationName: string;
+  requesterAddress: `0x${string}`;
+  externalServiceId: string;
+  serviceName: string;
+  x402Endpoint: string;
+  openApiUrl: string;
+  version: string;
+}>;
+
+/**
+ * Before this, the only quotable target was one hardcoded catalog row seeded outside the app --
+ * real self-service meant fetching a caller's own OpenAPI document, hashing it into a real
+ * version_hash, and registering the catalog rows a quote request actually needs to match against.
+ */
+export interface ServiceOnboardingProvider {
+  onboard(input: ServiceOnboardingInput): Promise<OnboardedService>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
@@ -128,6 +174,7 @@ export type AppDependencies = Readonly<{
   attestationProvider?: AttestationProvider;
   planProvider?: PlanProvider;
   stepDurationStatsProvider?: StepDurationStatsProvider;
+  serviceOnboardingProvider?: ServiceOnboardingProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -176,6 +223,38 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     // Optional enhancement, not a resource lookup -- an unconfigured provider or a fresh
     // install with no completed runs yet both just mean "no ETA hint available", not an error.
     return reply.code(200).send(stats ?? { sampleSize: 0, medianMillisecondsByStep: {} });
+  });
+
+  app.post('/v1/services/onboard', async (request, reply) => {
+    const parsed = onboardServiceRequestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ code: 'INVALID_ONBOARDING_REQUEST', issues: parsed.error.issues });
+    }
+    if (!dependencies.serviceOnboardingProvider) {
+      return reply.code(503).send({
+        code: 'SERVICE_ONBOARDING_UNAVAILABLE',
+        message: 'Catalog onboarding storage is not configured.',
+      });
+    }
+    try {
+      const onboarded = await dependencies.serviceOnboardingProvider.onboard({
+        ...parsed.data,
+        requesterAddress: parsed.data.requesterAddress as `0x${string}`,
+      });
+      return reply.code(201).send(onboarded);
+    } catch (error) {
+      const code = hasErrorCode(error, 'OPENAPI_HOST_FORBIDDEN')
+        ? 'OPENAPI_HOST_FORBIDDEN'
+        : hasErrorCode(error, 'OPENAPI_NOT_JSON')
+        ? 'OPENAPI_NOT_JSON'
+        : hasErrorCode(error, 'OPENAPI_FETCH_FAILED')
+        ? 'OPENAPI_FETCH_FAILED'
+        : null;
+      if (code) {
+        return reply.code(422).send({ code, message: error instanceof Error ? error.message : 'Onboarding failed' });
+      }
+      throw error;
+    }
   });
 
   app.post('/v1/quotes', async (request, reply) => {
@@ -312,8 +391,8 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs', async (request, reply) => {
     const query = listRunsQuerySchema.safeParse(request.query);
     if (!query.success) return reply.code(400).send({ code: 'INVALID_REQUESTER_ADDRESS' });
-    const runs = await dependencies.runRepository.listByRequester(query.data.requester);
-    return reply.code(200).send({ runs });
+    const page = await dependencies.runRepository.listByRequester(query.data.requester, query.data.limit, query.data.offset);
+    return reply.code(200).send(page);
   });
 
   app.get('/v1/runs/:runId', async (request, reply) => {

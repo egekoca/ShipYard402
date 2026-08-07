@@ -21,6 +21,7 @@
     "@shipyard402/goat-flow-adapter": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/payment-reconciliation": "workspace:*",
+    "@shipyard402/policy-engine": "workspace:*",
     "@shipyard402/quote-engine": "workspace:*",
     "@shipyard402/run-domain": "workspace:*",
     "@shipyard402/x402-payments": "workspace:*",
