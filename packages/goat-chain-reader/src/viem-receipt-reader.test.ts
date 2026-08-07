@@ -42,4 +42,25 @@ describe('Viem GOAT receipt reader', () => {
       'Unsupported receipt chain',
     );
   });
+
+  it('recovers from a transient chain-verification failure instead of caching the rejection forever', async () => {
+    let calls = 0;
+    const flakyThenHealthy: GoatReadClient = {
+      async getChainId() {
+        calls += 1;
+        if (calls === 1) throw new Error('RPC timeout');
+        return 2345;
+      },
+      async getTransactionReceipt() { return {
+        transactionHash: txHash,
+        status: 'success',
+        logs: [],
+      }; },
+    };
+    const reader = new ViemGoatReceiptReader(flakyThenHealthy);
+
+    await expect(reader.getTransactionReceipt(2345, txHash)).rejects.toThrow('RPC timeout');
+    await expect(reader.getTransactionReceipt(2345, txHash)).resolves.toMatchObject({ status: 1 });
+    expect(calls).toBe(2);
+  });
 });

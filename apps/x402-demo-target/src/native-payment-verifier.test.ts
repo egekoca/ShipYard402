@@ -61,4 +61,23 @@ describe('ViemNativeTransferReader', () => {
     const reader = new ViemNativeTransferReader(fakeClient({ chainId: 1 }), 48816);
     await expect(reader.getConfirmedTransfer(HASH)).rejects.toThrow('RPC chain mismatch');
   });
+
+  it('recovers from a transient chain-verification failure instead of caching the rejection forever', async () => {
+    let calls = 0;
+    const flakyThenHealthy = {
+      getChainId: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('RPC timeout');
+        return 48816;
+      },
+      getTransaction: async () => ({ from: FROM, to: TO, value: 1_000_000_000_000n }),
+      getTransactionReceipt: async () => ({ status: 'success', blockNumber: 100n }),
+      getBlockNumber: async () => 103n,
+    } as unknown as PublicClient;
+    const reader = new ViemNativeTransferReader(flakyThenHealthy, 48816);
+
+    await expect(reader.getConfirmedTransfer(HASH)).rejects.toThrow('RPC timeout');
+    await expect(reader.getConfirmedTransfer(HASH)).resolves.toMatchObject({ status: 'success' });
+    expect(calls).toBe(2);
+  });
 });

@@ -24,7 +24,7 @@ export interface NativeTransferReader {
 export class ViemNativeTransferReader implements NativeTransferReader {
   readonly #client: PublicClient;
   readonly #chainId: number;
-  #chainVerification?: Promise<void>;
+  #chainVerification: Promise<void> | undefined;
 
   constructor(client: PublicClient, chainId: number) {
     this.#client = client;
@@ -33,7 +33,14 @@ export class ViemNativeTransferReader implements NativeTransferReader {
 
   async getConfirmedTransfer(transactionHash: `0x${string}`, signal?: AbortSignal): Promise<ConfirmedNativeTransfer | null> {
     assertNotAborted(signal);
-    this.#chainVerification ??= this.#verifyChain();
+    // `??=` only reassigns when the field is nullish -- a *rejected* promise is neither, so
+    // without the reset below one transient RPC failure on the first call would poison every
+    // future /purchase call for the lifetime of this process. Clearing it back to undefined on
+    // rejection lets the next call retry verification instead of replaying a stale failure forever.
+    this.#chainVerification ??= this.#verifyChain().catch((error: unknown) => {
+      this.#chainVerification = undefined;
+      throw error;
+    });
     await this.#chainVerification;
 
     let transaction;

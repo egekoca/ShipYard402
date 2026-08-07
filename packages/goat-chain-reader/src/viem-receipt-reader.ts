@@ -26,7 +26,7 @@ export interface GoatReadClient {
 export class ViemGoatReceiptReader implements ChainReceiptReader {
   readonly #client: GoatReadClient;
   readonly #chainId: number;
-  #chainVerification?: Promise<void>;
+  #chainVerification: Promise<void> | undefined;
 
   constructor(client: GoatReadClient, chainId: number = GOAT_MAINNET.chainId) {
     this.#client = client;
@@ -40,7 +40,14 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
   ) {
     if (chainId !== this.#chainId) throw new Error(`Unsupported receipt chain: ${chainId}`);
     assertNotAborted(signal);
-    this.#chainVerification ??= this.#verifyChain();
+    // `??=` only reassigns when the field is nullish -- a *rejected* promise is neither, so
+    // without the reset below one transient RPC failure on the first call would poison every
+    // future call for the lifetime of this instance. Clearing it back to undefined on rejection
+    // lets the next call retry verification instead of replaying a stale failure forever.
+    this.#chainVerification ??= this.#verifyChain().catch((error: unknown) => {
+      this.#chainVerification = undefined;
+      throw error;
+    });
     await this.#chainVerification;
     try {
       const receipt = await this.#client.getTransactionReceipt({ hash: transactionHash });
