@@ -3,7 +3,17 @@
 import { ShipyardApiClient, ShipyardApiError, type RunSummaryResponse } from '@shipyard402/public-api-client';
 import { useEffect, useState } from 'react';
 
+import { ensureSession, getStoredSessionToken } from '../lib/session';
+
 const PAGE_SIZE = 20;
+
+function apiClient(requesterAddress: `0x${string}`): ShipyardApiClient {
+  return new ShipyardApiClient(
+    process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
+    undefined,
+    () => getStoredSessionToken(requesterAddress),
+  );
+}
 
 /** Every run's own detail page already renders the exact same status/verdict language -- this
  * only needs to be legible enough to pick the right row to click into. */
@@ -35,8 +45,9 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
 
   useEffect(() => {
     let cancelled = false;
-    const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
-    client.listRuns(requesterAddress, { limit: PAGE_SIZE })
+    const client = apiClient(requesterAddress);
+    ensureSession(client, requesterAddress)
+      .then(() => client.listRuns(requesterAddress, { limit: PAGE_SIZE }))
       .then((page) => {
         if (cancelled) return;
         setRuns(page.runs);
@@ -53,7 +64,8 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
     if (!runs) return;
     setLoadingMore(true);
     try {
-      const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
+      const client = apiClient(requesterAddress);
+      await ensureSession(client, requesterAddress);
       const page = await client.listRuns(requesterAddress, { limit: PAGE_SIZE, offset: runs.length });
       setRuns((current) => [...(current ?? []), ...page.runs]);
       setHasMore(page.hasMore);

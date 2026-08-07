@@ -20,6 +20,7 @@
     "@shipyard402/run-domain": "workspace:*",
     "@shipyard402/x402-payments": "workspace:*",
     "fastify": "5.11.2",
+    "viem": "2.55.10",
     "zod": "3.25.76"
   },
   "devDependencies": {

@@ -59,6 +59,42 @@ describe('public API client boundary', () => {
     await expect(client.getEvidence('run-fixed')).rejects.toMatchObject({ code: 'EVIDENCE_PACK_PROVIDER_UNAVAILABLE' });
   });
 
+  it('attaches the session token from getSessionToken to authenticated requests', async () => {
+    const fetchImplementation = vi.fn(async () => new Response(JSON.stringify({ runs: [], hasMore: false }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const client = new ShipyardApiClient('http://127.0.0.1:3001', fetchImplementation as typeof fetch, () => 'a-real-token');
+
+    await client.listRuns('0x2000000000000000000000000000000000000002');
+
+    const [, requestInit] = fetchImplementation.mock.calls[0] as unknown as [URL, RequestInit];
+    expect((requestInit.headers as Record<string, string>)['authorization']).toBe('Bearer a-real-token');
+  });
+
+  it('sends no authorization header when no session token is available', async () => {
+    const fetchImplementation = vi.fn(async () => new Response(JSON.stringify({ runs: [], hasMore: false }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const client = new ShipyardApiClient('http://127.0.0.1:3001', fetchImplementation as typeof fetch, () => null);
+
+    await client.listRuns('0x2000000000000000000000000000000000000002');
+
+    const [, requestInit] = fetchImplementation.mock.calls[0] as unknown as [URL, RequestInit];
+    expect((requestInit.headers as Record<string, string>)['authorization']).toBeUndefined();
+  });
+
+  it('never attaches a session token to the login request itself', async () => {
+    const fetchImplementation = vi.fn(async () => new Response(JSON.stringify({ token: 'issued-token', expiresAt: '2026-08-05T00:00:00.000Z' }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const client = new ShipyardApiClient('http://127.0.0.1:3001', fetchImplementation as typeof fetch, () => 'a-stale-token');
+
+    await client.createSession({ address: '0x2000000000000000000000000000000000000002', signature: `0x${'aa'.repeat(65)}`, issuedAt: 1_800_000_000 });
+
+    const [, requestInit] = fetchImplementation.mock.calls[0] as unknown as [URL, RequestInit];
+    expect((requestInit.headers as Record<string, string>)['authorization']).toBeUndefined();
+  });
+
   it('fetches a real attestation payload', async () => {
     const attestation = {
       runId: 'run-fixed',

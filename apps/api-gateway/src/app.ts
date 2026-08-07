@@ -10,7 +10,7 @@ import {
 } from '@shipyard402/quote-engine';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
 import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import {
@@ -18,6 +18,17 @@ import {
   type RunRecord,
   type RunRepository,
 } from './repositories.js';
+import { issueSessionToken, verifyLoginSignature, verifySessionToken, type Session } from './session-auth.js';
+
+const SESSION_TOKEN_VALIDITY_SECONDS = 24 * 60 * 60;
+
+const loginRequestSchema = z
+  .object({
+    address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+    signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/),
+    issuedAt: z.number().int().positive(),
+  })
+  .strict();
 
 const createRunRequestSchema = z
   .object({
@@ -178,6 +189,13 @@ export type AppDependencies = Readonly<{
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
+  /**
+   * Signs and verifies session bearer tokens (see session-auth.ts). Undefined means auth is
+   * unconfigured -- every route that would otherwise trust a caller-supplied address instead
+   * fails closed with 503, the same pattern used for the merchant capability above, rather than
+   * silently running open.
+   */
+  sessionSecret?: string;
 }>;
 
 export function createApp(dependencies: AppDependencies): FastifyInstance {
@@ -187,6 +205,22 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
   const now = dependencies.now ?? (() => new Date());
   const idFactory = dependencies.idFactory ?? randomUUID;
+
+  // Without this, Fastify's default handler serializes any unhandled exception's raw
+  // error.message straight into the HTTP response -- including driver-level Postgres errors from
+  // an unguarded repository call, which can carry connection/constraint detail no anonymous
+  // caller should see. Every route below that classifies its own errors into a {code, message}
+  // shape still does so explicitly; this is only the fallback for whatever slips past that.
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    request.log.error({ err: error }, 'unhandled route error');
+    const statusCode = typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
+      ? error.statusCode
+      : 500;
+    if (statusCode < 500) {
+      return reply.code(statusCode).send({ code: 'BAD_REQUEST', message: error.message });
+    }
+    return reply.code(500).send({ code: 'INTERNAL_ERROR', message: 'An internal error occurred.' });
+  });
 
   if (dependencies.allowedWebOrigins && dependencies.allowedWebOrigins.length > 0) {
     void app.register(cors, {
@@ -215,6 +249,68 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       assuranceClaim: 'version-policy-expiry-scoped-execution-evidence',
     });
   });
+
+  /**
+   * A wallet signs this once, right after connecting, to prove control of its address; the
+   * resulting bearer token is then attached to every request that needs to prove "this caller is
+   * this address" (quoting, creating a run, reading a run's own progress). Requiring a fresh
+   * signature on every request instead would mean a MetaMask popup on every poll -- a token traded
+   * for one signature is what makes that usable.
+   */
+  app.post('/v1/auth/session', async (request, reply) => {
+    if (!dependencies.sessionSecret) {
+      return reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
+    }
+    const parsed = loginRequestSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ code: 'INVALID_LOGIN_REQUEST', issues: parsed.error.issues });
+
+    const nowEpochSeconds = Math.floor(now().getTime() / 1_000);
+    const address = parsed.data.address as `0x${string}`;
+    const valid = await verifyLoginSignature({
+      address,
+      signature: parsed.data.signature as `0x${string}`,
+      issuedAtEpochSeconds: parsed.data.issuedAt,
+      nowEpochSeconds,
+    });
+    if (!valid) return reply.code(401).send({ code: 'LOGIN_SIGNATURE_INVALID' });
+
+    const token = issueSessionToken(dependencies.sessionSecret, address, nowEpochSeconds, SESSION_TOKEN_VALIDITY_SECONDS);
+    return reply.code(200).send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
+  });
+
+  function requireSession(request: FastifyRequest, reply: FastifyReply): Session | null {
+    if (!dependencies.sessionSecret) {
+      reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
+      return null;
+    }
+    const header = request.headers.authorization;
+    const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) {
+      reply.code(401).send({ code: 'AUTH_REQUIRED' });
+      return null;
+    }
+    const session = verifySessionToken(dependencies.sessionSecret, token, Math.floor(now().getTime() / 1_000));
+    if (!session) {
+      reply.code(401).send({ code: 'AUTH_INVALID_OR_EXPIRED' });
+      return null;
+    }
+    return session;
+  }
+
+  /**
+   * Loads a run only if the authenticated caller actually owns it (via the quote it was created
+   * from). A mismatch reads back identically to a genuinely missing run -- confirming a run exists
+   * for someone else's runId is its own small leak, so "not yours" and "doesn't exist" are
+   * deliberately indistinguishable from the response alone.
+   */
+  async function loadOwnedRun(runId: string, callerAddress: string): Promise<RunRecord | null> {
+    const record = await dependencies.runRepository.findById(runId);
+    if (!record) return null;
+    const quote = await dependencies.quoteRepository.findById(record.quoteId);
+    if (!quote) return null;
+    if (quote.request.requesterAddress.toLowerCase() !== callerAddress.toLowerCase()) return null;
+    return record;
+  }
 
   app.get('/v1/stats/step-durations', async (_request, reply) => {
     const stats = dependencies.stepDurationStatsProvider
@@ -258,9 +354,14 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   app.post('/v1/quotes', async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
     const parsed = quoteRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ code: 'INVALID_QUOTE_REQUEST', issues: parsed.error.issues });
+    }
+    if (parsed.data.requesterAddress.toLowerCase() !== session.address.toLowerCase()) {
+      return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
     }
 
     let capability: FlowRuntimeCapability | null;
@@ -299,16 +400,33 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   app.post('/v1/runs', async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
     const parsed = createRunRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ code: 'INVALID_RUN_REQUEST', issues: parsed.error.issues });
     }
 
     const existing = await dependencies.runRepository.findByRequestIdempotencyKey(parsed.data.idempotencyKey);
-    if (existing) return reply.code(200).send(toRunResponse(existing));
+    if (existing) {
+      // request_idempotency_key is only unique on its own (no quoteId component) -- a client that
+      // reuses a key against a different quote (e.g. re-quoting after expiry, then retrying the
+      // old idempotencyKey) must get a clear conflict, not someone else's run silently handed back
+      // as if it were theirs. A key that happens to collide with a run belonging to a different
+      // authenticated caller entirely reads back as not-found, same as any other ownership miss.
+      if (existing.quoteId !== parsed.data.quoteId) {
+        return reply.code(409).send({ code: 'IDEMPOTENCY_KEY_QUOTE_MISMATCH' });
+      }
+      const owned = await loadOwnedRun(existing.aggregate.id, session.address);
+      if (!owned) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+      return reply.code(200).send(toRunResponse(owned));
+    }
 
     const quote = await dependencies.quoteRepository.findById(parsed.data.quoteId);
     if (!quote) return reply.code(404).send({ code: 'QUOTE_NOT_FOUND' });
+    if (quote.request.requesterAddress.toLowerCase() !== session.address.toLowerCase()) {
+      return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
+    }
     const timestamp = now();
     if (timestamp.getTime() >= Date.parse(quote.expiresAt)) {
       return reply.code(410).send({ code: 'QUOTE_EXPIRED' });
@@ -333,7 +451,12 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       await dependencies.runRepository.save(record);
     } catch (error) {
       const persisted = await dependencies.runRepository.findByRequestIdempotencyKey(parsed.data.idempotencyKey);
-      if (persisted) return reply.code(200).send(toRunResponse(persisted));
+      if (persisted) {
+        if (persisted.quoteId !== parsed.data.quoteId) {
+          return reply.code(409).send({ code: 'IDEMPOTENCY_KEY_QUOTE_MISMATCH' });
+        }
+        return reply.code(200).send(toRunResponse(persisted));
+      }
       throw error;
     }
     return reply.code(201).send(toRunResponse(record));
@@ -342,6 +465,8 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.post('/v1/runs/:runId/payment-challenge', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    const session = requireSession(request, reply);
+    if (!session) return;
     if (!dependencies.merchantAdapter) {
       return reply.code(503).send({
         code: 'GOAT_FLOW_MERCHANT_ADAPTER_UNAVAILABLE',
@@ -349,7 +474,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       });
     }
 
-    const record = await dependencies.runRepository.findById(params.data.runId);
+    const record = await loadOwnedRun(params.data.runId, session.address);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     if (record.paymentOrder) {
       const recovered = await ensurePaymentRequired(record, dependencies.runRepository, now);
@@ -391,6 +516,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs', async (request, reply) => {
     const query = listRunsQuerySchema.safeParse(request.query);
     if (!query.success) return reply.code(400).send({ code: 'INVALID_REQUESTER_ADDRESS' });
+    const session = requireSession(request, reply);
+    if (!session) return;
+    if (query.data.requester.toLowerCase() !== session.address.toLowerCase()) {
+      return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
+    }
     const page = await dependencies.runRepository.listByRequester(query.data.requester, query.data.limit, query.data.offset);
     return reply.code(200).send(page);
   });
@@ -398,7 +528,9 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const record = await dependencies.runRepository.findById(params.data.runId);
+    const session = requireSession(request, reply);
+    if (!session) return;
+    const record = await loadOwnedRun(params.data.runId, session.address);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     return reply.code(200).send(toRunResponse(record));
   });
@@ -406,6 +538,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId/plan', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    const session = requireSession(request, reply);
+    if (!session) return;
+    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+      return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+    }
     if (!dependencies.planProvider) {
       return reply.code(503).send({
         code: 'PLAN_PROVIDER_UNAVAILABLE',
@@ -420,6 +557,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId/evidence', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    const session = requireSession(request, reply);
+    if (!session) return;
+    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+      return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+    }
     if (!dependencies.evidencePackProvider) {
       return reply.code(503).send({
         code: 'EVIDENCE_PACK_PROVIDER_UNAVAILABLE',
@@ -434,6 +576,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId/attestation', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+    const session = requireSession(request, reply);
+    if (!session) return;
+    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+      return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+    }
     if (!dependencies.attestationProvider) {
       return reply.code(503).send({
         code: 'ATTESTATION_PROVIDER_UNAVAILABLE',

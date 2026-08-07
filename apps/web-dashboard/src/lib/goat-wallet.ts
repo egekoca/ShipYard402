@@ -118,6 +118,21 @@ export async function sendErc20Payment(input: Readonly<{
   return txHash as `0x${string}`;
 }
 
+function toHexMessage(message: string): `0x${string}` {
+  const bytes = new TextEncoder().encode(message);
+  return `0x${Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** personal_sign, used once after connecting to prove control of the address before the API
+ * gateway will issue a session token (see ../lib/session.ts). */
+export async function signPersonalMessage(address: `0x${string}`, message: string): Promise<`0x${string}`> {
+  const signature = await getProvider().request({
+    method: 'personal_sign',
+    params: [toHexMessage(message), address],
+  }) as string;
+  return signature as `0x${string}`;
+}
+
 export function formatWalletError(error: unknown): string {
   const code = (error as Readonly<{ code?: number }> | null)?.code;
   if (code === 4001) return 'Rejected in wallet.';

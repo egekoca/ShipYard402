@@ -9,7 +9,9 @@ import {
   type RunResponse,
   type StepDurationStatsResponse,
 } from '@shipyard402/public-api-client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+import { getStoredSessionToken } from '../lib/session';
 
 const POLL_MS = 4000;
 const TERMINAL_STATUSES = new Set([
@@ -18,6 +20,10 @@ const TERMINAL_STATUSES = new Set([
 
 export function stepIndexForStatus(status: string): number {
   if (['DRAFT', 'QUOTED', 'PAYMENT_REQUIRED'].includes(status)) return -1;
+  // A run that never got paid or was cancelled early never reached step 0, let alone finished --
+  // without this it fell through to the same index 5 a genuinely successful DELIVERED_* run gets,
+  // showing a false "payment confirmed" checkmark and live spinners on steps that never ran.
+  if (status === 'CANCELLED' || status === 'EXPIRED') return -1;
   if (status === 'FUNDED') return 0;
   if (['ANALYZING', 'PLAN_COMPILED'].includes(status)) return 1;
   if (['PROCURING', 'EXECUTING', 'REPLANNING'].includes(status)) return 2;
@@ -39,10 +45,9 @@ export function useRunProgress(runId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
   const client = useMemo(
-    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
+    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () => getStoredSessionToken()),
     [],
   );
-  const stopped = useRef(false);
 
   useEffect(() => {
     if (!runId) {
@@ -52,7 +57,11 @@ export function useRunProgress(runId: string | null) {
       setAttestation(null);
       return;
     }
-    stopped.current = false;
+    // Declared fresh per effect invocation (not a component-level ref) -- a ref shared across
+    // invocations gets reset to false by the *next* effect's setup before a slow in-flight fetch
+    // from *this* invocation resolves, so that stale fetch would pass the guard and clobber the
+    // newer run's state with the old run's data. Each invocation must only ever cancel itself.
+    let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     async function poll() {
@@ -63,7 +72,7 @@ export function useRunProgress(runId: string | null) {
           client.getEvidence(runId as string),
           client.getAttestation(runId as string),
         ]);
-        if (stopped.current) return;
+        if (cancelled) return;
         setRun(runResponse);
         setPlan(planResponse);
         setEvidence(evidenceResponse);
@@ -71,17 +80,17 @@ export function useRunProgress(runId: string | null) {
         setError(null);
         setLastPolledAt(new Date());
       } catch (caught) {
-        if (stopped.current) return;
+        if (cancelled) return;
         setError(caught instanceof ShipyardApiError ? `${caught.code}: ${caught.message}` : 'Could not reach the Shipyard402 API');
       }
-      if (stopped.current) return;
+      if (cancelled) return;
       const isTerminal = run && TERMINAL_STATUSES.has(run.run.status);
       timeout = setTimeout(poll, isTerminal ? POLL_MS * 4 : POLL_MS);
     }
 
     void poll();
     return () => {
-      stopped.current = true;
+      cancelled = true;
       if (timeout) clearTimeout(timeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,7 +110,7 @@ export function useRunProgress(runId: string | null) {
 export function useStepDurationStats(): StepDurationStatsResponse | null {
   const [stats, setStats] = useState<StepDurationStatsResponse | null>(null);
   const client = useMemo(
-    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
+    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () => getStoredSessionToken()),
     [],
   );
 

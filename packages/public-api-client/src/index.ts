@@ -226,6 +226,17 @@ export type AttestationResponse = Readonly<{
   submittedAt: string;
 }>;
 
+export type LoginRequest = Readonly<{
+  address: `0x${string}`;
+  signature: `0x${string}`;
+  issuedAt: number;
+}>;
+
+export type SessionResponse = Readonly<{
+  token: string;
+  expiresAt: string;
+}>;
+
 export class ShipyardApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -241,10 +252,27 @@ export class ShipyardApiError extends Error {
 export class ShipyardApiClient {
   readonly #baseUrl: URL;
   readonly #fetch: typeof fetch;
+  readonly #getSessionToken: (() => string | null) | undefined;
 
-  constructor(baseUrl: string, fetchImplementation: typeof fetch = fetch.bind(globalThis)) {
+  /**
+   * getSessionToken is read fresh on every request rather than captured once, since a page can
+   * outlive a single session (wallet reconnects, a token expires and gets renewed) -- passing a
+   * getter instead of a token lets every already-constructed client instance pick up a refreshed
+   * token without needing to be recreated.
+   */
+  constructor(baseUrl: string, fetchImplementation: typeof fetch = fetch.bind(globalThis), getSessionToken?: () => string | null) {
     this.#baseUrl = normalizeBaseUrl(baseUrl);
     this.#fetch = fetchImplementation;
+    this.#getSessionToken = getSessionToken;
+  }
+
+  /** Exchanges a wallet's signed login proof for a bearer token -- see session-auth.ts server-side. */
+  async createSession(input: LoginRequest, signal?: AbortSignal): Promise<SessionResponse> {
+    return this.#request<SessionResponse>('/v1/auth/session', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      ...(signal === undefined ? {} : { signal }),
+    }, new Set(), { skipAuth: true });
   }
 
   async onboardService(input: ServiceOnboardingRequest, signal?: AbortSignal): Promise<ServiceOnboardingResponse> {
@@ -337,7 +365,13 @@ export class ShipyardApiClient {
     });
   }
 
-  async #request<T>(path: string, init: RequestInit, acceptedErrorStatuses = new Set<number>()): Promise<T> {
+  async #request<T>(
+    path: string,
+    init: RequestInit,
+    acceptedErrorStatuses = new Set<number>(),
+    options: Readonly<{ skipAuth?: boolean }> = {},
+  ): Promise<T> {
+    const token = options.skipAuth ? null : this.#getSessionToken?.() ?? null;
     const response = await this.#fetch(new URL(path, this.#baseUrl), {
       ...init,
       headers: {
@@ -346,6 +380,7 @@ export class ShipyardApiClient {
         // action) makes Fastify reject it as FST_ERR_CTP_EMPTY_JSON_BODY -- only claim JSON when
         // there is actually a body to back the claim.
         ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },
     });

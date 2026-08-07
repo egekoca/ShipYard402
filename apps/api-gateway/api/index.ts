@@ -12,10 +12,19 @@ let cachedApp: Promise<BuiltApp> | null = null;
 
 async function getApp(): Promise<BuiltApp> {
   if (!cachedApp) {
-    cachedApp = buildApp().then(async (built) => {
-      await built.app.ready();
-      return built;
-    });
+    cachedApp = buildApp()
+      .then(async (built) => {
+        await built.app.ready();
+        return built;
+      })
+      .catch((error: unknown) => {
+        // A rejected promise is still non-null, so without this a single transient failure (e.g.
+        // the DB being momentarily unreachable during a cold start) would be replayed as the same
+        // stale error on every request for the rest of this warm instance's lifetime, even long
+        // after the DB recovered. Clearing it back to null lets the next request retry.
+        cachedApp = null;
+        throw error;
+      });
   }
   return cachedApp;
 }

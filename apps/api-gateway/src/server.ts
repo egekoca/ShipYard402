@@ -222,6 +222,7 @@ export async function buildApp(): Promise<BuiltApp> {
       merchantAdapter !== undefined && config.goatEnvironment === 'mainnet',
     ),
     ...(merchantAdapter ? { merchantAdapter } : {}),
+    ...(config.sessionSigningSecret ? { sessionSecret: config.sessionSigningSecret } : {}),
   });
 
   return { app, pool, config };

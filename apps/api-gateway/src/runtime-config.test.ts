@@ -14,6 +14,7 @@ const completeMerchantEnvironment = {
   GOATX402_RECEIVING_ADDRESS: '0x2000000000000000000000000000000000000002',
   GOATX402_MINIMUM_ATOMIC_AMOUNT: '1',
   GOATX402_MAXIMUM_ATOMIC_AMOUNT: '100000000',
+  SESSION_SIGNING_SECRET: 'a'.repeat(32),
 } satisfies NodeJS.ProcessEnv;
 
 describe('API runtime configuration', () => {
@@ -48,6 +49,15 @@ describe('API runtime configuration', () => {
       APP_ENV: 'production',
       DATABASE_URL: 'postgresql://database.example/shipyard',
     })).toThrowError(/merchant configuration/);
+  });
+
+  it('requires SESSION_SIGNING_SECRET in production even with merchant configuration complete', () => {
+    expect(() => parseRuntimeConfig({
+      APP_ENV: 'production',
+      DATABASE_URL: 'postgresql://database.example/shipyard',
+      ...completeMerchantEnvironment,
+      SESSION_SIGNING_SECRET: undefined,
+    })).toThrowError(/SESSION_SIGNING_SECRET/);
   });
 
   it('accepts a complete reviewed production configuration', () => {

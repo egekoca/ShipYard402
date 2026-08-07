@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
 import { connectWallet, ensureChain, formatWalletError, getAuthorizedAccount, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import { ensureSession, getStoredSessionToken } from '../lib/session';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
 import { ServiceOnboarding } from './service-onboarding';
@@ -71,8 +72,12 @@ export function ReleaseRunForm() {
   // collapsed so a first-time visitor sees "what am I testing" in plain language, not a form.
   const [showTechnical, setShowTechnical] = useState(false);
   const client = useMemo(
-    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
-    [],
+    () => new ShipyardApiClient(
+      process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
+      undefined,
+      () => getStoredSessionToken(form.requesterAddress ? (form.requesterAddress as `0x${string}`) : null),
+    ),
+    [form.requesterAddress],
   );
 
   // Ticks once a second only while a live, unspent quote exists -- a quote has a real 900s
@@ -98,8 +103,12 @@ export function ReleaseRunForm() {
       if (cancelled || !address) return;
       setForm((current) => ({ ...current, requesterAddress: address }));
       void ensureChain(GOAT_TESTNET3_CHAIN_ID).catch(() => { /* WalletPayPanel retries this later */ });
+      // Best-effort: if this signature is skipped or fails, the first protected API call below
+      // (requestQuote/createRun) tries again before it actually needs the token.
+      void ensureSession(client, address).catch(() => {});
     }).catch(() => { /* no wallet, or the user hasn't authorized this site -- fine, show Connect */ });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function update(field: keyof FormState, value: string) {
@@ -125,6 +134,9 @@ export function ReleaseRunForm() {
       } catch (chainError) {
         setError(formatWalletError(chainError));
       }
+      // One signature to prove control of the address, traded for a bearer token -- everything
+      // below this (quoting, creating a run, reading its own progress) needs it.
+      await ensureSession(client, address);
     } catch (caught) {
       setError(formatWalletError(caught));
     } finally {
@@ -140,6 +152,7 @@ export function ReleaseRunForm() {
     setRun(null);
     setRunRequestKey(null);
     try {
+      await ensureSession(client, form.requesterAddress as `0x${string}`);
       const created = await client.createQuote(form as QuoteRequest);
       setQuote(created);
       setRunRequestKey(`web-${globalThis.crypto.randomUUID()}`);
@@ -172,6 +185,7 @@ export function ReleaseRunForm() {
     setBusy(true);
     setError(null);
     try {
+      await ensureSession(client, form.requesterAddress as `0x${string}`);
       const created = await client.createRun(quote.id, runRequestKey);
       setRun(await client.requestPaymentChallenge(created.run.id));
     } catch (caught) {

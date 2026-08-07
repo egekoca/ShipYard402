@@ -27,6 +27,7 @@ const selectedEnvironmentSchema = z
     GOATX402_RECEIVING_ADDRESS: z.string().optional(),
     GOATX402_MINIMUM_ATOMIC_AMOUNT: z.string().optional(),
     GOATX402_MAXIMUM_ATOMIC_AMOUNT: z.string().optional(),
+    SESSION_SIGNING_SECRET: z.string().min(32).optional(),
   })
   .strict();
 
@@ -63,6 +64,7 @@ export type ApiRuntimeConfig = Readonly<{
     useTls: boolean;
   }>;
   merchant?: MerchantRuntimeConfig;
+  sessionSigningSecret?: string;
 }>;
 
 export class RuntimeConfigurationError extends Error {
@@ -109,6 +111,12 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
       [...merchantFieldNames],
     );
   }
+  if (values.APP_ENV === 'production' && !values.SESSION_SIGNING_SECRET) {
+    throw new RuntimeConfigurationError(
+      'Production requires SESSION_SIGNING_SECRET so run/quote ownership can actually be verified',
+      ['SESSION_SIGNING_SECRET'],
+    );
+  }
 
   const origins = (values.WEB_ORIGIN ?? 'http://127.0.0.1:3000')
     .split(',')
@@ -127,6 +135,7 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
       useTls: values.DATABASE_TLS ? values.DATABASE_TLS === 'true' : values.APP_ENV === 'production',
     },
     ...(merchant ? { merchant } : {}),
+    ...(values.SESSION_SIGNING_SECRET ? { sessionSigningSecret: values.SESSION_SIGNING_SECRET } : {}),
   };
 }
 
@@ -149,6 +158,7 @@ function selectEnvironment(environment: NodeJS.ProcessEnv): Record<string, strin
     GOATX402_RECEIVING_ADDRESS: environment['GOATX402_RECEIVING_ADDRESS'],
     GOATX402_MINIMUM_ATOMIC_AMOUNT: environment['GOATX402_MINIMUM_ATOMIC_AMOUNT'],
     GOATX402_MAXIMUM_ATOMIC_AMOUNT: environment['GOATX402_MAXIMUM_ATOMIC_AMOUNT'],
+    SESSION_SIGNING_SECRET: environment['SESSION_SIGNING_SECRET'],
   };
 }
 
