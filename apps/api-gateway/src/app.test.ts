@@ -297,6 +297,32 @@ describe('api gateway vertical slice', () => {
       expect(response.statusCode).toBe(404);
       expect(response.json()).toEqual({ code: 'RUN_NOT_FOUND' });
     });
+
+    it('rejects an unauthenticated onboarding request', async () => {
+      const app = testApp();
+      const response = await app.inject({
+        method: 'POST', url: '/v1/services/onboard',
+        payload: {
+          organizationName: 'Acme', requesterAddress, externalServiceId: 'service:acme',
+          serviceName: 'Acme API', x402Endpoint: 'https://acme.example/paid', openApiUrl: 'https://acme.example/openapi.json', version: '1.0.0',
+        },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('rejects onboarding as an address the caller did not authenticate as', async () => {
+      const app = testApp();
+      const someoneElse = '0x' + '9'.repeat(39) + 'a';
+      const response = await app.inject({
+        method: 'POST', url: '/v1/services/onboard', headers: requesterAuth,
+        payload: {
+          organizationName: 'Acme', requesterAddress: someoneElse, externalServiceId: 'service:acme',
+          serviceName: 'Acme API', x402Endpoint: 'https://acme.example/paid', openApiUrl: 'https://acme.example/openapi.json', version: '1.0.0',
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ code: 'REQUESTER_ADDRESS_MISMATCH' });
+    });
   });
 
   it('fails closed instead of inventing a payment capability', async () => {

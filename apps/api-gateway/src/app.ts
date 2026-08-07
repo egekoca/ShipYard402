@@ -322,9 +322,14 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   });
 
   app.post('/v1/services/onboard', async (request, reply) => {
+    const session = requireSession(request, reply);
+    if (!session) return;
     const parsed = onboardServiceRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ code: 'INVALID_ONBOARDING_REQUEST', issues: parsed.error.issues });
+    }
+    if (parsed.data.requesterAddress.toLowerCase() !== session.address.toLowerCase()) {
+      return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
     }
     if (!dependencies.serviceOnboardingProvider) {
       return reply.code(503).send({

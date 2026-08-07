@@ -3,6 +3,8 @@
 import { ShipyardApiClient, ShipyardApiError, type ServiceOnboardingResponse } from '@shipyard402/public-api-client';
 import { useState } from 'react';
 
+import { ensureSession, getStoredSessionToken } from '../lib/session';
+
 type OnboardingForm = Readonly<{
   organizationName: string;
   externalServiceId: string;
@@ -56,7 +58,12 @@ export function ServiceOnboarding({
     setBusy(true);
     setError(null);
     try {
-      const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
+      const client = new ShipyardApiClient(
+        process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
+        undefined,
+        () => getStoredSessionToken(requesterAddress),
+      );
+      await ensureSession(client, requesterAddress);
       const onboarded = await client.onboardService({ ...form, requesterAddress });
       setResult(onboarded);
       onOnboarded(onboarded);
