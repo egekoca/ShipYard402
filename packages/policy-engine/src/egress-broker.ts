@@ -63,15 +63,24 @@ async function assertHostAllowed(
   hostname: string,
   resolveHost: (hostname: string) => Promise<readonly string[]>,
 ): Promise<void> {
-  if (isForbiddenHost(hostname)) {
+  // A URL's hostname keeps the surrounding brackets for an IPv6 literal (e.g. "[::1]"), but
+  // isIP()/isForbiddenHost only recognize the bare address -- without stripping them here, every
+  // check below (including the forbidden-host fast path and the literal-vs-DNS-name branch) is
+  // silently skipped for any bracketed IPv6 host or redirect target.
+  const bareHostname = stripBrackets(hostname);
+  if (isForbiddenHost(bareHostname)) {
     throw new EgressForbiddenError(`Host is forbidden: ${hostname}`);
   }
-  const addresses = isIP(hostname) ? [hostname] : await resolveHost(hostname);
+  const addresses = isIP(bareHostname) ? [bareHostname] : await resolveHost(bareHostname);
   for (const address of addresses) {
     if (isForbiddenHost(address)) {
       throw new EgressForbiddenError(`Host ${hostname} resolves to a forbidden address: ${address}`);
     }
   }
+}
+
+function stripBrackets(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 }
 
 async function defaultResolveHost(hostname: string): Promise<readonly string[]> {

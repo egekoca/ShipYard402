@@ -159,4 +159,22 @@ describe('createEgressSafeFetch', () => {
     await expect(egressFetch('http://127.0.0.1/admin')).rejects.toThrow(EgressForbiddenError);
     expect(baseFetch).not.toHaveBeenCalled();
   });
+
+  it('refuses a bracketed IPv6 literal target the same as its unbracketed form', async () => {
+    const baseFetch = vi.fn();
+    const egressFetch = createEgressSafeFetch(baseFetch, { resolveHost: fakeResolver({}) });
+
+    // A URL's hostname keeps the brackets for an IPv6 literal (new URL('http://[::1]/').hostname
+    // === '[::1]') -- this must be refused exactly like the bracket-free form is.
+    await expect(egressFetch('http://[::1]/admin')).rejects.toThrow(EgressForbiddenError);
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a bracketed IPv4-mapped IPv6 metadata address', async () => {
+    const baseFetch = vi.fn();
+    const egressFetch = createEgressSafeFetch(baseFetch, { resolveHost: fakeResolver({}) });
+
+    await expect(egressFetch('http://[::ffff:169.254.169.254]/latest/meta-data')).rejects.toThrow(EgressForbiddenError);
+    expect(baseFetch).not.toHaveBeenCalled();
+  });
 });
