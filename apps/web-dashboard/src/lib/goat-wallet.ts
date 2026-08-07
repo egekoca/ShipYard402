@@ -60,6 +60,16 @@ export async function connectWallet(): Promise<`0x${string}`> {
   return address as `0x${string}`;
 }
 
+/** eth_accounts never prompts -- it just reports whether this site already has standing
+ * permission from a previous connectWallet() call. Used to restore the connected address after a
+ * full page navigation (e.g. back from a run's detail page) without asking the customer to
+ * reconnect a wallet that was never actually disconnected. */
+export async function getAuthorizedAccount(): Promise<`0x${string}` | null> {
+  if (!isWalletAvailable()) return null;
+  const accounts = await getProvider().request({ method: 'eth_accounts' }) as readonly string[];
+  return (accounts[0] as `0x${string}` | undefined) ?? null;
+}
+
 export async function ensureChain(chainId: number): Promise<void> {
   const config = GOAT_CHAINS[chainId];
   if (!config) throw new Error(`Unrecognized GOAT chain id: ${chainId}`);

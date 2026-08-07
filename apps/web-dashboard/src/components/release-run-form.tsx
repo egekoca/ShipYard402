@@ -8,10 +8,10 @@ import {
   type RunResponse,
 } from '@shipyard402/public-api-client';
 import type { FormEvent, InputHTMLAttributes } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
-import { connectWallet, ensureChain, formatWalletError, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import { connectWallet, ensureChain, formatWalletError, getAuthorizedAccount, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
 
@@ -72,6 +72,20 @@ export function ReleaseRunForm() {
     () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001'),
     [],
   );
+
+  // Restores the connected address after a full page navigation (e.g. back from a run's detail
+  // page): the wallet extension's own permission grant survives navigation even though this
+  // component's state doesn't, so without this a customer looks disconnected every time they
+  // return here despite never actually having disconnected anything.
+  useEffect(() => {
+    let cancelled = false;
+    getAuthorizedAccount().then((address) => {
+      if (cancelled || !address) return;
+      setForm((current) => ({ ...current, requesterAddress: address }));
+      void ensureChain(GOAT_TESTNET3_CHAIN_ID).catch(() => { /* WalletPayPanel retries this later */ });
+    }).catch(() => { /* no wallet, or the user hasn't authorized this site -- fine, show Connect */ });
+    return () => { cancelled = true; };
+  }, []);
 
   function update(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
