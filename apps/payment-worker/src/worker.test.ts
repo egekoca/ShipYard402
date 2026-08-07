@@ -1,5 +1,6 @@
 import {
   PaymentNotReadyError,
+  ReceiptNotYetAvailableError,
   SettlementRejectedError,
   type PaymentReconciler,
 } from '@shipyard402/payment-reconciliation';
@@ -43,6 +44,18 @@ describe('payment reconciliation job handler', () => {
       action: 'DEAD_LETTER',
       reason: 'DETERMINISTIC_SETTLEMENT_REJECTION',
       failureCodes: ['RECIPIENT_MISMATCH'],
+    });
+  });
+
+  it('retries a not-yet-indexed receipt instead of dead-lettering it like a real rejection', async () => {
+    const handler = new PaymentReconciliationJobHandler(reconciler(async () => {
+      throw new ReceiptNotYetAvailableError('0xabc');
+    }));
+    await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'RETRY', delayMilliseconds: 5_000, reason: 'RECEIPT_NOT_YET_AVAILABLE',
+    });
+    await expect(handler.handle({ runId: 'run-1', attempt: 5, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER', reason: 'RECEIPT_NOT_YET_AVAILABLE_TIMEOUT',
     });
   });
 

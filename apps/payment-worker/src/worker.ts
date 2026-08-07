@@ -1,5 +1,6 @@
 import {
   PaymentNotReadyError,
+  ReceiptNotYetAvailableError,
   SettlementRejectedError,
   type PaymentReconciler,
 } from '@shipyard402/payment-reconciliation';
@@ -53,19 +54,26 @@ export class PaymentReconciliationJobHandler {
       if (error instanceof SettlementRejectedError) {
         return { action: 'DEAD_LETTER', reason: 'DETERMINISTIC_SETTLEMENT_REJECTION', failureCodes: error.failureCodes };
       }
-      if (!(error instanceof PaymentNotReadyError)) {
+      const isTransientWait = error instanceof PaymentNotReadyError || error instanceof ReceiptNotYetAvailableError;
+      if (!isTransientWait) {
         console.error(`[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`, error);
       }
       if (job.attempt >= job.maximumAttempts) {
         const reason = error instanceof PaymentNotReadyError
           ? 'PAYMENT_NOT_READY_TIMEOUT'
-          : classifyRetryableError(error);
+          : error instanceof ReceiptNotYetAvailableError
+            ? 'RECEIPT_NOT_YET_AVAILABLE_TIMEOUT'
+            : classifyRetryableError(error);
         return { action: 'DEAD_LETTER', reason };
       }
       return {
         action: 'RETRY',
         delayMilliseconds: retryDelay(job.attempt),
-        reason: error instanceof PaymentNotReadyError ? 'PAYMENT_NOT_READY' : classifyRetryableError(error),
+        reason: error instanceof PaymentNotReadyError
+          ? 'PAYMENT_NOT_READY'
+          : error instanceof ReceiptNotYetAvailableError
+            ? 'RECEIPT_NOT_YET_AVAILABLE'
+            : classifyRetryableError(error),
       };
     }
   }

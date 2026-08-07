@@ -51,6 +51,13 @@ export class PaymentNotReadyError extends Error {
   }
 }
 
+export class ReceiptNotYetAvailableError extends Error {
+  constructor(transactionHash: string) {
+    super(`Transaction receipt not yet available from the chain reader: ${transactionHash}`);
+    this.name = 'ReceiptNotYetAvailableError';
+  }
+}
+
 export class SettlementRejectedError extends Error {
   readonly failureCodes: readonly string[];
 
@@ -98,7 +105,10 @@ export class PaymentReconciler {
     }
     const proof = await this.#merchantAdapter.getOrderProof(order.orderId, signal);
     const receipt = await this.#receiptReader.getTransactionReceipt(order.chainId, proof.transactionHash, signal);
-    if (!receipt) throw new SettlementRejectedError(['TRANSACTION_RECEIPT_MISSING']);
+    // A null receipt means the chain reader's RPC hasn't indexed it yet, not that the payment was
+    // rejected -- this is transient and must be retried, never dead-lettered like a genuine
+    // verifySettlement mismatch below.
+    if (!receipt) throw new ReceiptNotYetAvailableError(proof.transactionHash);
 
     const verification = verifySettlement(order, proof, receipt, {
       chainId: context.quote.capabilitySnapshot.chainId,

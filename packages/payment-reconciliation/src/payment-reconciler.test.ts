@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PaymentReconciler,
+  ReceiptNotYetAvailableError,
   SettlementRejectedError,
   type FundableRun,
   type PaymentReconciliationStore,
@@ -143,5 +144,14 @@ describe('payment reconciler', () => {
       }; } },
     });
     await expect(reconciler.reconcile('run-1')).rejects.toBeInstanceOf(SettlementRejectedError);
+  });
+
+  it('treats a not-yet-indexed receipt as retryable, not a deterministic rejection', async () => {
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: merchantAdapter(), store: new MemoryStore(),
+      receiptReader: { async getTransactionReceipt() { return null; } },
+    });
+    await expect(reconciler.reconcile('run-1')).rejects.toBeInstanceOf(ReceiptNotYetAvailableError);
+    await expect(reconciler.reconcile('run-1')).rejects.not.toBeInstanceOf(SettlementRejectedError);
   });
 });
