@@ -17,6 +17,19 @@ export type RunStatus =
   | 'CANCELLED'
   | 'EXPIRED';
 
+export type RunResult = 'PASS' | 'CONDITIONAL' | 'FAIL' | 'INCONCLUSIVE';
+
+/** One row of a customer's own run history -- enough to render a clickable list, not the full
+ * detail GET /v1/runs/:runId returns. */
+export type RunSummaryResponse = Readonly<{
+  id: string;
+  status: RunStatus;
+  result?: RunResult;
+  targetServiceId: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 export type QuoteRequest = Readonly<{
   organizationId: string;
   requesterAddress: `0x${string}`;
@@ -238,6 +251,14 @@ export class ShipyardApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  async listRuns(requesterAddress: `0x${string}`, signal?: AbortSignal): Promise<readonly RunSummaryResponse[]> {
+    const result = await this.#request<{ runs: readonly RunSummaryResponse[] }>(
+      `/v1/runs?requester=${encodeURIComponent(requesterAddress)}`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
+    return result.runs;
   }
 
   async getPlan(runId: string, signal?: AbortSignal): Promise<PlanResponse | null> {

@@ -28,6 +28,10 @@ const createRunRequestSchema = z
 
 const runParamsSchema = z.object({ runId: z.string().min(8).max(200) }).strict();
 
+const listRunsQuerySchema = z
+  .object({ requester: z.string().regex(/^0x[a-fA-F0-9]{40}$/) })
+  .strict();
+
 export interface RuntimeCapabilityProvider {
   getShipyardMerchantCapability(): Promise<FlowRuntimeCapability | null>;
 }
@@ -303,6 +307,13 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
         message: 'The payment challenge could not be created safely.',
       });
     }
+  });
+
+  app.get('/v1/runs', async (request, reply) => {
+    const query = listRunsQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ code: 'INVALID_REQUESTER_ADDRESS' });
+    const runs = await dependencies.runRepository.listByRequester(query.data.requester);
+    return reply.code(200).send({ runs });
   });
 
   app.get('/v1/runs/:runId', async (request, reply) => {

@@ -103,7 +103,14 @@ function validateJob(job: PaymentReconciliationJob): void {
 }
 
 function retryDelay(attempt: number): number {
-  return Math.min(5_000 * 2 ** (attempt - 1), 180_000);
+  // Capped low on purpose: this only governs how long a single job sleeps between reconciliation
+  // attempts, not how long the worker overall waits on a slow human payer (that's
+  // maximumAttempts). A high cap here means a payment that actually lands on-chain during a long
+  // sleep sits undetected until the sleep ends -- a real settlement can be confirmed within a
+  // second of the worker checking, but a 180s cap meant it could take up to three extra minutes
+  // just because the job happened to be asleep. 30s keeps that worst case small while still
+  // backing off quickly from constant polling during the early, most-likely-still-pending attempts.
+  return Math.min(5_000 * 2 ** (attempt - 1), 30_000);
 }
 
 function classifyRetryableError(error: unknown): string {

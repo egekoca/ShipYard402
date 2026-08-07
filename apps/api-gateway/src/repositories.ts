@@ -1,11 +1,20 @@
 import type { Quote } from '@shipyard402/quote-engine';
-import type { RunAggregate, RunTransitionedEvent } from '@shipyard402/run-domain';
+import type { RunAggregate, RunResult, RunStatus, RunTransitionedEvent } from '@shipyard402/run-domain';
 import type { MerchantOrder } from '@shipyard402/x402-payments';
 
 export interface QuoteRepository {
   save(quote: Quote): Promise<void>;
   findById(id: string): Promise<Quote | null>;
 }
+
+export type RunSummary = Readonly<{
+  id: string;
+  status: RunStatus;
+  result?: RunResult;
+  targetServiceId: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
 
 export type RunRecord = Readonly<{
   aggregate: RunAggregate;
@@ -22,6 +31,7 @@ export interface RunRepository {
   save(record: RunRecord, expectedPersistedRevision?: number): Promise<void>;
   findByRequestIdempotencyKey(key: string): Promise<RunRecord | null>;
   findById(id: string): Promise<RunRecord | null>;
+  listByRequester(requesterAddress: string, limit?: number): Promise<readonly RunSummary[]>;
 }
 
 export class RunPersistenceConflictError extends Error {
@@ -67,6 +77,13 @@ export class InMemoryRunRepository implements RunRepository {
 
   async findById(id: string): Promise<RunRecord | null> {
     return this.#runsById.get(id) ?? null;
+  }
+
+  // RunRecord never carried a requester address in-memory (only the persisted Postgres row does,
+  // sourced from the quote), so this test double can't filter by it. Real filtering is exercised
+  // against Postgres directly; this just keeps the interface satisfiable for route-level tests.
+  async listByRequester(): Promise<readonly RunSummary[]> {
+    return [];
   }
 }
 

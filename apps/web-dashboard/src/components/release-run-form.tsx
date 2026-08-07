@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
 import { connectWallet, ensureChain, formatWalletError, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
 
 type FormState = Readonly<{
@@ -136,6 +137,7 @@ export function ReleaseRunForm() {
 
   return (
     <div className="run-request">
+      {form.requesterAddress && <RunHistory requesterAddress={form.requesterAddress as `0x${string}`} />}
       <div className="run-grid">
         <form className="release-form glow-card" onSubmit={requestQuote}>
           <div className="form-header">

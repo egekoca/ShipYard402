@@ -317,7 +317,21 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 /* Large interactive panels (the run-request form, the quote panel) get the same ring-light and
    shadow bloom on hover, but not the lift -- a giant container shifting under the cursor while
    someone is filling in a form or reading a result reads as jitter, not polish. */
-.release-form.glow-card:hover, .quote-panel.glow-card:hover { transform: none; }
+.release-form.glow-card:hover, .quote-panel.glow-card:hover, .run-history.glow-card:hover { transform: none; }
+
+.run-history { margin-bottom: 22px; padding: 24px 28px; }
+.run-history-loading { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+.run-history-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.run-history-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line); color: inherit; text-decoration: none; transition: border-color .2s ease, background .2s ease; }
+.run-history-row:hover { border-color: rgba(240, 196, 25, .4); background: rgba(240, 196, 25, .05); }
+.run-history-status { flex: none; padding: 3px 9px; font-weight: 900; font-size: 10px; letter-spacing: .06em; }
+.run-history-status--pass { background: var(--gold); color: var(--gold-ink); }
+.run-history-status--fail { background: var(--danger); color: var(--white); }
+.run-history-status--pending { background: var(--line); color: var(--ink); }
+.run-history-service { color: var(--muted); font-size: 11px; }
+.run-history-id { flex: 1 1 auto; min-width: 160px; color: var(--muted); font-size: 11px; }
+.run-history-date { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.run-history-arrow { flex: none; color: var(--gold); font-weight: 900; }
 
 .problem-solution { max-width: 1280px; margin: 0 auto; padding: 90px 36px 0; opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
 .problem-solution.is-visible { opacity: 1; transform: translateY(0); }

@@ -12,6 +12,15 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import { PostgresFlowOrderContextStore } from './flow-order-context-store.js';
 
+export type RunSummary = Readonly<{
+  id: string;
+  status: RunStatus;
+  result?: RunResult;
+  targetServiceId: string;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 export type ApiRunRecord = Readonly<{
   aggregate: RunAggregate;
   quoteId: string;
@@ -37,6 +46,15 @@ type QuoteRow = QueryResultRow & {
   created_at: Date | string;
   expires_at: Date | string;
   quote_commitment: Buffer;
+};
+
+type RunSummaryRow = QueryResultRow & {
+  id: string;
+  status: string;
+  result: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  external_service_id: string;
 };
 
 type RunRow = QueryResultRow & {
@@ -182,6 +200,29 @@ export class PostgresRunRepository {
 
   async findById(id: string): Promise<ApiRunRecord | null> {
     return this.#find('r.id = $1', id);
+  }
+
+  /** Newest first, capped -- backs a customer's "your past runs" list once their wallet is
+   * connected. Deliberately lighter than #find: no payment-order/receipt joins, just enough to
+   * render a clickable summary row per run. */
+  async listByRequester(requesterAddress: string, limit = 20): Promise<readonly RunSummary[]> {
+    const result = await this.#pool.query<RunSummaryRow>(
+      `SELECT r.id, r.status, r.result, r.created_at, r.updated_at, s.external_service_id
+       FROM runs r
+       JOIN services s ON s.id = r.service_id
+       WHERE r.requester = $1
+       ORDER BY r.created_at DESC
+       LIMIT $2`,
+      [hexToBuffer(requesterAddress), limit],
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      status: parseStatus(row.status),
+      ...(row.result === null ? {} : { result: parseResult(row.result) }),
+      targetServiceId: row.external_service_id,
+      createdAt: toIso(row.created_at),
+      updatedAt: toIso(row.updated_at),
+    }));
   }
 
   async #find(predicate: string, value: string): Promise<ApiRunRecord | null> {
