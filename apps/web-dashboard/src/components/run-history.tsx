@@ -17,6 +17,14 @@ function statusTone(run: RunSummaryResponse): 'pass' | 'fail' | 'pending' {
   return 'pending';
 }
 
+function shortRunId(id: string): string {
+  return id.length <= 24 ? id : `${id.slice(0, 16)}…${id.slice(-6)}`;
+}
+
+function shortServiceId(id: string): string {
+  return id.length <= 34 ? id : `…${id.slice(-31)}`;
+}
+
 export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0x${string}` }>) {
   const [runs, setRuns] = useState<readonly RunSummaryResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,23 +46,49 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
 
   return (
     <section className="run-history glow-card state-in" aria-label="Your past runs">
-      <span className="panel-label">YOUR PAST RUNS</span>
+      <div className="run-history-header">
+        <span className="panel-label">YOUR PAST RUNS</span>
+        {runs && <span className="run-history-count">{runs.length}</span>}
+      </div>
       {!runs ? (
         <p className="run-history-loading">Looking up runs for {requesterAddress.slice(0, 6)}…{requesterAddress.slice(-4)}…</p>
       ) : (
-        <ul className="run-history-list">
-          {runs.map((run) => (
-            <li key={run.id}>
-              <a className="run-history-row" href={`/runs/${encodeURIComponent(run.id)}`}>
-                <span className={`run-history-status run-history-status--${statusTone(run)}`}>{statusLabel(run)}</span>
-                <span className="run-history-service mono">{run.targetServiceId}</span>
-                <span className="run-history-id mono">{run.id}</span>
-                <span className="run-history-date">{new Date(run.createdAt).toLocaleString()}</span>
-                <span className="run-history-arrow" aria-hidden="true">→</span>
-              </a>
-            </li>
-          ))}
-        </ul>
+        <div className="run-history-table-wrap">
+          <table className="run-history-table">
+            <thead>
+              <tr>
+                <th className="run-history-col-index">#</th>
+                <th>Status</th>
+                <th>Service</th>
+                <th>Run</th>
+                <th>Created</th>
+                <th className="run-history-col-action" aria-hidden="true" />
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run, index) => (
+                <tr key={run.id} onClick={() => { window.location.href = `/runs/${encodeURIComponent(run.id)}`; }}>
+                  <td className="run-history-col-index mono">{index + 1}</td>
+                  <td>
+                    <span className={`run-history-status run-history-status--${statusTone(run)}`}>{statusLabel(run)}</span>
+                  </td>
+                  <td className="mono run-history-service" title={run.targetServiceId}>{shortServiceId(run.targetServiceId)}</td>
+                  <td className="mono" title={run.id}>{shortRunId(run.id)}</td>
+                  <td className="run-history-date">{new Date(run.createdAt).toLocaleString()}</td>
+                  <td className="run-history-col-action">
+                    <a
+                      className="run-history-open"
+                      href={`/runs/${encodeURIComponent(run.id)}`}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      Open ↗
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
