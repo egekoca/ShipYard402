@@ -430,6 +430,8 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 
 .run-detail { max-width: 1280px; margin: 0 auto; padding-bottom: 60px; }
 .run-detail-hero { padding: 60px 36px 20px; }
+.run-detail-back { display: block; margin-bottom: 18px; color: var(--muted); font-size: 12px; font-weight: 700; text-decoration: none; transition: color .2s ease; }
+.run-detail-back:hover { color: var(--gold); }
 .run-detail-id { margin: 16px 0 0; font-size: 20px; color: var(--white); word-break: break-all; }
 .run-detail-polled { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
 .run-detail-loading { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 60px 36px; color: var(--muted); }

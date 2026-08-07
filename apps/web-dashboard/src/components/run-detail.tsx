@@ -9,9 +9,10 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
   return (
     <main className="run-detail">
-      <SiteHeader homeHref="/" />
+      <SiteHeader homeHref="/" showTryApp={false} />
 
       <section className="run-detail-hero">
+        <a className="run-detail-back" href="/app">← Back to your runs</a>
         <span className="eyebrow"><i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}</span>
         <h1 className="mono run-detail-id">{runId}</h1>
         {lastPolledAt && (
