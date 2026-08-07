@@ -413,6 +413,8 @@ function toRunResponse(record: RunRecord): object {
           orderId: order.orderId,
           expiresAt: order.expiresAt,
           paymentRequired: order.paymentRequired,
+          ...(record.customerPaymentTransactionHash ? { transactionHash: record.customerPaymentTransactionHash } : {}),
+          ...(record.customerPaymentChainId ? { chainId: record.customerPaymentChainId } : {}),
         }
       : {
           status: 'NOT_CREATED',

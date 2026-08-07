@@ -65,6 +65,9 @@ export type RunResponse = Readonly<{
     nextAction: string;
     orderId?: string;
     expiresAt?: string;
+    /** The customer's actual on-chain funding transaction, once verified -- for an explorer link. */
+    transactionHash?: `0x${string}`;
+    chainId?: number;
     paymentRequired?: Readonly<{
       x402Version: number;
       resource: Readonly<{ url: string; description?: string; mimeType?: string }>;

@@ -441,7 +441,13 @@ footer { display: flex; justify-content: space-between; gap: 30px; max-width: 12
 .panel-status-fail { flex: none; color: var(--danger); font-weight: 900; }
 .panel-toggle-chevron { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 14px; font-weight: 900; line-height: 1; transition: transform .25s ease, border-color .25s ease, color .25s ease; }
 .run-detail-panel.is-expanded .panel-toggle-chevron { transform: rotate(45deg); border-color: var(--gold); color: var(--gold); }
-.panel-action { margin-top: 14px; }
+.panel-toggle:disabled { cursor: default; }
+.panel-preview { margin-top: 14px; }
+.panel-preview-facts { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+.panel-preview-facts .explorer-link { align-self: flex-start; }
+.panel-preview-pending { display: block; font-size: 12px; color: var(--muted); opacity: .6; }
+.panel-loading { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.panel-loading-radar { position: relative; flex: none; width: 30px; height: 30px; overflow: hidden; border: 1px solid var(--line); border-radius: 50%; background: radial-gradient(circle, var(--gold) 0 2px, transparent 3px), repeating-radial-gradient(circle, transparent 0 8px, var(--line) 9px 10px); }
 .panel-body { margin-top: 6px; }
 .run-detail-receipts { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 0; padding: 0; list-style: none; }
 .run-detail-receipts li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px; background: var(--bg); border: 1px solid var(--line); font-size: 11px; color: var(--ink); }

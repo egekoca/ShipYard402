@@ -20,6 +20,10 @@ export type ApiRunRecord = Readonly<{
   uncommittedEvent?: RunTransitionedEvent;
   customerPaymentProofHash?: `0x${string}`;
   customerPaymentAtomic?: string;
+  /** The customer's actual on-chain funding transaction -- for an explorer link, not dedup logic
+   * (that's what customerPaymentProofHash is for). Absent until the payment reconciler verifies it. */
+  customerPaymentTransactionHash?: `0x${string}`;
+  customerPaymentChainId?: number;
 }>;
 
 type QuoteRow = QueryResultRow & {
@@ -48,6 +52,8 @@ type RunRow = QueryResultRow & {
   order_id: string | null;
   customer_payment_proof_hash: Buffer | null;
   customer_payment_atomic: string | null;
+  customer_payment_transaction_hash: Buffer | null;
+  customer_payment_chain_id: string | null;
 };
 
 export class QuoteTargetNotOnboardedError extends Error {
@@ -185,9 +191,12 @@ export class PostgresRunRepository {
         r.revision::text, r.created_at, r.updated_at,
         r.customer_payment_proof_hash, r.customer_payment_atomic::text AS customer_payment_atomic,
         ARRAY(SELECT e.idempotency_key FROM run_events e WHERE e.run_id = r.id ORDER BY e.revision) AS applied_keys,
-        po.order_id
+        po.order_id,
+        pr.transaction_hash AS customer_payment_transaction_hash,
+        pr.chain_id::text AS customer_payment_chain_id
       FROM runs r
       LEFT JOIN payment_orders po ON po.run_id = r.id
+      LEFT JOIN payment_receipts pr ON pr.run_id = r.id AND pr.direction = 'CUSTOMER_IN'
       WHERE ${predicate}`,
       [value],
     );
@@ -201,6 +210,8 @@ export class PostgresRunRepository {
       ...(paymentContext ? { paymentOrder: paymentContext.order } : {}),
       ...(row.customer_payment_proof_hash ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) } : {}),
       ...(row.customer_payment_atomic ? { customerPaymentAtomic: row.customer_payment_atomic } : {}),
+      ...(row.customer_payment_transaction_hash ? { customerPaymentTransactionHash: bufferToHex(row.customer_payment_transaction_hash) } : {}),
+      ...(row.customer_payment_chain_id ? { customerPaymentChainId: Number(row.customer_payment_chain_id) } : {}),
     };
   }
 }

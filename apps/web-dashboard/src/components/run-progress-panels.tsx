@@ -90,15 +90,33 @@ export function RunProgressPanels({
       <div className="run-detail-grid">
         <Panel index="01" label="PAYMENT" state={paymentState} expanded={Boolean(expanded.payment)} onToggle={() => toggle('payment')}
           summary={paymentState === 'ready' ? run.payment.status : 'Awaiting payment'}
-          action={run.payment.paymentRequired?.accepts[0] && (
-            <WalletPayPanel
-              chainId={GOAT_TESTNET3_CHAIN_ID}
-              challenge={run.payment.paymentRequired.accepts[0]}
-              tokenSymbol={tokenSymbol}
-              tokenDecimals={tokenDecimals}
-              connectedAddress={connectedAddress}
-            />
-          )}
+          preview={
+            paymentState === 'ready' ? (
+              <div className="panel-preview-facts">
+                <span>Payment confirmed</span>
+                {run.payment.transactionHash && (
+                  <a
+                    className="explorer-link"
+                    href={explorerTxUrl(run.payment.chainId ?? GOAT_TESTNET3_CHAIN_ID, run.payment.transactionHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    view payment tx ↗
+                  </a>
+                )}
+              </div>
+            ) : run.payment.paymentRequired?.accepts[0] ? (
+              <WalletPayPanel
+                chainId={GOAT_TESTNET3_CHAIN_ID}
+                challenge={run.payment.paymentRequired.accepts[0]}
+                tokenSymbol={tokenSymbol}
+                tokenDecimals={tokenDecimals}
+                connectedAddress={connectedAddress}
+              />
+            ) : (
+              <PanelLoadingRadar label="Preparing the payment challenge…" />
+            )
+          }
         >
           <dl>
             <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
@@ -109,6 +127,18 @@ export function RunProgressPanels({
 
         <Panel index="02" label="AI RISK PLAN" state={planState} expanded={Boolean(expanded.plan)} onToggle={() => toggle('plan')}
           summary={planView ? `${planView.riskLevel} risk · ${planView.scenarios.length} scenarios` : 'Compiling…'}
+          preview={
+            planView ? (
+              <div className="panel-preview-facts">
+                <span>{planView.riskLevel} risk · budget {planView.toolBudgetAtomic}</span>
+                <span>{planView.scenarios.join(', ')}</span>
+              </div>
+            ) : planState === 'active' ? (
+              <PanelLoadingRadar label="AI is compiling the risk plan…" />
+            ) : (
+              <span className="panel-preview-pending">Waiting for payment to confirm</span>
+            )
+          }
         >
           {planView && (
             <>
@@ -136,6 +166,31 @@ export function RunProgressPanels({
 
         <Panel index="03" label="EVIDENCE" state={evidenceState} expanded={Boolean(expanded.evidence)} onToggle={() => toggle('evidence')}
           summary={evidence ? evidence.publicManifest.result : 'Building…'}
+          preview={
+            evidence ? (
+              <div className="panel-preview-facts">
+                <span>
+                  {evidence.publicManifest.result} · {evidence.publicManifest.toolReceipts.length} paid tool{' '}
+                  {evidence.publicManifest.toolReceipts.length === 1 ? 'check' : 'checks'} against the target
+                </span>
+                {evidence.publicManifest.toolReceipts[0] && (
+                  <a
+                    className="explorer-link"
+                    href={explorerTxUrl(evidence.publicManifest.toolReceipts[0].chainId, evidence.publicManifest.toolReceipts[0].chainTransactionHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    view procurement tx ↗
+                    {evidence.publicManifest.toolReceipts.length > 1 ? ` (+${evidence.publicManifest.toolReceipts.length - 1} more below)` : ''}
+                  </a>
+                )}
+              </div>
+            ) : evidenceState === 'active' ? (
+              <PanelLoadingRadar label="Paying the target and running scenarios…" />
+            ) : (
+              <span className="panel-preview-pending">Waiting for the risk plan</span>
+            )
+          }
         >
           {evidence && (
             <>
@@ -193,6 +248,20 @@ export function RunProgressPanels({
 
         <Panel index="04" label="ON-CHAIN ATTESTATION" state={attestationState} expanded={Boolean(expanded.attestation)} onToggle={() => toggle('attestation')}
           summary={attestation ? 'Recorded on-chain' : 'Pending…'}
+          preview={
+            attestation ? (
+              <div className="panel-preview-facts">
+                <a className="explorer-link" href={explorerTxUrl(attestation.chainId, attestation.transactionHash)} target="_blank" rel="noreferrer">
+                  view attestation tx ↗
+                </a>
+                <span>expires {new Date(attestation.expiresAt).toLocaleDateString()}</span>
+              </div>
+            ) : attestationState === 'active' ? (
+              <PanelLoadingRadar label="Submitting the attestation on-chain…" />
+            ) : (
+              <span className="panel-preview-pending">Waiting for evidence</span>
+            )
+          }
         >
           {attestation && (
             <dl>
@@ -219,27 +288,36 @@ function Panel({
   label,
   state,
   summary,
+  preview,
   expanded,
   onToggle,
-  action,
   children,
 }: Readonly<{
   index: string;
   label: string;
   state: PanelState;
   summary: string;
+  /** Rendered unconditionally, outside the collapsible body -- either an interactive action
+   * (WalletPayPanel), a compact fact/tx-link summary, or a loading state. Collapsing the card to
+   * save space shouldn't hide what it already knows: only card [01] having visible content while
+   * the rest read as empty boxes is what made this stepper confusing at a glance. */
+  preview: React.ReactNode;
   expanded: boolean;
   onToggle: () => void;
-  /** Rendered unconditionally, outside the collapsible body -- for an actual action (like
-   * WalletPayPanel) that must stay mounted and visible whether or not the card is expanded.
-   * Collapsing the card to save space shouldn't cost it its in-progress payment/tx state, and
-   * an action the customer still needs to take shouldn't be hidden behind a click to expand. */
-  action?: React.ReactNode;
   children: React.ReactNode;
 }>) {
+  // A stage that hasn't started yet has nothing to show -- expanding it would just open an empty
+  // box, so it isn't clickable at all until its own step actually begins.
+  const canExpand = state !== 'pending';
   return (
-    <div className={`run-detail-panel glow-card state-in${expanded ? ' is-expanded' : ''}`} data-state={state}>
-      <button type="button" className="panel-toggle" onClick={onToggle} aria-expanded={expanded}>
+    <div className={`run-detail-panel glow-card state-in${expanded && canExpand ? ' is-expanded' : ''}`} data-state={state}>
+      <button
+        type="button"
+        className="panel-toggle"
+        onClick={canExpand ? onToggle : undefined}
+        aria-expanded={canExpand && expanded}
+        disabled={!canExpand}
+      >
         <span className="panel-label"><i>[{index}]</i> {label}</span>
         <span className="panel-summary">
           {state === 'active' && <RadarMark className="panel-status-icon" />}
@@ -247,10 +325,23 @@ function Panel({
           {state === 'fail' && <span className="panel-status-fail" aria-hidden="true">✕</span>}
           {summary}
         </span>
-        <span className="panel-toggle-chevron" aria-hidden="true">+</span>
+        {canExpand && <span className="panel-toggle-chevron" aria-hidden="true">+</span>}
       </button>
-      {action && <div className="panel-action">{action}</div>}
-      {expanded && <div className="panel-body state-in">{children}</div>}
+      <div className="panel-preview">{preview}</div>
+      {canExpand && expanded && <div className="panel-body state-in">{children}</div>}
+    </div>
+  );
+}
+
+/** A small radar sweep (same visual language as the full-page "Looking up run…" loader) plus a
+ * one-line label -- shown in a panel's preview while its stage is actively running but hasn't
+ * produced anything to show yet, so the card visibly says "working" instead of just sitting there
+ * with placeholder text next to a tiny spinner. */
+function PanelLoadingRadar({ label }: Readonly<{ label: string }>) {
+  return (
+    <div className="panel-loading">
+      <span className="panel-loading-radar" aria-hidden="true"><span className="radar-sweep" /></span>
+      <span>{label}</span>
     </div>
   );
 }

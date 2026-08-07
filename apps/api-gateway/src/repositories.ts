@@ -13,6 +13,9 @@ export type RunRecord = Readonly<{
   requestIdempotencyKey: string;
   paymentOrder?: MerchantOrder;
   uncommittedEvent?: RunTransitionedEvent;
+  /** The customer's actual on-chain funding transaction, once the payment reconciler verifies it. */
+  customerPaymentTransactionHash?: `0x${string}`;
+  customerPaymentChainId?: number;
 }>;
 
 export interface RunRepository {
