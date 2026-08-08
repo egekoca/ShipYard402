@@ -44,6 +44,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Check package layering (dependency-cruiser)
+        run: pnpm depcruise
 
   postgres-integration:
     name: PostgreSQL integration tests

@@ -18,6 +18,7 @@
     "lint": "biome lint .",
     "lint:fix": "biome check --write .",
     "format:check": "biome format .",
+    "depcruise": "depcruise apps packages",
     "infra:down": "docker-compose down",
     "infra:logs": "docker-compose logs -f postgres",
     "infra:status": "docker-compose ps",
@@ -36,12 +37,13 @@
     "testnet:mint:test-token": "node scripts/testnet/mint-test-token.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm contracts:compile && pnpm contracts:test"
+    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm depcruise && pnpm contracts:compile && pnpm contracts:test"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.7",
+    "@biomejs/biome": "2.5.7",
     "@openzeppelin/contracts": "5.4.0",
     "@types/node": "24.3.0",
+    "dependency-cruiser": "18.1.1",
     "ethers": "6.17.0",
     "solc": "0.8.24",
     "tsx": "4.20.5",
