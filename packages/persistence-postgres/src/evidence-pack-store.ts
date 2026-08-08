@@ -49,10 +49,7 @@ export class PostgresEvidencePackStore implements EvidencePackStore {
   }
 
   async getByRunId(runId: string): Promise<EvidencePack | null> {
-    const result = await this.#pool.query<EvidencePackRow>(
-      `SELECT * FROM evidence_packs WHERE run_id = $1`,
-      [runId],
-    );
+    const result = await this.#pool.query<EvidencePackRow>(`SELECT * FROM evidence_packs WHERE run_id = $1`, [runId]);
     const row = result.rows[0];
     return row ? parseRow(row) : null;
   }

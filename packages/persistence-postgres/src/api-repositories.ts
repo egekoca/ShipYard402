@@ -166,7 +166,10 @@ export class PostgresRunRepository {
 
   async save(record: ApiRunRecord, expectedPersistedRevision?: number): Promise<void> {
     if (!record.uncommittedEvent) throw new Error('PostgreSQL run save requires its uncommitted domain event');
-    if (record.uncommittedEvent.runId !== record.aggregate.id || record.uncommittedEvent.revision !== record.aggregate.revision) {
+    if (
+      record.uncommittedEvent.runId !== record.aggregate.id ||
+      record.uncommittedEvent.revision !== record.aggregate.revision
+    ) {
       throw new Error('Run aggregate and uncommitted event are not revision-aligned');
     }
     const client = await this.#pool.connect();
@@ -257,9 +260,13 @@ export class PostgresRunRepository {
       quoteId: row.quote_id,
       requestIdempotencyKey: row.request_idempotency_key,
       ...(paymentContext ? { paymentOrder: paymentContext.order } : {}),
-      ...(row.customer_payment_proof_hash ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) } : {}),
+      ...(row.customer_payment_proof_hash
+        ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) }
+        : {}),
       ...(row.customer_payment_atomic ? { customerPaymentAtomic: row.customer_payment_atomic } : {}),
-      ...(row.customer_payment_transaction_hash ? { customerPaymentTransactionHash: bufferToHex(row.customer_payment_transaction_hash) } : {}),
+      ...(row.customer_payment_transaction_hash
+        ? { customerPaymentTransactionHash: bufferToHex(row.customer_payment_transaction_hash) }
+        : {}),
       ...(row.customer_payment_chain_id ? { customerPaymentChainId: Number(row.customer_payment_chain_id) } : {}),
     };
   }
@@ -301,10 +308,7 @@ async function insertRun(client: PoolClient, record: ApiRunRecord): Promise<void
     release_id: string;
     policy_id: string;
     requester: Buffer;
-  }>(
-    `SELECT service_id, release_id, policy_id, requester FROM quotes WHERE id = $1 FOR SHARE`,
-    [record.quoteId],
-  );
+  }>(`SELECT service_id, release_id, policy_id, requester FROM quotes WHERE id = $1 FOR SHARE`, [record.quoteId]);
   const binding = quote.rows[0];
   if (!binding) throw new Error('Run quote binding does not exist');
   await client.query(
@@ -333,7 +337,15 @@ async function insertEventAndOutbox(client: PoolClient, event: RunTransitionedEv
   await client.query(
     `INSERT INTO run_events (run_id, revision, event_type, actor, idempotency_key, payload, occurred_at)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-    [event.runId, event.revision, event.type, event.actor, event.idempotencyKey, JSON.stringify(event), event.occurredAt],
+    [
+      event.runId,
+      event.revision,
+      event.type,
+      event.actor,
+      event.idempotencyKey,
+      JSON.stringify(event),
+      event.occurredAt,
+    ],
   );
   await client.query(
     `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)

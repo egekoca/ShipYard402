@@ -15,7 +15,8 @@ const scenario: InvalidCredentialScenario = {
 function fakeClient(attempt: ProtectedDeliveryAttempt, expectedReceipt = ''): ProtectedDeliveryClient {
   return {
     async execute(input) {
-      if (input.paymentReceipt !== expectedReceipt) throw new Error(`expected receipt ${JSON.stringify(expectedReceipt)}`);
+      if (input.paymentReceipt !== expectedReceipt)
+        throw new Error(`expected receipt ${JSON.stringify(expectedReceipt)}`);
       return attempt;
     },
   };
@@ -79,10 +80,12 @@ describe('invalid credential rejection runner: no receipt at all (unpaid-access-
       },
     };
 
-    await expect(new InvalidCredentialRejectionRunner(client).run({
-      ...scenario,
-      route: 'https://attacker.example/protected',
-    })).rejects.toThrow(/origin-relative/);
+    await expect(
+      new InvalidCredentialRejectionRunner(client).run({
+        ...scenario,
+        route: 'https://attacker.example/protected',
+      }),
+    ).rejects.toThrow(/origin-relative/);
     expect(called).toBe(false);
   });
 });
@@ -99,7 +102,9 @@ describe('invalid credential rejection runner: tampered receipt (tampered-receip
       { statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'aa'.repeat(32)}` },
       'earned-receipt-token-corrupted-xxxx',
     );
-    await expect(new InvalidCredentialRejectionRunner(client).run(tamperedScenario)).resolves.toMatchObject({ result: 'PASS' });
+    await expect(new InvalidCredentialRejectionRunner(client).run(tamperedScenario)).resolves.toMatchObject({
+      result: 'PASS',
+    });
   });
 
   it('produces FAIL if the target accepts a tampered receipt', async () => {
@@ -119,9 +124,9 @@ describe('invalid credential rejection runner: tampered receipt (tampered-receip
       'earned-receipt-token-corrupted-xxxx',
     );
     const result = await new InvalidCredentialRejectionRunner(client).run(tamperedScenario);
-    const emptyReceiptResult = await new InvalidCredentialRejectionRunner(fakeClient(
-      { statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'aa'.repeat(32)}` },
-    )).run(scenario);
+    const emptyReceiptResult = await new InvalidCredentialRejectionRunner(
+      fakeClient({ statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'aa'.repeat(32)}` }),
+    ).run(scenario);
     expect(result.presentedReceiptHash).not.toBe(emptyReceiptResult.presentedReceiptHash);
   });
 });

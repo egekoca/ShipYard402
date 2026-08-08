@@ -86,42 +86,81 @@ export function ServiceOnboarding({
     <div className="service-onboarding state-in">
       <div className="service-onboarding-header">
         <span className="panel-sublabel">REGISTER YOUR OWN SERVICE</span>
-        <button type="button" className="link-toggle" onClick={() => setOpen(false)}>Cancel</button>
+        <button type="button" className="link-toggle" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
       </div>
       <p className="ai-rationale">
-        We fetch your OpenAPI document server-side and hash it, that hash becomes the exact version
-        this run tests. Every onboarded service is checked against the same standard policy this
-        pipeline actually enforces today.
+        We fetch your OpenAPI document server-side and hash it, that hash becomes the exact version this run tests.
+        Every onboarded service is checked against the same standard policy this pipeline actually enforces today.
       </p>
       {result ? (
         <div className="service-onboarding-result">
-          <p><strong>Registered.</strong> The quote form below now targets <span className="mono">{result.targetServiceId}</span>.</p>
+          <p>
+            <strong>Registered.</strong> The quote form below now targets{' '}
+            <span className="mono">{result.targetServiceId}</span>.
+          </p>
         </div>
       ) : (
-        <div className="service-onboarding-form" onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void submit(); } }}>
+        // biome-ignore lint/a11y/noStaticElementInteractions: can't be a real nested <form> (see submit() above); Enter-to-submit is reimplemented here instead
+        <div
+          className="service-onboarding-form"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void submit();
+            }
+          }}
+        >
           <label className="field">
             <span>Your organization name</span>
-            <input value={form.organizationName} onChange={(event) => update('organizationName', event.target.value)} placeholder="Acme Inc" />
+            <input
+              value={form.organizationName}
+              onChange={(event) => update('organizationName', event.target.value)}
+              placeholder="Acme Inc"
+            />
           </label>
           <label className="field">
             <span>Service ID</span>
-            <input value={form.externalServiceId} onChange={(event) => update('externalServiceId', event.target.value)} placeholder="service:acme-api" />
+            <input
+              value={form.externalServiceId}
+              onChange={(event) => update('externalServiceId', event.target.value)}
+              placeholder="service:acme-api"
+            />
           </label>
           <label className="field">
             <span>Service name</span>
-            <input value={form.serviceName} onChange={(event) => update('serviceName', event.target.value)} placeholder="Acme paid API" />
+            <input
+              value={form.serviceName}
+              onChange={(event) => update('serviceName', event.target.value)}
+              placeholder="Acme paid API"
+            />
           </label>
           <label className="field">
             <span>Version</span>
-            <input value={form.version} onChange={(event) => update('version', event.target.value)} placeholder="1.0.0" />
+            <input
+              value={form.version}
+              onChange={(event) => update('version', event.target.value)}
+              placeholder="1.0.0"
+            />
           </label>
           <label className="field">
             <span>Paid x402 endpoint</span>
-            <input type="url" value={form.x402Endpoint} onChange={(event) => update('x402Endpoint', event.target.value)} placeholder="https://api.acme.com/paid/resource" />
+            <input
+              type="url"
+              value={form.x402Endpoint}
+              onChange={(event) => update('x402Endpoint', event.target.value)}
+              placeholder="https://api.acme.com/paid/resource"
+            />
           </label>
           <label className="field">
             <span>OpenAPI document URL</span>
-            <input type="url" value={form.openApiUrl} onChange={(event) => update('openApiUrl', event.target.value)} placeholder="https://api.acme.com/openapi.json" />
+            <input
+              type="url"
+              value={form.openApiUrl}
+              onChange={(event) => update('openApiUrl', event.target.value)}
+              placeholder="https://api.acme.com/openapi.json"
+            />
           </label>
           {error && (
             <div className="error-card state-in" key={error}>

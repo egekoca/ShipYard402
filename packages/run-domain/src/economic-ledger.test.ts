@@ -8,11 +8,7 @@ const asset = {
   decimals: 6,
 } as const;
 
-const entry = (
-  id: string,
-  category: LedgerEntry['category'],
-  accountingValueMicros: string,
-): LedgerEntry => ({
+const entry = (id: string, category: LedgerEntry['category'], accountingValueMicros: string): LedgerEntry => ({
   id,
   runId: 'run_001',
   category,

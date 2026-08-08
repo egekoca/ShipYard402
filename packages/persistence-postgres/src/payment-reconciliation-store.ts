@@ -4,18 +4,8 @@ import type {
   VerifiedCustomerPayment,
 } from '@shipyard402/payment-reconciliation';
 import { quoteSchema, type Quote } from '@shipyard402/quote-engine';
-import {
-  RUN_RESULTS,
-  RUN_STATUSES,
-  type RunAggregate,
-  type RunResult,
-  type RunStatus,
-} from '@shipyard402/run-domain';
-import type {
-  MerchantOrder,
-  MerchantPaymentProof,
-  NormalizedTransactionReceipt,
-} from '@shipyard402/x402-payments';
+import { RUN_RESULTS, RUN_STATUSES, type RunAggregate, type RunResult, type RunStatus } from '@shipyard402/run-domain';
+import type { MerchantOrder, MerchantPaymentProof, NormalizedTransactionReceipt } from '@shipyard402/x402-payments';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { z } from 'zod';
 
@@ -53,29 +43,42 @@ type FundableRow = QueryResultRow & {
   receipt_verified_at: Date | string | null;
 };
 
-const persistedPaymentPayloadSchema = z.object({
-  proof: z.object({
-    orderId: z.string().min(1),
-    transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-    logIndex: z.number().int().nonnegative(),
-    fromAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-    toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-    atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
-    chainId: z.number().int().positive(),
-    providerDigest: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
-  }).strict(),
-  receipt: z.object({
-    chainId: z.number().int().positive(),
-    transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-    status: z.union([z.literal(0), z.literal(1)]),
-    logs: z.array(z.object({
-      address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-      topics: z.array(z.string().regex(/^0x[a-fA-F0-9]*$/)),
-      data: z.string().regex(/^0x[a-fA-F0-9]*$/),
-      index: z.number().int().nonnegative(),
-    }).strict()),
-  }).strict(),
-}).passthrough();
+const persistedPaymentPayloadSchema = z
+  .object({
+    proof: z
+      .object({
+        orderId: z.string().min(1),
+        transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+        logIndex: z.number().int().nonnegative(),
+        fromAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        toAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
+        chainId: z.number().int().positive(),
+        providerDigest: z
+          .string()
+          .regex(/^0x[a-fA-F0-9]{64}$/)
+          .optional(),
+      })
+      .strict(),
+    receipt: z
+      .object({
+        chainId: z.number().int().positive(),
+        transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+        status: z.union([z.literal(0), z.literal(1)]),
+        logs: z.array(
+          z
+            .object({
+              address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+              topics: z.array(z.string().regex(/^0x[a-fA-F0-9]*$/)),
+              data: z.string().regex(/^0x[a-fA-F0-9]*$/),
+              index: z.number().int().nonnegative(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .passthrough();
 
 export class PostgresPaymentReconciliationStore implements PaymentReconciliationStore {
   readonly #pool: Pool;
@@ -155,8 +158,13 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
         `INSERT INTO run_events (run_id, revision, event_type, actor, idempotency_key, payload, occurred_at)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
         [
-          input.event.runId, input.event.revision, input.event.type, input.event.actor,
-          input.event.idempotencyKey, JSON.stringify(input.event), input.event.occurredAt,
+          input.event.runId,
+          input.event.revision,
+          input.event.type,
+          input.event.actor,
+          input.event.idempotencyKey,
+          JSON.stringify(input.event),
+          input.event.occurredAt,
         ],
       );
       await client.query(
@@ -164,10 +172,9 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
          VALUES ('RUN', $1, $2, $3::jsonb)`,
         [input.run.id, input.event.type, JSON.stringify(input.event)],
       );
-      await client.query(
-        `INSERT INTO orchestrator_jobs (run_id) VALUES ($1) ON CONFLICT (run_id) DO NOTHING`,
-        [input.run.id],
-      );
+      await client.query(`INSERT INTO orchestrator_jobs (run_id) VALUES ($1) ON CONFLICT (run_id) DO NOTHING`, [
+        input.run.id,
+      ]);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -242,8 +249,13 @@ async function insertReceipt(
 function parseCustomerPayment(row: FundableRow, order: MerchantOrder): VerifiedCustomerPayment | undefined {
   if (!row.receipt_proof_hash) return undefined;
   if (
-    !row.receipt_order_id || !row.receipt_chain_id || !row.receipt_payer || !row.receipt_recipient ||
-    !row.receipt_atomic_amount || !row.receipt_transaction_hash || row.receipt_log_index === null ||
+    !row.receipt_order_id ||
+    !row.receipt_chain_id ||
+    !row.receipt_payer ||
+    !row.receipt_recipient ||
+    !row.receipt_atomic_amount ||
+    !row.receipt_transaction_hash ||
+    row.receipt_log_index === null ||
     row.receipt_verified_at === null
   ) {
     throw new Error('Stored customer payment receipt is incomplete');

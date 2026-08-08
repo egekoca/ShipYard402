@@ -28,12 +28,14 @@ export type VerifiedCustomerPayment = Readonly<{
 
 export interface PaymentReconciliationStore {
   loadFundableRun(runId: string): Promise<FundableRun | null>;
-  commitFundedRun(input: Readonly<{
-    previousRevision: number;
-    run: RunAggregate;
-    event: RunTransitionedEvent;
-    payment: VerifiedCustomerPayment;
-  }>): Promise<void>;
+  commitFundedRun(
+    input: Readonly<{
+      previousRevision: number;
+      run: RunAggregate;
+      event: RunTransitionedEvent;
+      payment: VerifiedCustomerPayment;
+    }>,
+  ): Promise<void>;
 }
 
 export interface ChainReceiptReader {
@@ -74,12 +76,14 @@ export class PaymentReconciler {
   readonly #store: PaymentReconciliationStore;
   readonly #now: () => Date;
 
-  constructor(options: Readonly<{
-    merchantAdapter: X402MerchantAdapter;
-    receiptReader: ChainReceiptReader;
-    store: PaymentReconciliationStore;
-    now?: () => Date;
-  }>) {
+  constructor(
+    options: Readonly<{
+      merchantAdapter: X402MerchantAdapter;
+      receiptReader: ChainReceiptReader;
+      store: PaymentReconciliationStore;
+      now?: () => Date;
+    }>,
+  ) {
     this.#merchantAdapter = options.merchantAdapter;
     this.#receiptReader = options.receiptReader;
     this.#store = options.store;

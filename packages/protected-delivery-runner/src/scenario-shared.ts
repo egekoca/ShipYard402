@@ -25,5 +25,8 @@ function canonicalJson(value: JsonValue): string {
   }
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   const object = value as Readonly<Record<string, JsonValue>>;
-  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key]!)}`).join(',')}}`;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key]!)}`)
+    .join(',')}}`;
 }

@@ -31,7 +31,10 @@ export class ViemNativeTransferReader implements NativeTransferReader {
     this.#chainId = chainId;
   }
 
-  async getConfirmedTransfer(transactionHash: `0x${string}`, signal?: AbortSignal): Promise<ConfirmedNativeTransfer | null> {
+  async getConfirmedTransfer(
+    transactionHash: `0x${string}`,
+    signal?: AbortSignal,
+  ): Promise<ConfirmedNativeTransfer | null> {
     assertNotAborted(signal);
     // `??=` only reassigns when the field is nullish -- a *rejected* promise is neither, so
     // without the reset below one transient RPC failure on the first call would poison every
@@ -43,8 +46,8 @@ export class ViemNativeTransferReader implements NativeTransferReader {
     });
     await this.#chainVerification;
 
-    let transaction;
-    let receipt;
+    let transaction: Awaited<ReturnType<PublicClient['getTransaction']>>;
+    let receipt: Awaited<ReturnType<PublicClient['getTransactionReceipt']>>;
     try {
       [transaction, receipt] = await Promise.all([
         this.#client.getTransaction({ hash: transactionHash }),

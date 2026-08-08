@@ -44,7 +44,9 @@ const quoteBody = {
 const apps: ReturnType<typeof createApp>[] = [];
 
 const merchantAdapter: X402MerchantAdapter = {
-  async discoverRuntimeCapabilities() { return [capability]; },
+  async discoverRuntimeCapabilities() {
+    return [capability];
+  },
   async createOrder(input) {
     return {
       orderId: 'flow-order-fixed',
@@ -59,15 +61,25 @@ const merchantAdapter: X402MerchantAdapter = {
       paymentRequired: {
         x402Version: 2,
         resource: { url: 'https://shipyard.example/v1/runs' },
-        accepts: [{
-          scheme: 'exact', network: 'eip155:2345', amount: input.atomicAmount,
-          asset: capability.tokenAddress, payTo: capability.receivingAddress, maxTimeoutSeconds: 900,
-        }],
+        accepts: [
+          {
+            scheme: 'exact',
+            network: 'eip155:2345',
+            amount: input.atomicAmount,
+            asset: capability.tokenAddress,
+            payTo: capability.receivingAddress,
+            maxTimeoutSeconds: 900,
+          },
+        ],
       },
     };
   },
-  async getOrderStatus() { throw new Error('Not used in API tests'); },
-  async getOrderProof() { throw new Error('Not used in API tests'); },
+  async getOrderStatus() {
+    throw new Error('Not used in API tests');
+  },
+  async getOrderProof() {
+    throw new Error('Not used in API tests');
+  },
 };
 
 /** A session token for `address`, signed with the same secret every testApp() is configured with. */
@@ -122,10 +134,14 @@ function testApp(
  * tests need a run that genuinely belongs to the caller for the new ownership check to pass. */
 async function createOwnedRun(app: ReturnType<typeof createApp>, idempotencyKey: string): Promise<string> {
   const quoteResponse = await app.inject({
-    method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth,
+    method: 'POST',
+    url: '/v1/quotes',
+    payload: quoteBody,
+    headers: requesterAuth,
   });
   const runResponse = await app.inject({
-    method: 'POST', url: '/v1/runs',
+    method: 'POST',
+    url: '/v1/runs',
     payload: { quoteId: quoteResponse.json().id, idempotencyKey },
     headers: requesterAuth,
   });
@@ -139,7 +155,11 @@ afterEach(async () => {
 describe('api gateway vertical slice', () => {
   it('reports persistence and merchant readiness without claiming signer access', async () => {
     const app = createApp({
-      capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
+      capabilityProvider: {
+        async getShipyardMerchantCapability() {
+          return null;
+        },
+      },
       quoteEngine: new QuoteEngine({
         pricingStatus: 'HYPOTHESIS',
         feeRateBps: 500,
@@ -155,8 +175,12 @@ describe('api gateway vertical slice', () => {
       runtimeStatusProvider: {
         async getRuntimeStatus() {
           return {
-            status: 'degraded', environment: 'development', persistence: 'postgresql',
-            database: 'connected', merchantPayments: 'not_configured', mainnetWritesEnabled: false,
+            status: 'degraded',
+            environment: 'development',
+            persistence: 'postgresql',
+            database: 'connected',
+            merchantPayments: 'not_configured',
+            mainnetWritesEnabled: false,
           };
         },
       },
@@ -166,14 +190,21 @@ describe('api gateway vertical slice', () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      status: 'degraded', persistence: 'postgresql', database: 'connected',
-      merchantPayments: 'not_configured', mainnetWritesEnabled: false,
+      status: 'degraded',
+      persistence: 'postgresql',
+      database: 'connected',
+      merchantPayments: 'not_configured',
+      mainnetWritesEnabled: false,
     });
   });
 
   it('only reports mainnetWritesEnabled when a merchant capability is configured AND it targets mainnet', async () => {
     const baseDeps = {
-      capabilityProvider: { async getShipyardMerchantCapability() { return null; } },
+      capabilityProvider: {
+        async getShipyardMerchantCapability() {
+          return null;
+        },
+      },
       quoteEngine: new QuoteEngine({
         pricingStatus: 'HYPOTHESIS',
         feeRateBps: 500,
@@ -193,8 +224,12 @@ describe('api gateway vertical slice', () => {
       runtimeStatusProvider: {
         async getRuntimeStatus() {
           return {
-            status: 'ok', environment: 'development', persistence: 'postgresql',
-            database: 'connected', merchantPayments: 'configured', mainnetWritesEnabled: false,
+            status: 'ok',
+            environment: 'development',
+            persistence: 'postgresql',
+            database: 'connected',
+            merchantPayments: 'configured',
+            mainnetWritesEnabled: false,
           };
         },
       },
@@ -208,8 +243,12 @@ describe('api gateway vertical slice', () => {
       runtimeStatusProvider: {
         async getRuntimeStatus() {
           return {
-            status: 'ok', environment: 'development', persistence: 'postgresql',
-            database: 'connected', merchantPayments: 'configured', mainnetWritesEnabled: true,
+            status: 'ok',
+            environment: 'development',
+            persistence: 'postgresql',
+            database: 'connected',
+            merchantPayments: 'configured',
+            mainnetWritesEnabled: true,
           };
         },
       },
@@ -227,7 +266,8 @@ describe('api gateway vertical slice', () => {
         message: loginMessage(requesterAddress, issuedAt),
       });
       const response = await app.inject({
-        method: 'POST', url: '/v1/auth/session',
+        method: 'POST',
+        url: '/v1/auth/session',
         payload: { address: requesterAddress, signature, issuedAt },
       });
       expect(response.statusCode).toBe(200);
@@ -242,7 +282,8 @@ describe('api gateway vertical slice', () => {
         message: loginMessage(requesterAddress, issuedAt),
       });
       const response = await app.inject({
-        method: 'POST', url: '/v1/auth/session',
+        method: 'POST',
+        url: '/v1/auth/session',
         payload: { address: requesterAddress, signature, issuedAt },
       });
       expect(response.statusCode).toBe(401);
@@ -252,7 +293,9 @@ describe('api gateway vertical slice', () => {
     it('fails closed on every protected route when auth is not configured', async () => {
       const app = testApp(true, { sessionSecret: undefined });
       const response = await app.inject({
-        method: 'GET', url: `/v1/runs?requester=${requesterAddress}`, headers: requesterAuth,
+        method: 'GET',
+        url: `/v1/runs?requester=${requesterAddress}`,
+        headers: requesterAuth,
       });
       expect(response.statusCode).toBe(503);
       expect(response.json().code).toBe('AUTH_NOT_CONFIGURED');
@@ -265,11 +308,13 @@ describe('api gateway vertical slice', () => {
       expect(response.json()).toEqual({ code: 'AUTH_REQUIRED' });
     });
 
-    it('rejects a caller listing another address\'s runs even while correctly authenticated as themselves', async () => {
+    it("rejects a caller listing another address's runs even while correctly authenticated as themselves", async () => {
       const app = testApp();
-      const someoneElse = '0x' + '9'.repeat(39) + 'a';
+      const someoneElse = `0x${'9'.repeat(39)}a`;
       const response = await app.inject({
-        method: 'GET', url: `/v1/runs?requester=${someoneElse}`, headers: requesterAuth,
+        method: 'GET',
+        url: `/v1/runs?requester=${someoneElse}`,
+        headers: requesterAuth,
       });
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({ code: 'REQUESTER_ADDRESS_MISMATCH' });
@@ -277,22 +322,27 @@ describe('api gateway vertical slice', () => {
 
     it('rejects requesting a quote as an address the caller did not authenticate as', async () => {
       const app = testApp();
-      const someoneElse = '0x' + '9'.repeat(39) + 'a';
+      const someoneElse = `0x${'9'.repeat(39)}a`;
       const response = await app.inject({
-        method: 'POST', url: '/v1/quotes', payload: { ...quoteBody, requesterAddress: someoneElse }, headers: requesterAuth,
+        method: 'POST',
+        url: '/v1/quotes',
+        payload: { ...quoteBody, requesterAddress: someoneElse },
+        headers: requesterAuth,
       });
       expect(response.statusCode).toBe(403);
       expect(response.json()).toEqual({ code: 'REQUESTER_ADDRESS_MISMATCH' });
     });
 
-    it('treats another caller\'s run as not found rather than confirming it exists', async () => {
+    it("treats another caller's run as not found rather than confirming it exists", async () => {
       const app = testApp();
       const runId = await createOwnedRun(app, 'ownership-test-0001');
 
       const outsiderKey = `0x${'77'.repeat(32)}` as const;
       const outsiderAddress = privateKeyToAccount(outsiderKey).address;
       const response = await app.inject({
-        method: 'GET', url: `/v1/runs/${runId}`, headers: authHeaderFor(outsiderAddress),
+        method: 'GET',
+        url: `/v1/runs/${runId}`,
+        headers: authHeaderFor(outsiderAddress),
       });
       expect(response.statusCode).toBe(404);
       expect(response.json()).toEqual({ code: 'RUN_NOT_FOUND' });
@@ -301,10 +351,16 @@ describe('api gateway vertical slice', () => {
     it('rejects an unauthenticated onboarding request', async () => {
       const app = testApp();
       const response = await app.inject({
-        method: 'POST', url: '/v1/services/onboard',
+        method: 'POST',
+        url: '/v1/services/onboard',
         payload: {
-          organizationName: 'Acme', requesterAddress, externalServiceId: 'service:acme',
-          serviceName: 'Acme API', x402Endpoint: 'https://acme.example/paid', openApiUrl: 'https://acme.example/openapi.json', version: '1.0.0',
+          organizationName: 'Acme',
+          requesterAddress,
+          externalServiceId: 'service:acme',
+          serviceName: 'Acme API',
+          x402Endpoint: 'https://acme.example/paid',
+          openApiUrl: 'https://acme.example/openapi.json',
+          version: '1.0.0',
         },
       });
       expect(response.statusCode).toBe(401);
@@ -312,12 +368,19 @@ describe('api gateway vertical slice', () => {
 
     it('rejects onboarding as an address the caller did not authenticate as', async () => {
       const app = testApp();
-      const someoneElse = '0x' + '9'.repeat(39) + 'a';
+      const someoneElse = `0x${'9'.repeat(39)}a`;
       const response = await app.inject({
-        method: 'POST', url: '/v1/services/onboard', headers: requesterAuth,
+        method: 'POST',
+        url: '/v1/services/onboard',
+        headers: requesterAuth,
         payload: {
-          organizationName: 'Acme', requesterAddress: someoneElse, externalServiceId: 'service:acme',
-          serviceName: 'Acme API', x402Endpoint: 'https://acme.example/paid', openApiUrl: 'https://acme.example/openapi.json', version: '1.0.0',
+          organizationName: 'Acme',
+          requesterAddress: someoneElse,
+          externalServiceId: 'service:acme',
+          serviceName: 'Acme API',
+          x402Endpoint: 'https://acme.example/paid',
+          openApiUrl: 'https://acme.example/openapi.json',
+          version: '1.0.0',
         },
       });
       expect(response.statusCode).toBe(403);
@@ -327,7 +390,10 @@ describe('api gateway vertical slice', () => {
 
   it('fails closed instead of inventing a payment capability', async () => {
     const response = await testApp(false).inject({
-      method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth,
+      method: 'POST',
+      url: '/v1/quotes',
+      payload: quoteBody,
+      headers: requesterAuth,
     });
     expect(response.statusCode).toBe(503);
     expect(response.json().code).toBe('RUNTIME_PAYMENT_CAPABILITY_UNAVAILABLE');
@@ -335,7 +401,10 @@ describe('api gateway vertical slice', () => {
 
   it('creates a transparent quote from a verified runtime capability', async () => {
     const response = await testApp().inject({
-      method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth,
+      method: 'POST',
+      url: '/v1/quotes',
+      payload: quoteBody,
+      headers: requesterAuth,
     });
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
@@ -348,7 +417,10 @@ describe('api gateway vertical slice', () => {
   it('creates one QUOTED run for repeated idempotent requests without faking payment', async () => {
     const app = testApp();
     const quoteResponse = await app.inject({
-      method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth,
+      method: 'POST',
+      url: '/v1/quotes',
+      payload: quoteBody,
+      headers: requesterAuth,
     });
     const quoteId = quoteResponse.json().id as string;
     const payload = { quoteId, idempotencyKey: 'customer-request-00000001' };
@@ -367,12 +439,21 @@ describe('api gateway vertical slice', () => {
   it('rejects reusing the same idempotency key against a different quote instead of returning the wrong run', async () => {
     let quoteCounter = 0;
     const app = createApp({
-      capabilityProvider: { async getShipyardMerchantCapability() { return capability; } },
+      capabilityProvider: {
+        async getShipyardMerchantCapability() {
+          return capability;
+        },
+      },
       quoteEngine: new QuoteEngine(
         {
-          pricingStatus: 'HYPOTHESIS', feeRateBps: 500, mandatoryToolBudgetAtomic: '800000',
-          dynamicToolBudgetAtomic: '300000', modelInfrastructureReserveAtomic: '100000',
-          chainStorageReserveAtomic: '50000', riskSupportReserveAtomic: '100000', quoteTtlSeconds: 900,
+          pricingStatus: 'HYPOTHESIS',
+          feeRateBps: 500,
+          mandatoryToolBudgetAtomic: '800000',
+          dynamicToolBudgetAtomic: '300000',
+          modelInfrastructureReserveAtomic: '100000',
+          chainStorageReserveAtomic: '50000',
+          riskSupportReserveAtomic: '100000',
+          quoteTtlSeconds: 900,
         },
         () => `quote-fixed-${quoteCounter++}`,
       ),
@@ -385,20 +466,36 @@ describe('api gateway vertical slice', () => {
     });
     apps.push(app);
 
-    const firstQuote = await app.inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth });
+    const firstQuote = await app.inject({
+      method: 'POST',
+      url: '/v1/quotes',
+      payload: quoteBody,
+      headers: requesterAuth,
+    });
     const firstQuoteId = firstQuote.json().id as string;
-    const secondQuote = await app.inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth });
+    const secondQuote = await app.inject({
+      method: 'POST',
+      url: '/v1/quotes',
+      payload: quoteBody,
+      headers: requesterAuth,
+    });
     const secondQuoteId = secondQuote.json().id as string;
     expect(firstQuoteId).not.toBe(secondQuoteId);
 
     const idempotencyKey = 'customer-request-reused-key-01';
     const first = await app.inject({
-      method: 'POST', url: '/v1/runs', payload: { quoteId: firstQuoteId, idempotencyKey }, headers: requesterAuth,
+      method: 'POST',
+      url: '/v1/runs',
+      payload: { quoteId: firstQuoteId, idempotencyKey },
+      headers: requesterAuth,
     });
     expect(first.statusCode).toBe(201);
 
     const reused = await app.inject({
-      method: 'POST', url: '/v1/runs', payload: { quoteId: secondQuoteId, idempotencyKey }, headers: requesterAuth,
+      method: 'POST',
+      url: '/v1/runs',
+      payload: { quoteId: secondQuoteId, idempotencyKey },
+      headers: requesterAuth,
     });
     expect(reused.statusCode).toBe(409);
     expect(reused.json()).toEqual({ code: 'IDEMPOTENCY_KEY_QUOTE_MISMATCH' });
@@ -408,8 +505,16 @@ describe('api gateway vertical slice', () => {
     const app = testApp();
     const runId = await createOwnedRun(app, 'payment-challenge-request-0001');
 
-    const first = await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge`, headers: requesterAuth });
-    const replay = await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge`, headers: requesterAuth });
+    const first = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-challenge`,
+      headers: requesterAuth,
+    });
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-challenge`,
+      headers: requesterAuth,
+    });
     expect(first.statusCode).toBe(402);
     expect(replay.statusCode).toBe(402);
     expect(first.json()).toEqual(replay.json());
@@ -433,7 +538,9 @@ describe('api gateway vertical slice', () => {
     const runId = await createOwnedRun(app, 'orphaned-payment-order-0001');
     const record = await runRepository.findById(runId);
     expect(record).not.toBeNull();
-    const quote = (await app.inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth })).json();
+    const quote = (
+      await app.inject({ method: 'POST', url: '/v1/quotes', payload: quoteBody, headers: requesterAuth })
+    ).json();
     const paymentOrder = await merchantAdapter.createOrder({
       dappOrderId: runId,
       payerAddress: quoteBody.requesterAddress,
@@ -442,7 +549,11 @@ describe('api gateway vertical slice', () => {
     });
     await runRepository.save({ ...record!, paymentOrder }, record!.aggregate.revision);
 
-    const recovered = await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge`, headers: requesterAuth });
+    const recovered = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-challenge`,
+      headers: requesterAuth,
+    });
     expect(recovered.statusCode).toBe(402);
     expect(recovered.json()).toMatchObject({
       run: { status: 'PAYMENT_REQUIRED', revision: 2 },
@@ -453,9 +564,15 @@ describe('api gateway vertical slice', () => {
   it('never leaks a raw internal error message to the caller', async () => {
     const runRepository: RunRepository = {
       async save() {},
-      async findByRequestIdempotencyKey() { return null; },
-      async findById(): Promise<never> { throw new Error('connection to postgresql://shipyard:shipyard@10.0.0.5/shipyard failed'); },
-      async listByRequester() { return { runs: [], hasMore: false }; },
+      async findByRequestIdempotencyKey() {
+        return null;
+      },
+      async findById(): Promise<never> {
+        throw new Error('connection to postgresql://shipyard:shipyard@10.0.0.5/shipyard failed');
+      },
+      async listByRequester() {
+        return { runs: [], hasMore: false };
+      },
     };
     const app = testApp(true, { runRepository });
     const response = await app.inject({ method: 'GET', url: '/v1/runs/run_missing', headers: requesterAuth });
@@ -473,14 +590,20 @@ describe('api gateway vertical slice', () => {
   });
 
   it('returns 404 for a run with no built evidence pack yet', async () => {
-    const app = testApp(true, { evidencePackProvider: { async getByRunId() { return null; } } });
+    const app = testApp(true, {
+      evidencePackProvider: {
+        async getByRunId() {
+          return null;
+        },
+      },
+    });
     const runId = await createOwnedRun(app, 'evidence-not-built-0001');
     const response = await app.inject({ method: 'GET', url: `/v1/runs/${runId}/evidence`, headers: requesterAuth });
     expect(response.statusCode).toBe(404);
     expect(response.json().code).toBe('EVIDENCE_PACK_NOT_FOUND');
   });
 
-  it('serves a stored evidence pack to the run\'s own owner', async () => {
+  it("serves a stored evidence pack to the run's own owner", async () => {
     const app = testApp(true, {
       evidencePackProvider: {
         async getByRunId(runId) {
@@ -511,14 +634,20 @@ describe('api gateway vertical slice', () => {
   });
 
   it('returns 404 for a run with no attestation yet', async () => {
-    const app = testApp(true, { attestationProvider: { async getByRunId() { return null; } } });
+    const app = testApp(true, {
+      attestationProvider: {
+        async getByRunId() {
+          return null;
+        },
+      },
+    });
     const runId = await createOwnedRun(app, 'attestation-not-built-0001');
     const response = await app.inject({ method: 'GET', url: `/v1/runs/${runId}/attestation`, headers: requesterAuth });
     expect(response.statusCode).toBe(404);
     expect(response.json().code).toBe('ATTESTATION_NOT_FOUND');
   });
 
-  it('serves a stored attestation to the run\'s own owner', async () => {
+  it("serves a stored attestation to the run's own owner", async () => {
     const app = testApp(true, {
       attestationProvider: {
         async getByRunId(runId) {

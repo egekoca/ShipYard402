@@ -15,7 +15,12 @@ import { getStoredSessionToken } from '../lib/session';
 
 const POLL_MS = 4000;
 const TERMINAL_STATUSES = new Set([
-  'DELIVERED_PASS', 'DELIVERED_CONDITIONAL', 'DELIVERED_FAIL', 'DELIVERED_INCONCLUSIVE', 'CANCELLED', 'EXPIRED',
+  'DELIVERED_PASS',
+  'DELIVERED_CONDITIONAL',
+  'DELIVERED_FAIL',
+  'DELIVERED_INCONCLUSIVE',
+  'CANCELLED',
+  'EXPIRED',
 ]);
 
 export function stepIndexForStatus(status: string): number {
@@ -45,10 +50,18 @@ export function useRunProgress(runId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
   const client = useMemo(
-    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () => getStoredSessionToken()),
+    () =>
+      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
+        getStoredSessionToken(),
+      ),
     [],
   );
 
+  // run?.run.status (not the whole run object) is deliberate -- poll() only reads `run` to compute
+  // the *next* backoff interval, and a fresh effect invocation with an up-to-date closure already
+  // fires whenever the status itself changes, so depending on the full object would just restart
+  // polling more than needed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above -- narrower dep is intentional
   useEffect(() => {
     if (!runId) {
       setRun(null);
@@ -81,7 +94,11 @@ export function useRunProgress(runId: string | null) {
         setLastPolledAt(new Date());
       } catch (caught) {
         if (cancelled) return;
-        setError(caught instanceof ShipyardApiError ? `${caught.code}: ${caught.message}` : 'Could not reach the Shipyard402 API');
+        setError(
+          caught instanceof ShipyardApiError
+            ? `${caught.code}: ${caught.message}`
+            : 'Could not reach the Shipyard402 API',
+        );
       }
       if (cancelled) return;
       const isTerminal = run && TERMINAL_STATUSES.has(run.run.status);
@@ -93,7 +110,6 @@ export function useRunProgress(runId: string | null) {
       cancelled = true;
       if (timeout) clearTimeout(timeout);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, client, run?.run.status]);
 
   const activeStep = run ? stepIndexForStatus(run.run.status) : -1;
@@ -110,16 +126,26 @@ export function useRunProgress(runId: string | null) {
 export function useStepDurationStats(): StepDurationStatsResponse | null {
   const [stats, setStats] = useState<StepDurationStatsResponse | null>(null);
   const client = useMemo(
-    () => new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () => getStoredSessionToken()),
+    () =>
+      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
+        getStoredSessionToken(),
+      ),
     [],
   );
 
   useEffect(() => {
     let cancelled = false;
-    client.getStepDurationStats()
-      .then((result) => { if (!cancelled) setStats(result); })
-      .catch(() => { /* no ETA hint is a fine fallback */ });
-    return () => { cancelled = true; };
+    client
+      .getStepDurationStats()
+      .then((result) => {
+        if (!cancelled) setStats(result);
+      })
+      .catch(() => {
+        /* no ETA hint is a fine fallback */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [client]);
 
   return stats;

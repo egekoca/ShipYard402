@@ -72,7 +72,13 @@ export function isForbiddenHost(host: string): boolean {
   const ipVersion = isIP(canonical);
   if (ipVersion === 4) return isForbiddenIpv4(canonical);
   if (ipVersion === 6) {
-    if (canonical === '::1' || canonical === '::' || canonical.startsWith('fc') || canonical.startsWith('fd') || canonical.startsWith('fe80:')) {
+    if (
+      canonical === '::1' ||
+      canonical === '::' ||
+      canonical.startsWith('fc') ||
+      canonical.startsWith('fd') ||
+      canonical.startsWith('fe80:')
+    ) {
       return true;
     }
     // An IPv4-mapped (::ffff:a.b.c.d) or IPv4-compatible (::a.b.c.d) IPv6 literal is a valid,
@@ -112,11 +118,7 @@ function isForbiddenIpv4(ip: string): boolean {
   );
 }
 
-function assertUnique(
-  values: readonly string[],
-  path: string,
-  context: z.RefinementCtx,
-): void {
+function assertUnique(values: readonly string[], path: string, context: z.RefinementCtx): void {
   if (new Set(values).size !== values.length) {
     context.addIssue({ code: 'custom', path: [path], message: 'Values must be unique' });
   }

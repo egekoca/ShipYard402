@@ -24,18 +24,28 @@ try {
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error;
   wallet = Wallet.createRandom();
-  await writeFile(walletPath, JSON.stringify({
-    network: 'goat-testnet3-only',
-    chainId: 48816,
-    address: wallet.address,
-    privateKey: wallet.privateKey,
-    warning: 'TESTNET ONLY. Never fund or reuse this key on mainnet.',
-  }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+  await writeFile(
+    walletPath,
+    `${JSON.stringify(
+      {
+        network: 'goat-testnet3-only',
+        chainId: 48816,
+        address: wallet.address,
+        privateKey: wallet.privateKey,
+        warning: 'TESTNET ONLY. Never fund or reuse this key on mainnet.',
+      },
+      null,
+      2,
+    )}\n`,
+    { flag: 'wx', mode: 0o600 },
+  );
 }
 
-process.stdout.write(JSON.stringify({
-  network: 'goat-testnet3',
-  chainId: 48816,
-  address: wallet.address,
-  signerFile: walletPath,
-}) + '\n');
+process.stdout.write(
+  `${JSON.stringify({
+    network: 'goat-testnet3',
+    chainId: 48816,
+    address: wallet.address,
+    signerFile: walletPath,
+  })}\n`,
+);

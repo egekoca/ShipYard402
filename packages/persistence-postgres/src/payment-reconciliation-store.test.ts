@@ -25,38 +25,47 @@ const capability = {
   source: 'AUTHENTICATED_API',
 } as const;
 
-const quote = new QuoteEngine({
-  pricingStatus: 'HYPOTHESIS',
-  feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
-  mandatoryToolBudgetAtomic: '100',
-  dynamicToolBudgetAtomic: '100',
-  modelInfrastructureReserveAtomic: '100',
-  chainStorageReserveAtomic: '100',
-  riskSupportReserveAtomic: '100',
-  quoteTtlSeconds: 900,
-}, () => 'fixed-id').createQuote({
-  organizationId: '7d575e3d-a625-4b71-a28b-86dc202d1d7f',
-  requesterAddress: payer,
-  targetAgentId: 'agent:external',
-  targetServiceId: 'service:external',
-  targetVersionHash: `0x${'11'.repeat(32)}`,
-  policyHash: `0x${'22'.repeat(32)}`,
-  x402Endpoint: 'https://target.example/paid',
-  openApiUrl: 'https://target.example/openapi.json',
-  maximumCustomerBudgetAtomic: '1000',
-}, capability, new Date('2026-08-04T10:00:00.000Z'));
+const quote = new QuoteEngine(
+  {
+    pricingStatus: 'HYPOTHESIS',
+    feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
+    mandatoryToolBudgetAtomic: '100',
+    dynamicToolBudgetAtomic: '100',
+    modelInfrastructureReserveAtomic: '100',
+    chainStorageReserveAtomic: '100',
+    riskSupportReserveAtomic: '100',
+    quoteTtlSeconds: 900,
+  },
+  () => 'fixed-id',
+).createQuote(
+  {
+    organizationId: '7d575e3d-a625-4b71-a28b-86dc202d1d7f',
+    requesterAddress: payer,
+    targetAgentId: 'agent:external',
+    targetServiceId: 'service:external',
+    targetVersionHash: `0x${'11'.repeat(32)}`,
+    policyHash: `0x${'22'.repeat(32)}`,
+    x402Endpoint: 'https://target.example/paid',
+    openApiUrl: 'https://target.example/openapi.json',
+    maximumCustomerBudgetAtomic: '1000',
+  },
+  capability,
+  new Date('2026-08-04T10:00:00.000Z'),
+);
 
 const paymentRequired = {
   x402Version: 2,
   resource: { url: 'https://shipyard.example/run' },
-  accepts: [{
-    scheme: 'exact',
-    network: 'eip155:2345',
-    amount: '600',
-    asset: token,
-    payTo: recipient,
-    maxTimeoutSeconds: 900,
-  }],
+  accepts: [
+    {
+      scheme: 'exact',
+      network: 'eip155:2345',
+      amount: '600',
+      asset: token,
+      payTo: recipient,
+      maxTimeoutSeconds: 900,
+    },
+  ],
 } as const;
 
 const order = {
@@ -106,10 +115,12 @@ describe('PostgresPaymentReconciliationStore', () => {
 
   it('rejects a stored payload that conflicts with indexed receipt columns', async () => {
     const row = fundableRow();
-    const store = new PostgresPaymentReconciliationStore(fakePool({
-      ...row,
-      receipt_transaction_hash: Buffer.from('ef'.repeat(32), 'hex'),
-    }));
+    const store = new PostgresPaymentReconciliationStore(
+      fakePool({
+        ...row,
+        receipt_transaction_hash: Buffer.from('ef'.repeat(32), 'hex'),
+      }),
+    );
     await expect(store.loadFundableRun('run-1')).rejects.toThrow('conflicts with indexed receipt columns');
   });
 });

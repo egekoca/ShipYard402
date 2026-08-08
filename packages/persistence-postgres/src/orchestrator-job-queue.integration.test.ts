@@ -35,7 +35,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
       // -- each integration test file needs its own synthetic wallet, not the shared fixture address
       // used elsewhere in this file for quote.request.requesterAddress.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Orchestrator jobs ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
+      [
+        organizationId,
+        `Orchestrator jobs ${fixtureSuffix}`,
+        hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`),
+      ],
     );
     await pool.query(
       `INSERT INTO services (id, organization_id, external_service_id, name, x402_endpoint, openapi_url)
@@ -45,7 +49,12 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     await pool.query(
       `INSERT INTO releases (id, service_id, version, version_hash, manifest_hash)
        VALUES ($1, $2, 'integration', $3, $4)`,
-      [releaseId, serviceId, hexBuffer(digest(`release:${fixtureSuffix}`)), hexBuffer(digest(`manifest:${fixtureSuffix}`))],
+      [
+        releaseId,
+        serviceId,
+        hexBuffer(digest(`release:${fixtureSuffix}`)),
+        hexBuffer(digest(`manifest:${fixtureSuffix}`)),
+      ],
     );
     await pool.query(
       `INSERT INTO policies (id, name, version, policy_hash, mandatory_scenarios, mandate_template)
@@ -54,39 +63,46 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     );
 
     const now = new Date();
-    const quote = new QuoteEngine({
-      pricingStatus: 'HYPOTHESIS',
-      feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
-      mandatoryToolBudgetAtomic: '100',
-      dynamicToolBudgetAtomic: '100',
-      modelInfrastructureReserveAtomic: '100',
-      chainStorageReserveAtomic: '100',
-      riskSupportReserveAtomic: '100',
-      quoteTtlSeconds: 900,
-    }, () => fixtureSuffix).createQuote({
-      organizationId,
-      requesterAddress: '0x2000000000000000000000000000000000000002',
-      targetAgentId: 'agent:external',
-      targetServiceId,
-      targetVersionHash: digest(`release:${fixtureSuffix}`),
-      policyHash: digest(`policy:${fixtureSuffix}`),
-      x402Endpoint,
-      openApiUrl,
-      maximumCustomerBudgetAtomic: '1000',
-    }, {
-      environment: 'mainnet',
-      merchantId: 'orchestrator-jobs-merchant',
-      mode: 'ERC20_DIRECT',
-      chainId: 2345,
-      tokenAddress: '0x1000000000000000000000000000000000000001',
-      tokenSymbol: 'ORCH_ONLY',
-      tokenDecimals: 6,
-      receivingAddress: '0x3000000000000000000000000000000000000003',
-      minimumAtomicAmount: '1',
-      maximumAtomicAmount: '100000000',
-      discoveredAt: now.toISOString(),
-      source: 'PORTAL_REVIEW',
-    }, now);
+    const quote = new QuoteEngine(
+      {
+        pricingStatus: 'HYPOTHESIS',
+        feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
+        mandatoryToolBudgetAtomic: '100',
+        dynamicToolBudgetAtomic: '100',
+        modelInfrastructureReserveAtomic: '100',
+        chainStorageReserveAtomic: '100',
+        riskSupportReserveAtomic: '100',
+        quoteTtlSeconds: 900,
+      },
+      () => fixtureSuffix,
+    ).createQuote(
+      {
+        organizationId,
+        requesterAddress: '0x2000000000000000000000000000000000000002',
+        targetAgentId: 'agent:external',
+        targetServiceId,
+        targetVersionHash: digest(`release:${fixtureSuffix}`),
+        policyHash: digest(`policy:${fixtureSuffix}`),
+        x402Endpoint,
+        openApiUrl,
+        maximumCustomerBudgetAtomic: '1000',
+      },
+      {
+        environment: 'mainnet',
+        merchantId: 'orchestrator-jobs-merchant',
+        mode: 'ERC20_DIRECT',
+        chainId: 2345,
+        tokenAddress: '0x1000000000000000000000000000000000000001',
+        tokenSymbol: 'ORCH_ONLY',
+        tokenDecimals: 6,
+        receivingAddress: '0x3000000000000000000000000000000000000003',
+        minimumAtomicAmount: '1',
+        maximumAtomicAmount: '100000000',
+        discoveredAt: now.toISOString(),
+        source: 'PORTAL_REVIEW',
+      },
+      now,
+    );
     await new PostgresQuoteRepository(pool).save(quote);
 
     const draft = createDraftRun(runId, now.toISOString());
@@ -157,9 +173,12 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
 
     const firstClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
     expect(firstClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 8 });
-    await expect(queue.claimNext({
-      workerId: 'competing-worker', leaseDurationSeconds: 30,
-    })).resolves.toBeNull();
+    await expect(
+      queue.claimNext({
+        workerId: 'competing-worker',
+        leaseDurationSeconds: 30,
+      }),
+    ).resolves.toBeNull();
 
     await queue.markRetry(firstClaim!, 0, 'RISK_CLASSIFICATION_UNAVAILABLE');
     const retryClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });

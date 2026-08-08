@@ -22,7 +22,9 @@ function ShimmerText({ children }: Readonly<{ children: string }>) {
   return (
     <span className="shimmer-text-wrap">
       {children}
-      <span className="shimmer-overlay" aria-hidden="true">{children}</span>
+      <span className="shimmer-overlay" aria-hidden="true">
+        {children}
+      </span>
     </span>
   );
 }
@@ -38,15 +40,21 @@ export default function HomePage() {
           <NetworkMark className="hero-network-icon" />
           GOAT TESTNET3
         </div>
-        <div className="eyebrow hero-in" style={delayStyle(40)}><i>[00]</i> AUTONOMOUS RELEASE ASSURANCE</div>
+        <div className="eyebrow hero-in" style={delayStyle(40)}>
+          <i>[00]</i> AUTONOMOUS RELEASE ASSURANCE
+        </div>
         <h1>
-          <span className="hero-in" style={delayStyle(80)}><ShimmerText>Prove the paid path.</ShimmerText></span>
+          <span className="hero-in" style={delayStyle(80)}>
+            <ShimmerText>Prove the paid path.</ShimmerText>
+          </span>
           <br />
-          <em className="hero-in" style={delayStyle(200)}><ShimmerText>Before users find the drift.</ShimmerText></em>
+          <em className="hero-in" style={delayStyle(200)}>
+            <ShimmerText>Before users find the drift.</ShimmerText>
+          </em>
         </h1>
         <p className="hero-copy hero-in" style={delayStyle(340)}>
-          Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound
-          attestations for one exact service version.
+          Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound attestations for one
+          exact service version.
         </p>
         <div className="scope-note hero-in" style={delayStyle(460)}>
           <strong>What a PASS means</strong>
@@ -68,12 +76,19 @@ export default function HomePage() {
       <section className="run-section closing-cta">
         <div className="section-heading">
           <div>
-            <span className="eyebrow"><i>[05]</i> RELEASE GATE</span>
+            <span className="eyebrow">
+              <i>[05]</i> RELEASE GATE
+            </span>
             <h2>Request a funded run</h2>
           </div>
-          <p>The quote is created from a verified merchant capability. No token or recipient is assumed by this interface.</p>
+          <p>
+            The quote is created from a verified merchant capability. No token or recipient is assumed by this
+            interface.
+          </p>
         </div>
-        <a className="primary-button" href="/app">Try the app →</a>
+        <a className="primary-button" href="/app">
+          Try the app →
+        </a>
       </section>
 
       <footer>

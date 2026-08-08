@@ -1,11 +1,6 @@
 import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
 import type { ChainReceiptReader } from '@shipyard402/payment-reconciliation';
-import {
-  TransactionReceiptNotFoundError,
-  createPublicClient,
-  defineChain,
-  http,
-} from 'viem';
+import { TransactionReceiptNotFoundError, createPublicClient, defineChain, http } from 'viem';
 
 type ReceiptLike = Readonly<{
   transactionHash: `0x${string}`;
@@ -33,11 +28,7 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
     this.#chainId = chainId;
   }
 
-  async getTransactionReceipt(
-    chainId: number,
-    transactionHash: `0x${string}`,
-    signal?: AbortSignal,
-  ) {
+  async getTransactionReceipt(chainId: number, transactionHash: `0x${string}`, signal?: AbortSignal) {
     if (chainId !== this.#chainId) throw new Error(`Unsupported receipt chain: ${chainId}`);
     assertNotAborted(signal);
     // `??=` only reassigns when the field is nullish -- a *rejected* promise is neither, so
@@ -55,7 +46,7 @@ export class ViemGoatReceiptReader implements ChainReceiptReader {
       return {
         chainId: this.#chainId,
         transactionHash: receipt.transactionHash,
-        status: receipt.status === 'success' ? 1 as const : 0 as const,
+        status: receipt.status === 'success' ? (1 as const) : (0 as const),
         logs: receipt.logs.map((log) => ({
           address: log.address,
           topics: log.topics,
@@ -85,10 +76,7 @@ export function createGoatTestnet3ReceiptReader(rpcUrl: string = GOAT_TESTNET3.p
   return createGoatReceiptReader('testnet3', rpcUrl);
 }
 
-export function createGoatReceiptReader(
-  environment: 'mainnet' | 'testnet3',
-  rpcUrl?: string,
-): ViemGoatReceiptReader {
+export function createGoatReceiptReader(environment: 'mainnet' | 'testnet3', rpcUrl?: string): ViemGoatReceiptReader {
   const network = environment === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
   const selectedRpcUrl = rpcUrl ?? network.publicRpcUrl;
   const parsed = new URL(selectedRpcUrl);

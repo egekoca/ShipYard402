@@ -9,11 +9,10 @@ const applicationRoot = resolve(import.meta.dirname, '..');
 const standaloneRoot = resolve(applicationRoot, '.next/standalone/apps/web-dashboard');
 
 await mkdir(resolve(standaloneRoot, '.next'), { recursive: true });
-await cp(
-  resolve(applicationRoot, '.next/static'),
-  resolve(standaloneRoot, '.next/static'),
-  { recursive: true, force: true },
-);
+await cp(resolve(applicationRoot, '.next/static'), resolve(standaloneRoot, '.next/static'), {
+  recursive: true,
+  force: true,
+});
 
 try {
   await cp(resolve(applicationRoot, 'public'), resolve(standaloneRoot, 'public'), {

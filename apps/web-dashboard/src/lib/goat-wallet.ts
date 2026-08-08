@@ -54,7 +54,7 @@ function getProvider(): EthereumProvider {
 }
 
 export async function connectWallet(): Promise<`0x${string}`> {
-  const accounts = await getProvider().request({ method: 'eth_requestAccounts' }) as readonly string[];
+  const accounts = (await getProvider().request({ method: 'eth_requestAccounts' })) as readonly string[];
   const address = accounts[0];
   if (!address) throw new Error('The wallet did not return an account.');
   return address as `0x${string}`;
@@ -66,7 +66,7 @@ export async function connectWallet(): Promise<`0x${string}`> {
  * reconnect a wallet that was never actually disconnected. */
 export async function getAuthorizedAccount(): Promise<`0x${string}` | null> {
   if (!isWalletAvailable()) return null;
-  const accounts = await getProvider().request({ method: 'eth_accounts' }) as readonly string[];
+  const accounts = (await getProvider().request({ method: 'eth_accounts' })) as readonly string[];
   return (accounts[0] as `0x${string}` | undefined) ?? null;
 }
 
@@ -74,7 +74,7 @@ export async function ensureChain(chainId: number): Promise<void> {
   const config = GOAT_CHAINS[chainId];
   if (!config) throw new Error(`Unrecognized GOAT chain id: ${chainId}`);
   const provider = getProvider();
-  const current = await provider.request({ method: 'eth_chainId' }) as string;
+  const current = (await provider.request({ method: 'eth_chainId' })) as string;
   if (current.toLowerCase() === config.chainIdHex.toLowerCase()) return;
   try {
     await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: config.chainIdHex }] });
@@ -82,13 +82,15 @@ export async function ensureChain(chainId: number): Promise<void> {
     if ((error as Readonly<{ code?: number }> | null)?.code !== 4902) throw error;
     await provider.request({
       method: 'wallet_addEthereumChain',
-      params: [{
-        chainId: config.chainIdHex,
-        chainName: config.chainName,
-        nativeCurrency: config.nativeCurrency,
-        rpcUrls: config.rpcUrls,
-        blockExplorerUrls: config.blockExplorerUrls,
-      }],
+      params: [
+        {
+          chainId: config.chainIdHex,
+          chainName: config.chainName,
+          nativeCurrency: config.nativeCurrency,
+          rpcUrls: config.rpcUrls,
+          blockExplorerUrls: config.blockExplorerUrls,
+        },
+      ],
     });
   }
 }
@@ -103,33 +105,37 @@ export function encodeErc20Transfer(to: string, amountAtomic: string): `0x${stri
   return `0x${ERC20_TRANSFER_SELECTOR}${paddedTo}${paddedAmount}`;
 }
 
-export async function sendErc20Payment(input: Readonly<{
-  fromAddress: `0x${string}`;
-  tokenAddress: string;
-  toAddress: string;
-  amountAtomic: string;
-}>): Promise<`0x${string}`> {
+export async function sendErc20Payment(
+  input: Readonly<{
+    fromAddress: `0x${string}`;
+    tokenAddress: string;
+    toAddress: string;
+    amountAtomic: string;
+  }>,
+): Promise<`0x${string}`> {
   if (!ADDRESS_PATTERN.test(input.tokenAddress)) throw new Error('Invalid token address');
   const data = encodeErc20Transfer(input.toAddress, input.amountAtomic);
-  const txHash = await getProvider().request({
+  const txHash = (await getProvider().request({
     method: 'eth_sendTransaction',
     params: [{ from: input.fromAddress, to: input.tokenAddress, data }],
-  }) as string;
+  })) as string;
   return txHash as `0x${string}`;
 }
 
 function toHexMessage(message: string): `0x${string}` {
   const bytes = new TextEncoder().encode(message);
-  return `0x${Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  return `0x${Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 /** personal_sign, used once after connecting to prove control of the address before the API
  * gateway will issue a session token (see ../lib/session.ts). */
 export async function signPersonalMessage(address: `0x${string}`, message: string): Promise<`0x${string}`> {
-  const signature = await getProvider().request({
+  const signature = (await getProvider().request({
     method: 'personal_sign',
     params: [toHexMessage(message), address],
-  }) as string;
+  })) as string;
   return signature as `0x${string}`;
 }
 

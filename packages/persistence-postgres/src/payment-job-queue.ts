@@ -42,12 +42,18 @@ export class PostgresPaymentReconciliationJobQueue {
     this.#pool = pool;
   }
 
-  async claimNext(input: Readonly<{
-    workerId: string;
-    leaseDurationSeconds: number;
-  }>): Promise<ClaimedPaymentReconciliationJob | null> {
+  async claimNext(
+    input: Readonly<{
+      workerId: string;
+      leaseDurationSeconds: number;
+    }>,
+  ): Promise<ClaimedPaymentReconciliationJob | null> {
     validateWorkerId(input.workerId);
-    if (!Number.isInteger(input.leaseDurationSeconds) || input.leaseDurationSeconds < 5 || input.leaseDurationSeconds > 600) {
+    if (
+      !Number.isInteger(input.leaseDurationSeconds) ||
+      input.leaseDurationSeconds < 5 ||
+      input.leaseDurationSeconds > 600
+    ) {
       throw new Error('Payment job lease duration must be between 5 and 600 seconds');
     }
     // A worker that hard-crashes while holding the lease on its last allowed attempt leaves a
@@ -113,11 +119,7 @@ export class PostgresPaymentReconciliationJobQueue {
     );
   }
 
-  async markRetry(
-    job: ClaimedPaymentReconciliationJob,
-    delayMilliseconds: number,
-    reason: string,
-  ): Promise<void> {
+  async markRetry(job: ClaimedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void> {
     validateErrorCode(reason);
     if (!Number.isInteger(delayMilliseconds) || delayMilliseconds < 0 || delayMilliseconds > 3_600_000) {
       throw new Error('Payment job retry delay must be between zero and one hour');
@@ -151,10 +153,9 @@ export class PostgresPaymentReconciliationJobQueue {
   }
 
   async findByRunId(runId: string): Promise<PaymentReconciliationJobRecord | null> {
-    const result = await this.#pool.query<JobRow>(
-      `SELECT * FROM payment_reconciliation_jobs WHERE run_id = $1`,
-      [runId],
-    );
+    const result = await this.#pool.query<JobRow>(`SELECT * FROM payment_reconciliation_jobs WHERE run_id = $1`, [
+      runId,
+    ]);
     const row = result.rows[0];
     return row ? parseRecord(row) : null;
   }

@@ -30,34 +30,42 @@ describe('API runtime configuration', () => {
   });
 
   it('rejects partial merchant credentials instead of silently disabling payments', () => {
-    expect(() => parseRuntimeConfig({
-      APP_ENV: 'development',
-      GOATX402_MERCHANT_ID: 'merchant-only',
-    })).toThrowError(RuntimeConfigurationError);
+    expect(() =>
+      parseRuntimeConfig({
+        APP_ENV: 'development',
+        GOATX402_MERCHANT_ID: 'merchant-only',
+      }),
+    ).toThrowError(RuntimeConfigurationError);
   });
 
   it('rejects an unreviewed GOAT x402 API origin', () => {
-    expect(() => parseRuntimeConfig({
-      APP_ENV: 'development',
-      GOATX402_API_URL: 'https://attacker.example',
-    })).toThrowError(/reviewed mainnet origin/);
+    expect(() =>
+      parseRuntimeConfig({
+        APP_ENV: 'development',
+        GOATX402_API_URL: 'https://attacker.example',
+      }),
+    ).toThrowError(/reviewed mainnet origin/);
   });
 
   it('requires PostgreSQL and merchant configuration in production', () => {
     expect(() => parseRuntimeConfig({ APP_ENV: 'production' })).toThrowError(/PostgreSQL/);
-    expect(() => parseRuntimeConfig({
-      APP_ENV: 'production',
-      DATABASE_URL: 'postgresql://database.example/shipyard',
-    })).toThrowError(/merchant configuration/);
+    expect(() =>
+      parseRuntimeConfig({
+        APP_ENV: 'production',
+        DATABASE_URL: 'postgresql://database.example/shipyard',
+      }),
+    ).toThrowError(/merchant configuration/);
   });
 
   it('requires SESSION_SIGNING_SECRET in production even with merchant configuration complete', () => {
-    expect(() => parseRuntimeConfig({
-      APP_ENV: 'production',
-      DATABASE_URL: 'postgresql://database.example/shipyard',
-      ...completeMerchantEnvironment,
-      SESSION_SIGNING_SECRET: undefined,
-    })).toThrowError(/SESSION_SIGNING_SECRET/);
+    expect(() =>
+      parseRuntimeConfig({
+        APP_ENV: 'production',
+        DATABASE_URL: 'postgresql://database.example/shipyard',
+        ...completeMerchantEnvironment,
+        SESSION_SIGNING_SECRET: undefined,
+      }),
+    ).toThrowError(/SESSION_SIGNING_SECRET/);
   });
 
   it('accepts a complete reviewed production configuration', () => {
@@ -89,12 +97,14 @@ describe('API runtime configuration', () => {
   });
 
   it('refuses to start the production API against Testnet3', () => {
-    expect(() => parseRuntimeConfig({
-      APP_ENV: 'production',
-      DATABASE_URL: 'postgresql://database.example/shipyard',
-      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
-      ...completeMerchantEnvironment,
-      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
-    })).toThrowError(/Production API must use GOAT mainnet/);
+    expect(() =>
+      parseRuntimeConfig({
+        APP_ENV: 'production',
+        DATABASE_URL: 'postgresql://database.example/shipyard',
+        GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+        ...completeMerchantEnvironment,
+        GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+      }),
+    ).toThrowError(/Production API must use GOAT mainnet/);
   });
 });

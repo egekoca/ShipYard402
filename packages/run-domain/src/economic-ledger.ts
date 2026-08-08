@@ -60,7 +60,12 @@ export function calculateRunEconomics(entries: readonly LedgerEntry[]): RunEcono
     chainCostMicros: chainCost.toString(),
     storageCostMicros: storageCost.toString(),
     grossContributionMicros: (
-      customerRevenue - customerRefund - toolCost - modelCost - chainCost - storageCost
+      customerRevenue -
+      customerRefund -
+      toolCost -
+      modelCost -
+      chainCost -
+      storageCost
     ).toString(),
   };
 }

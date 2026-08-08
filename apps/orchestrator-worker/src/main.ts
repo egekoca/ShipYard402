@@ -17,7 +17,12 @@ import { createEgressSafeFetch } from '@shipyard402/policy-engine';
 import { createFetchProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
 import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
-import { EthersErc20RefundSender, EthersNativePaymentSender, EthersRegistryAttestor, EthersToolReceiptSigner } from './ethers-adapters.js';
+import {
+  EthersErc20RefundSender,
+  EthersNativePaymentSender,
+  EthersRegistryAttestor,
+  EthersToolReceiptSigner,
+} from './ethers-adapters.js';
 import { createFetchPurchaseClient } from './fetch-purchase-client.js';
 import { createKuboEvidencePublisher } from './ipfs-publisher.js';
 import { parseOrchestratorWorkerRuntimeConfig } from './runtime-config.js';
@@ -32,7 +37,10 @@ const egressSafeFetch = createEgressSafeFetch();
 
 async function start(): Promise<void> {
   const config = parseOrchestratorWorkerRuntimeConfig(process.env);
-  const pool = createShipyardPool({ connectionString: config.database.connectionString, useTls: config.database.useTls });
+  const pool = createShipyardPool({
+    connectionString: config.database.connectionString,
+    useTls: config.database.useTls,
+  });
 
   try {
     await pool.query('SELECT 1');
@@ -44,10 +52,12 @@ async function start(): Promise<void> {
 
     const signerWallet = await config.signerKeySource.loadWallet(provider);
     const toolReceiptSignerWallet = await config.toolReceiptSignerKeySource.loadWallet(provider);
-    const registryAbi = JSON.parse(await readFile(
-      resolve(REPO_ROOT, 'contracts/out-solc/src_ShipyardRunRegistry_sol_ShipyardRunRegistry.abi'),
-      'utf8',
-    ));
+    const registryAbi = JSON.parse(
+      await readFile(
+        resolve(REPO_ROOT, 'contracts/out-solc/src_ShipyardRunRegistry_sol_ShipyardRunRegistry.abi'),
+        'utf8',
+      ),
+    );
 
     const handler = new OrchestratorJobHandler({
       runRepository: new PostgresRunRepository(pool),
@@ -64,7 +74,11 @@ async function start(): Promise<void> {
         fetchImpl: egressSafeFetch,
         captureProviderSignature: true,
       }),
-      paymentSender: new EthersNativePaymentSender(signerWallet, provider, BigInt(config.maximumProcurementSpendAtomic)),
+      paymentSender: new EthersNativePaymentSender(
+        signerWallet,
+        provider,
+        BigInt(config.maximumProcurementSpendAtomic),
+      ),
       ...(config.refundsEnabled ? { refundSender: new EthersErc20RefundSender(signerWallet, provider) } : {}),
       purchaseClient: createFetchPurchaseClient(config.demoTarget.baseUrl, signerWallet),
       toolReceiptSigner: new EthersToolReceiptSigner(toolReceiptSignerWallet),
@@ -78,7 +92,7 @@ async function start(): Promise<void> {
     const controller = new AbortController();
     process.once('SIGINT', () => controller.abort());
     process.once('SIGTERM', () => controller.abort());
-    process.stdout.write(JSON.stringify({ event: 'orchestrator_worker_ready', workerId: config.workerId }) + '\n');
+    process.stdout.write(`${JSON.stringify({ event: 'orchestrator_worker_ready', workerId: config.workerId })}\n`);
 
     while (!controller.signal.aborted) {
       const processed = await processNextOrchestratorJob(queue, handler, {
@@ -106,6 +120,9 @@ async function abortableDelay(milliseconds: number, signal: AbortSignal): Promis
 }
 
 await start().catch((error) => {
-  process.stderr.write(JSON.stringify({ event: 'orchestrator_worker_stopped', code: 'SAFE_RUNTIME_FAILURE', message: String(error) }) + '\n');
+  process.stderr.write(
+    JSON.stringify({ event: 'orchestrator_worker_stopped', code: 'SAFE_RUNTIME_FAILURE', message: String(error) }) +
+      '\n',
+  );
   process.exitCode = 1;
 });

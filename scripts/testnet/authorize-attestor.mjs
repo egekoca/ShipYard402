@@ -12,7 +12,7 @@ const abiPath = resolve('contracts/out-solc/src_ShipyardRunRegistry_sol_Shipyard
 
 const existing = await loadExistingAuthorization();
 if (existing) {
-  process.stdout.write(JSON.stringify({ ...existing, reused: true }, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify({ ...existing, reused: true }, null, 2)}\n`);
   process.exit(0);
 }
 
@@ -47,14 +47,14 @@ if (alreadyAuthorized) {
     transactionHash: null,
     note: 'Attestor was already authorized on-chain; no transaction was needed.',
   };
-  await writeFile(authorizationPath, JSON.stringify(result, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
-  process.stdout.write(JSON.stringify({ ...result, reused: false }, null, 2) + '\n');
+  await writeFile(authorizationPath, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+  process.stdout.write(`${JSON.stringify({ ...result, reused: false }, null, 2)}\n`);
   process.exit(0);
 }
 
 const tx = await registry.setAttestor(wallet.address, true);
 const receipt = await tx.wait(1);
-if (!receipt || receipt.status !== 1) {
+if (receipt?.status !== 1) {
   throw new Error('setAttestor transaction did not confirm successfully');
 }
 const confirmedAuthorized = await registry.authorizedAttestors(wallet.address);
@@ -66,8 +66,8 @@ const result = {
   transactionHash: tx.hash,
   blockNumber: receipt.blockNumber,
 };
-await writeFile(authorizationPath, JSON.stringify(result, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
-process.stdout.write(JSON.stringify({ ...result, reused: false }, null, 2) + '\n');
+await writeFile(authorizationPath, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+process.stdout.write(`${JSON.stringify({ ...result, reused: false }, null, 2)}\n`);
 
 async function loadExistingAuthorization() {
   try {

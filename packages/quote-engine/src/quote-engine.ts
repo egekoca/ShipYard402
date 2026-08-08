@@ -6,7 +6,10 @@ import { z } from 'zod';
 
 const bytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const atomicAmountSchema = z.string().regex(/^(0|[1-9]\d*)$/);
-const httpsUrlSchema = z.string().url().refine((value) => new URL(value).protocol === 'https:', 'HTTPS is required');
+const httpsUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => new URL(value).protocol === 'https:', 'HTTPS is required');
 
 export const quoteRequestSchema = z
   .object({
@@ -47,14 +50,16 @@ export const quoteSchema = z
     request: quoteRequestSchema,
     capabilitySnapshot: flowRuntimeCapabilitySchema,
     pricingStatus: z.literal('HYPOTHESIS'),
-    lineItems: z.object({
-      baseOrchestrationFeeAtomic: atomicAmountSchema,
-      mandatoryToolBudgetAtomic: atomicAmountSchema,
-      dynamicToolBudgetAtomic: atomicAmountSchema,
-      modelInfrastructureReserveAtomic: atomicAmountSchema,
-      chainStorageReserveAtomic: atomicAmountSchema,
-      riskSupportReserveAtomic: atomicAmountSchema,
-    }).strict(),
+    lineItems: z
+      .object({
+        baseOrchestrationFeeAtomic: atomicAmountSchema,
+        mandatoryToolBudgetAtomic: atomicAmountSchema,
+        dynamicToolBudgetAtomic: atomicAmountSchema,
+        modelInfrastructureReserveAtomic: atomicAmountSchema,
+        chainStorageReserveAtomic: atomicAmountSchema,
+        riskSupportReserveAtomic: atomicAmountSchema,
+      })
+      .strict(),
     totalAtomicAmount: atomicAmountSchema,
     refundableToolBudgetAtomic: atomicAmountSchema,
     createdAt: z.string().datetime(),
@@ -112,8 +117,7 @@ export class QuoteEngine {
       lineItems,
       totalAtomicAmount: total.toString(),
       refundableToolBudgetAtomic: (
-        parseAtomicAmount(lineItems.mandatoryToolBudgetAtomic) +
-        parseAtomicAmount(lineItems.dynamicToolBudgetAtomic)
+        parseAtomicAmount(lineItems.mandatoryToolBudgetAtomic) + parseAtomicAmount(lineItems.dynamicToolBudgetAtomic)
       ).toString(),
       createdAt,
       expiresAt,

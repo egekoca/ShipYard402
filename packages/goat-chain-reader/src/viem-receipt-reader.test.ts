@@ -6,17 +6,23 @@ const txHash = `0x${'ab'.repeat(32)}` as const;
 
 function client(chainId = 2345): GoatReadClient {
   return {
-    async getChainId() { return chainId; },
-    async getTransactionReceipt() { return {
-      transactionHash: txHash,
-      status: 'success',
-      logs: [{
-        address: '0x1000000000000000000000000000000000000001',
-        topics: [`0x${'cd'.repeat(32)}`],
-        data: '0x',
-        logIndex: 2,
-      }],
-    }; },
+    async getChainId() {
+      return chainId;
+    },
+    async getTransactionReceipt() {
+      return {
+        transactionHash: txHash,
+        status: 'success',
+        logs: [
+          {
+            address: '0x1000000000000000000000000000000000000001',
+            topics: [`0x${'cd'.repeat(32)}`],
+            data: '0x',
+            logIndex: 2,
+          },
+        ],
+      };
+    },
   };
 }
 
@@ -30,11 +36,15 @@ describe('Viem GOAT receipt reader', () => {
   });
 
   it('rejects an RPC endpoint serving a different chain', async () => {
-    await expect(new ViemGoatReceiptReader(client(1)).getTransactionReceipt(2345, txHash)).rejects.toThrow('RPC chain mismatch');
+    await expect(new ViemGoatReceiptReader(client(1)).getTransactionReceipt(2345, txHash)).rejects.toThrow(
+      'RPC chain mismatch',
+    );
   });
 
   it('normalizes Testnet3 receipts only when explicitly scoped to chain 48816', async () => {
-    await expect(new ViemGoatReceiptReader(client(48816), 48816).getTransactionReceipt(48816, txHash)).resolves.toMatchObject({
+    await expect(
+      new ViemGoatReceiptReader(client(48816), 48816).getTransactionReceipt(48816, txHash),
+    ).resolves.toMatchObject({
       chainId: 48816,
       status: 1,
     });
@@ -51,11 +61,13 @@ describe('Viem GOAT receipt reader', () => {
         if (calls === 1) throw new Error('RPC timeout');
         return 2345;
       },
-      async getTransactionReceipt() { return {
-        transactionHash: txHash,
-        status: 'success',
-        logs: [],
-      }; },
+      async getTransactionReceipt() {
+        return {
+          transactionHash: txHash,
+          status: 'success',
+          logs: [],
+        };
+      },
     };
     const reader = new ViemGoatReceiptReader(flakyThenHealthy);
 

@@ -53,7 +53,9 @@ export interface ToolReceiptSigner {
 export interface RefundSender {
   reserveNonce(): Promise<number>;
   isNonceConsumed(nonce: number): Promise<boolean>;
-  sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>): Promise<`0x${string}`>;
+  sendRefund(
+    input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>,
+  ): Promise<`0x${string}`>;
 }
 
 export type RunAttestationInput = Readonly<{

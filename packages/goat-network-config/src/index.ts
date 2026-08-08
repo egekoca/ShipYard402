@@ -112,7 +112,8 @@ export function resolveRpcUrl(
 ): string {
   const network = resolveNetwork(environment);
   const field = environment === 'mainnet' ? 'GOAT_MAINNET_RPC_URL' : 'GOAT_TESTNET_RPC_URL';
-  const rpcUrl = (environment === 'mainnet' ? overrides.mainnetRpcUrl : overrides.testnetRpcUrl) ?? network.publicRpcUrl;
+  const rpcUrl =
+    (environment === 'mainnet' ? overrides.mainnetRpcUrl : overrides.testnetRpcUrl) ?? network.publicRpcUrl;
   assertExactUrl(rpcUrl, network.publicRpcUrl, field, createError);
   return rpcUrl;
 }

@@ -1,8 +1,20 @@
 import { toolReceiptDomain, TOOL_RECEIPT_TYPES, type UnsignedToolReceipt } from '@shipyard402/evidence-sdk';
-import { Contract, Wallet, getAddress, type InterfaceAbi, type JsonRpcProvider } from 'ethers';
+import { Contract, type Wallet, getAddress, type InterfaceAbi, type JsonRpcProvider } from 'ethers';
 
-import { ATTESTATION_TYPED_DATA_TYPES, attestationTypedDataValue, registryDomain, RESULT_INDEX } from './registry-eip712.js';
-import type { ConfirmedPayment, NativePaymentSender, RefundSender, RegistryAttestor, RunAttestationInput, ToolReceiptSigner } from './ports.js';
+import {
+  ATTESTATION_TYPED_DATA_TYPES,
+  attestationTypedDataValue,
+  registryDomain,
+  RESULT_INDEX,
+} from './registry-eip712.js';
+import type {
+  ConfirmedPayment,
+  NativePaymentSender,
+  RefundSender,
+  RegistryAttestor,
+  RunAttestationInput,
+  ToolReceiptSigner,
+} from './ports.js';
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
@@ -25,7 +37,9 @@ export class EthersNativePaymentSender implements NativePaymentSender {
     return (await this.#provider.getTransactionCount(this.#wallet.address, 'pending')) > nonce;
   }
 
-  async sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>): Promise<`0x${string}`> {
+  async sendPayment(
+    input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>,
+  ): Promise<`0x${string}`> {
     if (input.valueWei <= 0n || input.valueWei > this.#maximumValueWei) {
       throw new Error('Procurement payment amount is outside the configured safety bound');
     }
@@ -42,7 +56,7 @@ export class EthersNativePaymentSender implements NativePaymentSender {
 
   async waitForConfirmation(transactionHash: `0x${string}`, minimumConfirmations: number): Promise<ConfirmedPayment> {
     const receipt = await this.#provider.waitForTransaction(transactionHash, minimumConfirmations, 180_000);
-    if (!receipt || receipt.status !== 1) {
+    if (receipt?.status !== 1) {
       throw new Error(`Procurement payment transaction did not confirm successfully: ${transactionHash}`);
     }
     const currentBlock = await this.#provider.getBlockNumber();
@@ -67,12 +81,14 @@ export class EthersErc20RefundSender implements RefundSender {
     return (await this.#provider.getTransactionCount(this.#wallet.address, 'pending')) > nonce;
   }
 
-  async sendRefund(input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>): Promise<`0x${string}`> {
+  async sendRefund(
+    input: Readonly<{ tokenAddress: `0x${string}`; toAddress: `0x${string}`; valueAtomic: bigint; nonce: number }>,
+  ): Promise<`0x${string}`> {
     if (input.valueAtomic <= 0n) throw new Error('Refund amount must be positive');
     const token = new Contract(getAddress(input.tokenAddress), ERC20_TRANSFER_ABI, this.#wallet);
     const tx = await token['transfer']!(getAddress(input.toAddress), input.valueAtomic, { nonce: input.nonce });
     const receipt = await tx.wait(1);
-    if (!receipt || receipt.status !== 1) {
+    if (receipt?.status !== 1) {
       throw new Error(`Refund transaction did not confirm successfully: ${tx.hash}`);
     }
     return receipt.hash as `0x${string}`;
@@ -120,7 +136,7 @@ export class EthersRegistryAttestor implements RegistryAttestor {
     const callData = { ...attestation, result: RESULT_INDEX[attestation.result] };
     const tx = await this.#contract['recordRun']!(callData, signature);
     const receipt = await tx.wait(1);
-    if (!receipt || receipt.status !== 1) {
+    if (receipt?.status !== 1) {
       throw new Error(`Attestation transaction did not confirm successfully: ${tx.hash}`);
     }
     return receipt.hash as `0x${string}`;

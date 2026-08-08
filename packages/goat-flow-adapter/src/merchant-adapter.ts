@@ -122,15 +122,17 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
 
     return reviewed
       .map((candidate) => flowRuntimeCapabilitySchema.parse(candidate))
-      .filter((candidate) =>
-        candidate.environment === this.#environment &&
-        candidate.merchantId === this.#merchantId &&
-        candidate.mode === 'ERC20_DIRECT' &&
-        merchant.supportedTokens.some((token) =>
-          token.chainId === candidate.chainId &&
-          sameAddress(token.tokenContract, candidate.tokenAddress) &&
-          token.symbol === candidate.tokenSymbol,
-        ),
+      .filter(
+        (candidate) =>
+          candidate.environment === this.#environment &&
+          candidate.merchantId === this.#merchantId &&
+          candidate.mode === 'ERC20_DIRECT' &&
+          merchant.supportedTokens.some(
+            (token) =>
+              token.chainId === candidate.chainId &&
+              sameAddress(token.tokenContract, candidate.tokenAddress) &&
+              token.symbol === candidate.tokenSymbol,
+          ),
       );
   }
 
@@ -145,7 +147,10 @@ export class GoatFlowMerchantAdapter implements X402MerchantAdapter {
     if (capability.environment !== this.#environment || capability.merchantId !== this.#merchantId) {
       throw new Error('Order capability does not belong to the configured GOAT merchant environment');
     }
-    if (BigInt(input.atomicAmount) < BigInt(capability.minimumAtomicAmount) || BigInt(input.atomicAmount) > BigInt(capability.maximumAtomicAmount)) {
+    if (
+      BigInt(input.atomicAmount) < BigInt(capability.minimumAtomicAmount) ||
+      BigInt(input.atomicAmount) > BigInt(capability.maximumAtomicAmount)
+    ) {
       throw new Error('Order amount is outside the reviewed merchant capability bounds');
     }
 
@@ -248,7 +253,7 @@ export class InMemoryFlowOrderContextStore implements FlowOrderContextStore {
 
   async getByDappOrderId(dappOrderId: string): Promise<FlowOrderContext | null> {
     const orderId = this.#orderIdsByDappOrderId.get(dappOrderId);
-    return orderId ? this.#records.get(orderId) ?? null : null;
+    return orderId ? (this.#records.get(orderId) ?? null) : null;
   }
 }
 
@@ -290,11 +295,12 @@ function normalizeAndVerifyChallenge(
   if (!challenge || !Number.isSafeInteger(challenge.x402Version) || challenge.accepts.length === 0) {
     throw new Error('GOAT Flow did not return a valid x402 payment-required challenge');
   }
-  const matchingOption = challenge.accepts.find((option) =>
-    option.network === `eip155:${capability.chainId}` &&
-    option.amount === atomicAmount &&
-    sameAddress(option.asset, capability.tokenAddress) &&
-    sameAddress(option.payTo, capability.receivingAddress),
+  const matchingOption = challenge.accepts.find(
+    (option) =>
+      option.network === `eip155:${capability.chainId}` &&
+      option.amount === atomicAmount &&
+      sameAddress(option.asset, capability.tokenAddress) &&
+      sameAddress(option.payTo, capability.receivingAddress),
   );
   if (!matchingOption) throw new Error('GOAT Flow x402 challenge does not match the reviewed payment capability');
 

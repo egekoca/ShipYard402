@@ -49,10 +49,7 @@ export class PostgresAttestationStore implements AttestationStore {
   }
 
   async getByRunId(runId: string): Promise<AttestationRecord | null> {
-    const result = await this.#pool.query<AttestationRow>(
-      `SELECT * FROM attestations WHERE run_id = $1`,
-      [runId],
-    );
+    const result = await this.#pool.query<AttestationRow>(`SELECT * FROM attestations WHERE run_id = $1`, [runId]);
     const row = result.rows[0];
     return row ? parseRow(row) : null;
   }

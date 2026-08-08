@@ -15,14 +15,16 @@ export type ProtectedDeliveryAttempt = Readonly<{
 }>;
 
 export interface ProtectedDeliveryClient {
-  execute(input: Readonly<{
-    method: 'GET' | 'POST';
-    route: string;
-    requestBody?: JsonValue;
-    paymentReceipt: string;
-    idempotencyKey: string;
-    signal?: AbortSignal;
-  }>): Promise<ProtectedDeliveryAttempt>;
+  execute(
+    input: Readonly<{
+      method: 'GET' | 'POST';
+      route: string;
+      requestBody?: JsonValue;
+      paymentReceipt: string;
+      idempotencyKey: string;
+      signal?: AbortSignal;
+    }>,
+  ): Promise<ProtectedDeliveryAttempt>;
 }
 
 export type ReplayScenario = Readonly<{
@@ -98,9 +100,7 @@ export class ProtectedDeliveryReplayRunner {
       return evidence(scenario, 'FAIL', 'PAYMENT_PROOF_REPLAY_ACCEPTED', attempts);
     }
 
-    const acceptedStatuses = new Set(
-      scenario.acceptedReplayRejectionStatuses ?? DEFAULT_REPLAY_REJECTION_STATUSES,
-    );
+    const acceptedStatuses = new Set(scenario.acceptedReplayRejectionStatuses ?? DEFAULT_REPLAY_REJECTION_STATUSES);
     if (!acceptedStatuses.has(replay.response.statusCode)) {
       return evidence(scenario, 'INCONCLUSIVE', 'REPLAY_PROBE_INCONCLUSIVE', attempts);
     }
@@ -112,10 +112,12 @@ export class ProtectedDeliveryReplayRunner {
     idempotencyKey: string,
     phase: 'INITIAL' | 'REPLAY',
     signal?: AbortSignal,
-  ): Promise<Readonly<{
-    response?: ProtectedDeliveryAttempt;
-    evidence: ReplayEvidence['attempts'][number];
-  }>> {
+  ): Promise<
+    Readonly<{
+      response?: ProtectedDeliveryAttempt;
+      evidence: ReplayEvidence['attempts'][number];
+    }>
+  > {
     const requestHash = hashCanonical({
       method: scenario.method,
       route: scenario.route,

@@ -34,23 +34,19 @@ export function ReplayDefenseDemo() {
     <section className={`replay-demo${visible ? ' is-visible' : ''}`} ref={ref} aria-label="Payment-proof replay check">
       <div className="section-heading">
         <div>
-          <span className="eyebrow"><i>[04]</i> DETERMINISTIC CHECK</span>
+          <span className="eyebrow">
+            <i>[04]</i> DETERMINISTIC CHECK
+          </span>
           <h2>One receipt. One delivery.</h2>
         </div>
         <p>
-          The same replay probe the release runner performs against a live paid endpoint: present a spent
-          payment receipt a second time and see whether the service notices.
+          The same replay probe the release runner performs against a live paid endpoint: present a spent payment
+          receipt a second time and see whether the service notices.
         </p>
       </div>
 
       <div className="replay-lanes">
-        <ReplayLane
-          version="V1"
-          label="No redemption check"
-          phase={phase}
-          showResult={showResult}
-          outcome="FAIL"
-        />
+        <ReplayLane version="V1" label="No redemption check" phase={phase} showResult={showResult} outcome="FAIL" />
         <ReplayLane
           version="V2"
           label="Redemption tracked per receipt"
@@ -80,7 +76,9 @@ function ReplayLane({
 
       <div className="replay-track">
         <span className="replay-node replay-node--client">Client</span>
-        <span className={`replay-packet${phase === 'sending' || phase === 'replaying' ? ' is-moving' : ''}${phase === 'replaying' ? ' is-replay' : ''}`} />
+        <span
+          className={`replay-packet${phase === 'sending' || phase === 'replaying' ? ' is-moving' : ''}${phase === 'replaying' ? ' is-replay' : ''}`}
+        />
         <span className="replay-node replay-node--service">Service</span>
       </div>
 

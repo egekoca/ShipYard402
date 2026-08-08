@@ -19,16 +19,18 @@ if (network.chainId !== EXPECTED_CHAIN_ID) {
 }
 
 const nativeBalance = await provider.getBalance(address);
-const token = new Contract(GOAT_TOKEN, [
-  'function symbol() view returns (string)',
-  'function decimals() view returns (uint8)',
-  'function balanceOf(address) view returns (uint256)',
-], provider);
+const token = new Contract(
+  GOAT_TOKEN,
+  [
+    'function symbol() view returns (string)',
+    'function decimals() view returns (uint8)',
+    'function balanceOf(address) view returns (uint256)',
+  ],
+  provider,
+);
 let goatToken = { available: false };
 try {
-  const [symbol, decimals, balance] = await Promise.all([
-    token.symbol(), token.decimals(), token.balanceOf(address),
-  ]);
+  const [symbol, decimals, balance] = await Promise.all([token.symbol(), token.decimals(), token.balanceOf(address)]);
   goatToken = {
     available: true,
     address: GOAT_TOKEN,
@@ -43,13 +45,19 @@ try {
 
 let testToken = { available: false };
 if (testTokenDeployment) {
-  const contract = new Contract(testTokenDeployment.contractAddress, [
-    'function symbol() view returns (string)',
-    'function decimals() view returns (uint8)',
-    'function balanceOf(address) view returns (uint256)',
-  ], provider);
+  const contract = new Contract(
+    testTokenDeployment.contractAddress,
+    [
+      'function symbol() view returns (string)',
+      'function decimals() view returns (uint8)',
+      'function balanceOf(address) view returns (uint256)',
+    ],
+    provider,
+  );
   const [symbol, decimals, balance] = await Promise.all([
-    contract.symbol(), contract.decimals(), contract.balanceOf(address),
+    contract.symbol(),
+    contract.decimals(),
+    contract.balanceOf(address),
   ]);
   testToken = {
     available: true,
@@ -62,19 +70,25 @@ if (testTokenDeployment) {
   };
 }
 
-process.stdout.write(JSON.stringify({
-  network: 'goat-testnet3',
-  chainId: Number(network.chainId),
-  rpcUrl: RPC_URL,
-  address,
-  nativeGas: {
-    symbol: 'BTC',
-    balanceWei: nativeBalance.toString(),
-    balance: formatEther(nativeBalance),
-  },
-  goatToken,
-  testToken,
-}, null, 2) + '\n');
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      network: 'goat-testnet3',
+      chainId: Number(network.chainId),
+      rpcUrl: RPC_URL,
+      address,
+      nativeGas: {
+        symbol: 'BTC',
+        balanceWei: nativeBalance.toString(),
+        balance: formatEther(nativeBalance),
+      },
+      goatToken,
+      testToken,
+    },
+    null,
+    2,
+  )}\n`,
+);
 
 async function readJsonIfExists(path) {
   try {

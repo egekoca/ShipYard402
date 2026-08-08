@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["DATABASE_URL", "DATABASE_TLS", "TEST_DATABASE_URL", "KEYSTORE_PASSWORD"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -8,9 +9,6 @@
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "format:check": {
-      "dependsOn": ["^format:check"]
     },
     "test": {
       "dependsOn": ["^build"]

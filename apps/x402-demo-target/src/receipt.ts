@@ -9,13 +9,15 @@ import { z } from 'zod';
  * on a real GOAT Flow merchant account. It must never be treated as, or
  * confused with, a `MerchantPaymentProof` from `@shipyard402/x402-payments`.
  */
-const receiptPayloadSchema = z.object({
-  orderId: z.string().min(1).max(200),
-  atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
-  resource: z.string().min(1).max(500),
-  issuedAt: z.string().datetime(),
-  expiresAt: z.string().datetime(),
-}).strict();
+const receiptPayloadSchema = z
+  .object({
+    orderId: z.string().min(1).max(200),
+    atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
+    resource: z.string().min(1).max(500),
+    issuedAt: z.string().datetime(),
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
 
 export type DemoPaymentReceipt = z.infer<typeof receiptPayloadSchema>;
 

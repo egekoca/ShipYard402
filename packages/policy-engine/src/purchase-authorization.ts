@@ -91,10 +91,7 @@ export function authorizePurchase(
   if (projectedTotalSpend > BigInt(mandate.maximumTotalSpend)) denialCodes.push('TOTAL_SPEND_LIMIT');
   if (context.completedToolCalls >= mandate.maximumToolCalls) denialCodes.push('TOOL_CALL_LIMIT');
   if (context.priorAttemptsForTool > mandate.maximumRetriesPerTool) denialCodes.push('RETRY_LIMIT');
-  if (
-    projectedTotalSpend > BigInt(mandate.additionalSpendApprovalThreshold) &&
-    !context.additionalSpendApproved
-  ) {
+  if (projectedTotalSpend > BigInt(mandate.additionalSpendApprovalThreshold) && !context.additionalSpendApproved) {
     denialCodes.push('ADDITIONAL_APPROVAL_REQUIRED');
   }
   if (intent.idempotencyKey.length < 16 || intent.idempotencyKey.length > 200) {

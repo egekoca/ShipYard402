@@ -9,10 +9,15 @@ export default function AppPage() {
       <section className="run-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow"><i>[05]</i> RELEASE GATE</span>
+            <span className="eyebrow">
+              <i>[05]</i> RELEASE GATE
+            </span>
             <h2>Request a funded run</h2>
           </div>
-          <p>The quote is created from a verified merchant capability. No token or recipient is assumed by this interface.</p>
+          <p>
+            The quote is created from a verified merchant capability. No token or recipient is assumed by this
+            interface.
+          </p>
         </div>
         <ReleaseRunForm />
       </section>

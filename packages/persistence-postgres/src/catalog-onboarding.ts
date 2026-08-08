@@ -16,8 +16,9 @@ const STANDARD_POLICY = {
   version: '1',
   mandatoryScenarios: ['payment-proof-replay'],
   mandateTemplate: {
-    description: 'AI proposes additional scenarios and a budget; a deterministic compiler always '
-      + 'keeps the mandatory scenario and clamps the budget to the quote ceiling (see ADR-0006).',
+    description:
+      'AI proposes additional scenarios and a budget; a deterministic compiler always ' +
+      'keeps the mandatory scenario and clamps the budget to the quote ceiling (see ADR-0006).',
   },
 } as const;
 
@@ -104,8 +105,13 @@ export async function onboardService(pool: Pool, input: OnboardServiceInput): Pr
       `INSERT INTO policies (policy_hash, name, version, mandatory_scenarios, mandate_template)
        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
        ON CONFLICT (policy_hash) DO NOTHING`,
-      [standardPolicyHash, STANDARD_POLICY.name, STANDARD_POLICY.version,
-        JSON.stringify(STANDARD_POLICY.mandatoryScenarios), JSON.stringify(STANDARD_POLICY.mandateTemplate)],
+      [
+        standardPolicyHash,
+        STANDARD_POLICY.name,
+        STANDARD_POLICY.version,
+        JSON.stringify(STANDARD_POLICY.mandatoryScenarios),
+        JSON.stringify(STANDARD_POLICY.mandateTemplate),
+      ],
     );
 
     // One organization per requester wallet: repeat onboarding from the same address reuses it

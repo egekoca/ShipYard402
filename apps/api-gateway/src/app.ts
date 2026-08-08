@@ -2,22 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import cors from '@fastify/cors';
-import {
-  QuoteBudgetExceededError,
-  QuoteEngine,
-  quoteRequestSchema,
-  type Quote,
-} from '@shipyard402/quote-engine';
+import { QuoteBudgetExceededError, type QuoteEngine, quoteRequestSchema, type Quote } from '@shipyard402/quote-engine';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
 import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-import {
-  type QuoteRepository,
-  type RunRecord,
-  type RunRepository,
-} from './repositories.js';
+import type { QuoteRepository, RunRecord, RunRepository } from './repositories.js';
 import { issueSessionToken, verifyLoginSignature, verifySessionToken, type Session } from './session-auth.js';
 
 const SESSION_TOKEN_VALIDITY_SECONDS = 24 * 60 * 60;
@@ -47,7 +38,10 @@ const listRunsQuerySchema = z
   })
   .strict();
 
-const onboardingHttpsUrlSchema = z.string().url().refine((value) => new URL(value).protocol === 'https:', 'HTTPS is required');
+const onboardingHttpsUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => new URL(value).protocol === 'https:', 'HTTPS is required');
 
 const onboardServiceRequestSchema = z
   .object({
@@ -227,9 +221,10 @@ function registerErrorHandler(app: FastifyInstance): void {
   // shape still does so explicitly; this is only the fallback for whatever slips past that.
   app.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error({ err: error }, 'unhandled route error');
-    const statusCode = typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
-      ? error.statusCode
-      : 500;
+    const statusCode =
+      typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
+        ? error.statusCode
+        : 500;
     if (statusCode < 500) {
       return reply.code(statusCode).send({ code: 'BAD_REQUEST', message: error.message });
     }
@@ -258,7 +253,7 @@ function registerHealthRoutes(app: FastifyInstance, dependencies: AppDependencie
           environment: 'test' as const,
           persistence: 'memory' as const,
           database: 'not_configured' as const,
-          merchantPayments: dependencies.merchantAdapter ? 'configured' as const : 'not_configured' as const,
+          merchantPayments: dependencies.merchantAdapter ? ('configured' as const) : ('not_configured' as const),
           mainnetWritesEnabled: false,
         };
     return reply.code(runtime.status === 'unavailable' ? 503 : 200).send({
@@ -288,7 +283,9 @@ function registerHealthRoutes(app: FastifyInstance, dependencies: AppDependencie
 function registerAuthRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.post('/v1/auth/session', async (request, reply) => {
     if (!dependencies.sessionSecret) {
-      return reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
+      return reply
+        .code(503)
+        .send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
     }
     const parsed = loginRequestSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ code: 'INVALID_LOGIN_REQUEST', issues: parsed.error.issues });
@@ -303,8 +300,15 @@ function registerAuthRoutes(app: FastifyInstance, dependencies: AppDependencies,
     });
     if (!valid) return reply.code(401).send({ code: 'LOGIN_SIGNATURE_INVALID' });
 
-    const token = issueSessionToken(dependencies.sessionSecret, address, nowEpochSeconds, SESSION_TOKEN_VALIDITY_SECONDS);
-    return reply.code(200).send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
+    const token = issueSessionToken(
+      dependencies.sessionSecret,
+      address,
+      nowEpochSeconds,
+      SESSION_TOKEN_VALIDITY_SECONDS,
+    );
+    return reply
+      .code(200)
+      .send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
   });
 }
 
@@ -319,7 +323,7 @@ function requireSession(
     return null;
   }
   const header = request.headers.authorization;
-  const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
     reply.code(401).send({ code: 'AUTH_REQUIRED' });
     return null;
@@ -338,7 +342,11 @@ function requireSession(
  * for someone else's runId is its own small leak, so "not yours" and "doesn't exist" are
  * deliberately indistinguishable from the response alone.
  */
-async function loadOwnedRun(dependencies: AppDependencies, runId: string, callerAddress: string): Promise<RunRecord | null> {
+async function loadOwnedRun(
+  dependencies: AppDependencies,
+  runId: string,
+  callerAddress: string,
+): Promise<RunRecord | null> {
   const record = await dependencies.runRepository.findById(runId);
   if (!record) return null;
   const quote = await dependencies.quoteRepository.findById(record.quoteId);
@@ -379,10 +387,10 @@ function registerOnboardingRoutes(app: FastifyInstance, dependencies: AppDepende
       const code = hasErrorCode(error, 'OPENAPI_HOST_FORBIDDEN')
         ? 'OPENAPI_HOST_FORBIDDEN'
         : hasErrorCode(error, 'OPENAPI_NOT_JSON')
-        ? 'OPENAPI_NOT_JSON'
-        : hasErrorCode(error, 'OPENAPI_FETCH_FAILED')
-        ? 'OPENAPI_FETCH_FAILED'
-        : null;
+          ? 'OPENAPI_NOT_JSON'
+          : hasErrorCode(error, 'OPENAPI_FETCH_FAILED')
+            ? 'OPENAPI_FETCH_FAILED'
+            : null;
       if (code) {
         return reply.code(422).send({ code, message: error instanceof Error ? error.message : 'Onboarding failed' });
       }
@@ -567,7 +575,11 @@ function registerRunRoutes(
     if (query.data.requester.toLowerCase() !== session.address.toLowerCase()) {
       return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
     }
-    const page = await dependencies.runRepository.listByRequester(query.data.requester, query.data.limit, query.data.offset);
+    const page = await dependencies.runRepository.listByRequester(
+      query.data.requester,
+      query.data.limit,
+      query.data.offset,
+    );
     return reply.code(200).send(page);
   });
 
@@ -710,9 +722,7 @@ function toRunResponse(record: RunRecord): object {
 function paymentNextAction(record: RunRecord): string {
   if (!record.paymentOrder) return 'REQUEST_PAYMENT_CHALLENGE';
   if (record.aggregate.status === 'PAYMENT_REQUIRED') {
-    return record.paymentOrder.status === 'CHECKOUT_VERIFIED'
-      ? 'PAY_X402_CHALLENGE'
-      : 'AWAIT_PAYMENT_RECONCILIATION';
+    return record.paymentOrder.status === 'CHECKOUT_VERIFIED' ? 'PAY_X402_CHALLENGE' : 'AWAIT_PAYMENT_RECONCILIATION';
   }
   if (record.aggregate.status === 'FUNDED') return 'CUSTOMER_PAYMENT_VERIFIED';
   return 'CUSTOMER_PAYMENT_RECORDED';
