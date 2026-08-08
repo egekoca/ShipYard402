@@ -36,8 +36,9 @@
     "testnet:deploy:test-token": "node scripts/testnet/deploy-test-token.mjs",
     "testnet:mint:test-token": "node scripts/testnet/mint-test-token.mjs",
     "test": "turbo run test",
+    "test:coverage": "pnpm --filter @shipyard402/web-dashboard test:coverage",
     "typecheck": "turbo run typecheck",
-    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build && pnpm depcruise && pnpm contracts:compile && pnpm contracts:test"
+    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:coverage && pnpm build && pnpm depcruise && pnpm contracts:compile && pnpm contracts:test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
