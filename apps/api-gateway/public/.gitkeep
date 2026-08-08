@@ -1,0 +1,3 @@
+This directory intentionally left empty: api-gateway is a serverless-functions-only backend
+with no static assets. Vercel's build step requires an existing Output Directory to exist
+when framework detection is disabled and a custom buildCommand is set.
