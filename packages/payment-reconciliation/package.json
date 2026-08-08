@@ -2,6 +2,8 @@
   "name": "@shipyard402/payment-reconciliation",
   "version": "0.1.0",
   "private": true,
+  "description": "Reconciles pending run payments against confirmed on-chain and settlement state.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

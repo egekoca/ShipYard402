@@ -2,6 +2,8 @@
   "name": "@shipyard402/goat-network-config",
   "version": "0.1.0",
   "private": true,
+  "description": "Shared GOAT Network constants, runtime-config helpers, and merchant capability schema.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {
@@ -12,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "format:check": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

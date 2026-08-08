@@ -2,6 +2,8 @@
   "name": "@shipyard402/persistence-postgres",
   "version": "0.1.0",
   "private": true,
+  "description": "Postgres-backed stores and repositories for runs, quotes, evidence, and job queues.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

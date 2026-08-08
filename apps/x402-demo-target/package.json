@@ -2,6 +2,8 @@
   "name": "@shipyard402/x402-demo-target",
   "version": "0.1.0",
   "private": true,
+  "description": "Demo x402-protected tool endpoint (vulnerable and protected modes) used to exercise the orchestrator pipeline.",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

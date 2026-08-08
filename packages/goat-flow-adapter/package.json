@@ -2,6 +2,8 @@
   "name": "@shipyard402/goat-flow-adapter",
   "version": "0.1.0",
   "private": true,
+  "description": "Adapter over the GOAT Flow merchant SDK for discovering and validating merchant payment capabilities.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

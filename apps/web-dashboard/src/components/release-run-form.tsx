@@ -345,23 +345,23 @@ function Field({ label, onChange, value, ...input }: Readonly<{ label: string; o
   );
 }
 
-function formatError(error: unknown): string {
+export function formatError(error: unknown): string {
   if (error instanceof ShipyardApiError) return `${error.code}: ${error.message}`;
   return error instanceof Error ? error.message : 'Unexpected request failure';
 }
 
-function shortHash(value: string): string {
+export function shortHash(value: string): string {
   return `${value.slice(0, 12)}…${value.slice(-8)}`;
 }
 
-function formatCountdown(ms: number): string {
+export function formatCountdown(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-function formatAtomic(value: string, decimals: number): string {
+export function formatAtomic(value: string, decimals: number): string {
   if (decimals === 0) return value;
   const divisor = 10n ** BigInt(decimals);
   return `${BigInt(value) / divisor}.${(BigInt(value) % divisor).toString().padStart(decimals, '0')}`;

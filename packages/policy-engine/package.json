@@ -2,6 +2,8 @@
   "name": "@shipyard402/policy-engine",
   "version": "0.1.0",
   "private": true,
+  "description": "Egress-safe fetch and purchase-mandate enforcement for procurement calls.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

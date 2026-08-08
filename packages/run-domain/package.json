@@ -2,6 +2,8 @@
   "name": "@shipyard402/run-domain",
   "version": "0.1.0",
   "private": true,
+  "description": "Core run state machine, money type, and economic-ledger domain model.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

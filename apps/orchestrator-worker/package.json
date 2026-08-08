@@ -2,6 +2,8 @@
   "name": "@shipyard402/orchestrator-worker",
   "version": "0.1.0",
   "private": true,
+  "description": "Long-running worker that drives the run pipeline: risk classification, procurement, protected delivery, evidence, and on-chain attestation.",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

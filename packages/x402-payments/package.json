@@ -2,6 +2,8 @@
   "name": "@shipyard402/x402-payments",
   "version": "0.1.0",
   "private": true,
+  "description": "x402 payment settlement verification ports and implementation.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {
@@ -17,9 +19,7 @@
   },
   "dependencies": {
     "@shipyard402/goat-network-config": "workspace:*",
-    "@shipyard402/run-domain": "workspace:*",
-    "ethers": "6.17.0",
-    "zod": "3.25.76"
+    "ethers": "6.17.0"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

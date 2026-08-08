@@ -2,6 +2,8 @@
   "name": "@shipyard402/goat-chain-reader",
   "version": "0.1.0",
   "private": true,
+  "description": "Viem-based reader for GOAT Network on-chain payment receipts.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

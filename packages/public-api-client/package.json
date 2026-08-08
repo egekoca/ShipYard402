@@ -2,6 +2,8 @@
   "name": "@shipyard402/public-api-client",
   "version": "0.1.0",
   "private": true,
+  "description": "Typed client for the Shipyard402 public API, shared by the web dashboard.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {
