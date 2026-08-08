@@ -1,11 +1,22 @@
 import { createHash } from 'node:crypto';
 
-import type { ProtectedDeliveryAttempt, ProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
+import type { ProtectedDeliveryAttempt, ProtectedDeliveryClient } from './replay-runner.js';
 
-export function createFetchProtectedDeliveryClient(baseUrl: string): ProtectedDeliveryClient {
+export type ProtectedDeliveryFetchOptions = Readonly<{
+  fetchImpl?: typeof fetch;
+  captureProviderSignature?: boolean;
+}>;
+
+export function createFetchProtectedDeliveryClient(
+  baseUrl: string,
+  options: ProtectedDeliveryFetchOptions = {},
+): ProtectedDeliveryClient {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const captureProviderSignature = options.captureProviderSignature ?? false;
+
   return {
     async execute(input): Promise<ProtectedDeliveryAttempt> {
-      const response = await fetch(new URL(input.route, baseUrl), {
+      const response = await fetchImpl(new URL(input.route, baseUrl), {
         method: input.method,
         headers: {
           'content-type': 'application/json',
@@ -16,11 +27,13 @@ export function createFetchProtectedDeliveryClient(baseUrl: string): ProtectedDe
         ...(input.signal ? { signal: input.signal } : {}),
       });
       const bodyText = await response.text();
+      const providerSignature = captureProviderSignature ? response.headers.get('x-provider-signature') : null;
 
       return {
         statusCode: response.status,
         deliveryConfirmed: response.ok && parseDeliveryConfirmed(bodyText),
         responseBodyHash: `0x${createHash('sha256').update(bodyText).digest('hex')}`,
+        ...(providerSignature ? { providerSignature: providerSignature as `0x${string}` } : {}),
       };
     },
   };

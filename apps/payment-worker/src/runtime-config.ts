@@ -1,7 +1,11 @@
 import {
-  GOAT_MAINNET,
-  GOAT_TESTNET3,
-  flowRuntimeCapabilitySchema,
+  ConfigurationError,
+  assertExactUrl,
+  assertPostgresUrl,
+  parseBoundedInt,
+  parseMerchantCapability,
+  resolveNetwork,
+  resolveRpcUrl,
   type FlowRuntimeCapability,
 } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
@@ -52,14 +56,15 @@ export type PaymentWorkerRuntimeConfig = Readonly<{
   }>;
 }>;
 
-export class PaymentWorkerConfigurationError extends Error {
-  readonly fields: readonly string[];
-
+export class PaymentWorkerConfigurationError extends ConfigurationError {
   constructor(message: string, fields: readonly string[]) {
-    super(message);
+    super(message, fields);
     this.name = 'PaymentWorkerConfigurationError';
-    this.fields = fields;
   }
+}
+
+function throwPaymentWorkerConfigurationError(message: string, fields: readonly string[]): never {
+  throw new PaymentWorkerConfigurationError(message, fields);
 }
 
 export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv): PaymentWorkerRuntimeConfig {
@@ -78,39 +83,38 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
   if (!connectionString) {
     throw new PaymentWorkerConfigurationError('Production payment worker requires PostgreSQL', ['DATABASE_URL']);
   }
-  assertPostgresUrl(connectionString);
+  assertPostgresUrl(connectionString, throwPaymentWorkerConfigurationError);
   if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
     throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
   }
-  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
-  const rpcField = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? 'GOAT_MAINNET_RPC_URL' : 'GOAT_TESTNET_RPC_URL';
-  const rpcUrl = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet'
-    ? values.GOAT_MAINNET_RPC_URL ?? network.publicRpcUrl
-    : values.GOAT_TESTNET_RPC_URL ?? network.publicRpcUrl;
-  assertExactUrl(rpcUrl, network.publicRpcUrl, rpcField);
-  if (values.GOATX402_API_URL) assertExactUrl(values.GOATX402_API_URL, network.flowApiUrl, 'GOATX402_API_URL');
+  const network = resolveNetwork(values.GOAT_NETWORK_ENVIRONMENT);
+  const rpcUrl = resolveRpcUrl(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    { mainnetRpcUrl: values.GOAT_MAINNET_RPC_URL, testnetRpcUrl: values.GOAT_TESTNET_RPC_URL },
+    throwPaymentWorkerConfigurationError,
+  );
+  if (values.GOATX402_API_URL) {
+    assertExactUrl(values.GOATX402_API_URL, network.flowApiUrl, 'GOATX402_API_URL', throwPaymentWorkerConfigurationError);
+  }
 
-  const pollIntervalMilliseconds = Number(values.PAYMENT_POLL_INTERVAL_MS ?? '2000');
-  if (!Number.isSafeInteger(pollIntervalMilliseconds) || pollIntervalMilliseconds < 250 || pollIntervalMilliseconds > 60_000) {
+  const pollIntervalMilliseconds = parseBoundedInt(values.PAYMENT_POLL_INTERVAL_MS, '2000', { min: 250, max: 60_000 });
+  if (pollIntervalMilliseconds === undefined) {
     throw new PaymentWorkerConfigurationError('Payment poll interval must be between 250 and 60000 milliseconds', ['PAYMENT_POLL_INTERVAL_MS']);
   }
-  const leaseDurationSeconds = Number(values.PAYMENT_LEASE_SECONDS ?? '60');
-  if (!Number.isSafeInteger(leaseDurationSeconds) || leaseDurationSeconds < 5 || leaseDurationSeconds > 600) {
+  const leaseDurationSeconds = parseBoundedInt(values.PAYMENT_LEASE_SECONDS, '60', { min: 5, max: 600 });
+  if (leaseDurationSeconds === undefined) {
     throw new PaymentWorkerConfigurationError('Payment lease must be between 5 and 600 seconds', ['PAYMENT_LEASE_SECONDS']);
   }
 
-  const capability = flowRuntimeCapabilitySchema.safeParse({
+  const capability = parseMerchantCapability({
     environment: values.GOAT_NETWORK_ENVIRONMENT,
     merchantId: values.GOATX402_MERCHANT_ID,
-    mode: 'ERC20_DIRECT',
-    chainId: network.chainId,
     tokenAddress: values.GOATX402_TOKEN_ADDRESS,
     tokenSymbol: values.GOATX402_TOKEN_SYMBOL,
     tokenDecimals: Number(values.GOATX402_TOKEN_DECIMALS),
     receivingAddress: values.GOATX402_RECEIVING_ADDRESS,
     minimumAtomicAmount: values.GOATX402_MINIMUM_ATOMIC_AMOUNT,
     maximumAtomicAmount: values.GOATX402_MAXIMUM_ATOMIC_AMOUNT,
-    discoveredAt: new Date().toISOString(),
     source: 'PORTAL_REVIEW',
   });
   if (!capability.success) {
@@ -139,23 +143,3 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
   };
 }
 
-function assertPostgresUrl(value: string): void {
-  try {
-    const parsed = new URL(value);
-    if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || !parsed.hostname || !parsed.pathname.slice(1)) {
-      throw new Error('invalid');
-    }
-  } catch {
-    throw new PaymentWorkerConfigurationError('DATABASE_URL must be a PostgreSQL URL', ['DATABASE_URL']);
-  }
-}
-
-function assertExactUrl(value: string, expected: string, field: string): void {
-  const parsed = new URL(value);
-  if (
-    parsed.origin !== expected || parsed.username || parsed.password ||
-    !['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash
-  ) {
-    throw new PaymentWorkerConfigurationError(`${field} must match the reviewed official origin`, [field]);
-  }
-}

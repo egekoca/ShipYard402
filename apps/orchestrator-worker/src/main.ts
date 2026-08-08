@@ -13,12 +13,13 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import OpenAI from 'openai';
+import { createEgressSafeFetch } from '@shipyard402/policy-engine';
+import { createFetchProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
 import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
 import { EthersErc20RefundSender, EthersNativePaymentSender, EthersRegistryAttestor, EthersToolReceiptSigner } from './ethers-adapters.js';
 import { createFetchPurchaseClient } from './fetch-purchase-client.js';
 import { createKuboEvidencePublisher } from './ipfs-publisher.js';
-import { createFetchProtectedDeliveryClient } from './protected-delivery-fetch-client.js';
 import { parseOrchestratorWorkerRuntimeConfig } from './runtime-config.js';
 import { OrchestratorJobHandler, processNextOrchestratorJob } from './worker.js';
 
@@ -27,6 +28,7 @@ import { OrchestratorJobHandler, processNextOrchestratorJob } from './worker.js'
 // under that (very standard) invocation. dist/main.js and src/main.ts are both three levels below
 // the repo root (apps/orchestrator-worker/{dist,src}/main.{js,ts}), so the same ../../../ reaches it.
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const egressSafeFetch = createEgressSafeFetch();
 
 async function start(): Promise<void> {
   const config = parseOrchestratorWorkerRuntimeConfig(process.env);
@@ -58,7 +60,10 @@ async function start(): Promise<void> {
       mandatoryScenarios: config.mandatoryScenarios,
       shipyardAgentId: config.shipyardAgentId,
       demoTarget: { ...config.demoTarget, chainId: config.chainId },
-      deliveryClient: createFetchProtectedDeliveryClient(config.demoTarget.baseUrl),
+      deliveryClient: createFetchProtectedDeliveryClient(config.demoTarget.baseUrl, {
+        fetchImpl: egressSafeFetch,
+        captureProviderSignature: true,
+      }),
       paymentSender: new EthersNativePaymentSender(signerWallet, provider, BigInt(config.maximumProcurementSpendAtomic)),
       ...(config.refundsEnabled ? { refundSender: new EthersErc20RefundSender(signerWallet, provider) } : {}),
       purchaseClient: createFetchPurchaseClient(config.demoTarget.baseUrl, signerWallet),

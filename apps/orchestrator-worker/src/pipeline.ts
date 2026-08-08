@@ -8,6 +8,7 @@ import {
   type ReplayEvidence,
   type ReplayScenario,
 } from '@shipyard402/protected-delivery-runner';
+import type { Quote } from '@shipyard402/quote-engine';
 import { compileTestPlan, type CompiledTestPlan, type RiskClassification, type RiskClassifier } from '@shipyard402/risk-classifier';
 import { transitionRun, type RunActor, type RunStatus } from '@shipyard402/run-domain';
 import { keccak256, toUtf8Bytes } from 'ethers';
@@ -251,6 +252,319 @@ export type PipelineResult = Readonly<{
   attestationTransactionHash: `0x${string}`;
 }>;
 
+/** ANALYZING: classify risk and compile the deterministic test plan, checkpointed together since compileTestPlan is derived solely from the classifier's proposal. */
+async function runRiskAnalysisPhase(
+  deps: OrchestratorPipelineDependencies,
+  runId: string,
+  checkpoint: OrchestratorRunCheckpoint,
+  quote: Quote,
+  targetVersionHash: `0x${string}`,
+): Promise<Readonly<{ plan: CompiledTestPlan; proposal: RiskClassification | undefined }>> {
+  let plan = checkpoint.plan as CompiledTestPlan | undefined;
+  let proposal = checkpoint.proposal as RiskClassification | undefined;
+  if (!plan) {
+    proposal = await deps.riskClassifier.classify({
+      targetServiceId: quote.request.targetServiceId,
+      targetVersionHash,
+      x402Endpoint: quote.request.x402Endpoint,
+      openApiUrl: quote.request.openApiUrl,
+      serviceSummary: `Controlled demo x402 paid resource used to prove payment-proof replay handling for ${quote.request.targetServiceId}.`,
+      mandatoryScenarios: deps.mandatoryScenarios,
+      availableScenarios: Object.keys(SCENARIO_EXECUTORS),
+      maximumToolBudgetAtomic: quote.refundableToolBudgetAtomic,
+    });
+    plan = compileTestPlan(proposal, deps.mandatoryScenarios, quote.refundableToolBudgetAtomic);
+    // proposal is kept only for the evidence pack's transparency fields (see AiRiskProposal) --
+    // plan above is the sole authority the rest of this pipeline ever reads from.
+    await deps.checkpointStore.merge(runId, { plan, proposal });
+  }
+  return { plan, proposal };
+}
+
+/** PROCURING: compile the mandate, pay for the tool call, fetch the earned receipt, and (if configured) refund the unspent tool budget -- all spend-once side effects, checkpointed as they happen. */
+async function runProcurementPhase(
+  deps: OrchestratorPipelineDependencies,
+  runId: string,
+  checkpoint: OrchestratorRunCheckpoint,
+  plan: CompiledTestPlan,
+  quote: Quote,
+  currentRunStatus: RunStatus,
+  now: () => Date,
+): Promise<Readonly<{ purchaseAmount: bigint; paymentTransactionHash: `0x${string}`; purchaseReceipt: string }>> {
+  const deadlineEpochSeconds = Math.floor(now().getTime() / 1_000) + MANDATE_VALIDITY_SECONDS;
+  const mandate = buildMandate(plan, { toolAgentId: deps.demoTarget.toolAgentId, host: deps.demoTarget.host }, deadlineEpochSeconds);
+
+  const purchaseAmount = BigInt(deps.demoTarget.minimumAtomicAmount);
+  if (purchaseAmount > BigInt(mandate.maximumSinglePurchase)) {
+    throw new Error('Demo target minimum purchase amount exceeds the compiled mandate ceiling');
+  }
+
+  // The procurement payment and the receipt it earns are each spend-once, real side effects
+  // (a second on-chain send double-spends; a second /purchase call is rejected by the demo
+  // target's own replay guard on that transaction hash) — checkpoint them immediately so a
+  // resumed attempt reuses what already happened instead of repeating it.
+  let paymentTransactionHash = checkpoint.paymentTransactionHash;
+  if (!paymentTransactionHash) {
+    const intent: PurchaseIntent = {
+      runId,
+      toolAgentId: deps.demoTarget.toolAgentId,
+      providerServiceId: deps.demoTarget.toolAgentId,
+      host: deps.demoTarget.host,
+      atomicAmount: purchaseAmount.toString(),
+      idempotencyKey: `orchestrator:${runId}:procure:1`,
+    };
+    const purchaseContext: PurchaseContext = {
+      nowEpochSeconds: Math.floor(now().getTime() / 1_000),
+      runStatus: currentRunStatus,
+      currentTotalSpend: '0',
+      completedToolCalls: 0,
+      priorAttemptsForTool: 0,
+      shipyardAgentId: deps.shipyardAgentId,
+      shipyardControlledHosts: [],
+      additionalSpendApproved: false,
+    };
+    const authorization = authorizePurchase(mandate, intent, purchaseContext);
+    if (!authorization.authorized) throw new ProcurementDeniedError(authorization.denialCodes);
+
+    let paymentNonce = checkpoint.paymentNonce;
+    if (paymentNonce === undefined) {
+      const reserved = await deps.paymentSender.reserveNonce();
+      // merge() can lose a race to a concurrent resumed attempt of this same run (e.g. a
+      // reclaimed job lease while the original worker is still alive and slow) -- COALESCE
+      // keeps whichever value landed first, and the returned row is the only way to find out
+      // which one that was. Using the local `reserved` value here regardless would let the
+      // loser broadcast a second, differently-nonced payment: the exact double-spend this
+      // checkpointing exists to prevent.
+      const persisted = await deps.checkpointStore.merge(runId, { paymentNonce: reserved });
+      paymentNonce = persisted.paymentNonce ?? reserved;
+    }
+    if (await deps.paymentSender.isNonceConsumed(paymentNonce)) {
+      throw new PaymentSendAmbiguousError(runId, paymentNonce, 'payment');
+    }
+
+    paymentTransactionHash = await deps.paymentSender.sendPayment({
+      toAddress: deps.demoTarget.receivingAddress,
+      valueWei: purchaseAmount,
+      nonce: paymentNonce,
+    });
+    await deps.checkpointStore.merge(runId, { paymentTransactionHash });
+  }
+  await deps.paymentSender.waitForConfirmation(paymentTransactionHash, deps.demoTarget.minimumConfirmations);
+
+  let purchaseReceipt = checkpoint.purchaseReceipt;
+  if (!purchaseReceipt) {
+    const purchase = await deps.purchaseClient.purchase(paymentTransactionHash);
+    purchaseReceipt = purchase.receipt;
+    await deps.checkpointStore.merge(runId, { purchaseReceipt });
+  }
+
+  // Refund: the customer prepaid up to refundableToolBudgetAtomic; procurement above only
+  // actually spent purchaseAmount. Same spend-once shape as the payment/attestation sends, so
+  // it is checkpointed the same way -- a resumed attempt reuses the tx instead of double-paying.
+  if (deps.refundSender) {
+    const refundAmount = BigInt(quote.refundableToolBudgetAtomic) - purchaseAmount;
+    if (refundAmount > 0n && !checkpoint.refundTransactionHash) {
+      let refundNonce = checkpoint.refundNonce;
+      if (refundNonce === undefined) {
+        const reserved = await deps.refundSender.reserveNonce();
+        const persisted = await deps.checkpointStore.merge(runId, { refundNonce: reserved });
+        refundNonce = persisted.refundNonce ?? reserved;
+      }
+      if (await deps.refundSender.isNonceConsumed(refundNonce)) {
+        throw new PaymentSendAmbiguousError(runId, refundNonce, 'refund');
+      }
+
+      const refundTransactionHash = await deps.refundSender.sendRefund({
+        tokenAddress: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
+        toAddress: quote.request.requesterAddress as `0x${string}`,
+        valueAtomic: refundAmount,
+        nonce: refundNonce,
+      });
+      await deps.checkpointStore.merge(runId, { refundTransactionHash });
+    }
+  }
+
+  return { purchaseAmount, paymentTransactionHash, purchaseReceipt };
+}
+
+/** EXECUTING: run every scenario in the compiled plan once, checkpointed as a batch since each probe consumes something spend-once (e.g. the replay check spends the receipt). */
+async function runExecutionPhase(
+  deps: OrchestratorPipelineDependencies,
+  runId: string,
+  checkpoint: OrchestratorRunCheckpoint,
+  plan: CompiledTestPlan,
+  quote: Quote,
+  targetVersionHash: `0x${string}`,
+  policyHash: `0x${string}`,
+  purchaseReceipt: string,
+  paymentTransactionHash: `0x${string}`,
+  now: () => Date,
+): Promise<Readonly<{ scenarioResults: readonly ScenarioResult[]; startedAt: number; completedAt: number }>> {
+  let scenarioResults = checkpoint.evidence as readonly ScenarioResult[] | undefined;
+  let startedAt = checkpoint.startedAt;
+  let completedAt = checkpoint.completedAt;
+  if (!scenarioResults || startedAt === undefined || completedAt === undefined) {
+    startedAt = Math.floor(now().getTime() / 1_000);
+    const context: ScenarioExecutionContext = {
+      targetServiceId: quote.request.targetServiceId,
+      targetVersionHash,
+      policyHash,
+      paymentReceipt: purchaseReceipt,
+      paymentTransactionHash,
+      deliveryClient: deps.deliveryClient,
+    };
+    const results: ScenarioResult[] = [];
+    for (const scenarioId of plan.scenarios) {
+      const executor = SCENARIO_EXECUTORS[scenarioId];
+      if (!executor) continue;
+      results.push(await executor(context));
+    }
+    if (results.length === 0) throw new Error('No scenario in the compiled plan has a registered executor');
+    scenarioResults = results;
+    completedAt = Math.floor(now().getTime() / 1_000);
+    await deps.checkpointStore.merge(runId, { evidence: scenarioResults, startedAt, completedAt });
+  }
+  scenarioResults = verifyScenarioProvenance(scenarioResults, deps.demoTarget.providerSignerAddress);
+  return { scenarioResults, startedAt, completedAt };
+}
+
+/** EVIDENCE_BUILDING: sign a tool receipt per scenario result, assemble the evidence pack, and publish + store it (content-addressed, so republishing on resume is naturally idempotent). */
+async function runEvidencePhase(
+  deps: OrchestratorPipelineDependencies,
+  runId: string,
+  quote: Quote,
+  targetVersionHash: `0x${string}`,
+  policyHash: `0x${string}`,
+  plan: CompiledTestPlan,
+  proposal: RiskClassification | undefined,
+  scenarioResults: readonly ScenarioResult[],
+  startedAt: number,
+  completedAt: number,
+  now: () => Date,
+): Promise<Readonly<{
+  evidencePack: ReturnType<typeof buildEvidencePack>;
+  evidenceURI: string;
+  overallResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+}>> {
+  const toolReceipts: (ReturnType<typeof buildUnsignedToolReceipt> & { signature: `0x${string}` })[] = [];
+  for (const scenarioResult of scenarioResults) {
+    const unsignedReceipt = buildUnsignedToolReceipt(scenarioResult.evidence, {
+      runId,
+      toolAgentId: deps.demoTarget.toolAgentId,
+      targetAgentId: quote.request.targetAgentId,
+      targetVersionHash,
+      policyHash,
+      chainTransactionHash: scenarioResult.chainTransactionHash,
+      chainId: deps.demoTarget.chainId,
+      startedAt,
+      completedAt,
+      toolVersion: deps.demoTarget.toolVersion,
+    });
+    const signature = await deps.toolReceiptSigner.sign(unsignedReceipt);
+    toolReceipts.push({ ...unsignedReceipt, signature });
+  }
+  const overallResult = aggregateScenarioResult(scenarioResults.map((result) => result.evidence));
+
+  const evidencePack = buildEvidencePack({
+    runId,
+    targetServiceId: quote.request.targetServiceId,
+    targetVersionHash,
+    policyHash,
+    riskLevel: plan.riskLevel,
+    rationale: plan.rationale,
+    toolBudgetAtomic: plan.toolBudgetAtomic,
+    ...(proposal
+      ? {
+          aiProposal: {
+            riskLevel: proposal.riskLevel,
+            proposedScenarios: proposal.proposedScenarios,
+            proposedToolBudgetAtomic: proposal.proposedToolBudgetAtomic,
+            rationale: proposal.rationale,
+          },
+        }
+      : {}),
+    scenarios: scenarioResults.map((result) => result.evidence.scenarioId),
+    scenarioTraces: scenarioResults.map((result) => ({
+      scenarioId: result.evidence.scenarioId,
+      attempts: result.evidence.attempts,
+    })),
+    result: overallResult,
+    toolReceipts,
+  });
+  // Content-addressed and idempotent -- a resumed attempt republishing the same bytes gets the
+  // same CID back, so this needs no checkpoint guard (unlike the payment and attestation sends).
+  const evidenceURI = await deps.evidencePublisher.publish(canonicalEvidencePackContent(evidencePack.publicManifest));
+  if (!(await deps.evidencePackStore.getByRunId(runId))) {
+    await deps.evidencePackStore.put({
+      runId,
+      evidenceRoot: evidencePack.evidenceRoot,
+      toolReceiptRoot: evidencePack.toolReceiptRoot,
+      uri: evidenceURI,
+      contentHash: evidencePack.contentHash,
+      publicManifest: evidencePack.publicManifest,
+      builtAt: now().toISOString(),
+    });
+  }
+
+  return { evidencePack, evidenceURI, overallResult };
+}
+
+/** ATTESTING: submit the on-chain attestation once (the registry reverts a second submission for the same run) and record it locally. */
+async function runAttestationPhase(
+  deps: OrchestratorPipelineDependencies,
+  runId: string,
+  checkpoint: OrchestratorRunCheckpoint,
+  quote: Quote,
+  targetVersionHash: `0x${string}`,
+  policyHash: `0x${string}`,
+  customerPaymentProofHash: `0x${string}`,
+  customerPaymentAtomic: string,
+  evidencePack: ReturnType<typeof buildEvidencePack>,
+  evidenceURI: string,
+  purchaseAmount: bigint,
+  completedAt: number,
+  overallResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE',
+  now: () => Date,
+): Promise<Readonly<{ attestationTransactionHash: `0x${string}` }>> {
+  const attestationInput = buildAttestationInput({
+    runId,
+    targetAgentId: quote.request.targetAgentId,
+    targetServiceId: quote.request.targetServiceId,
+    targetVersionHash,
+    policyHash,
+    customerPaymentProofHash,
+    toolReceiptRoot: evidencePack.toolReceiptRoot,
+    evidenceRoot: evidencePack.evidenceRoot,
+    evidenceURI,
+    requester: quote.request.requesterAddress as `0x${string}`,
+    shipyardAgent: deps.attestor.address,
+    customerPaymentToken: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
+    toolSpendAtomic: purchaseAmount,
+    customerPaymentAtomic: BigInt(customerPaymentAtomic),
+    completedAt,
+    result: overallResult,
+  });
+  // The registry is append-only and will revert a second attestation for the same run, so a
+  // resumed attempt must reuse a checkpointed submission rather than resubmitting.
+  let attestationTransactionHash = checkpoint.attestationTransactionHash;
+  if (!attestationTransactionHash) {
+    attestationTransactionHash = await deps.attestor.submit(attestationInput);
+    await deps.checkpointStore.merge(runId, { attestationTransactionHash });
+  }
+  if (!(await deps.attestationStore.getByRunId(runId))) {
+    await deps.attestationStore.put({
+      runId,
+      registryAddress: deps.attestor.registryAddress,
+      chainId: deps.attestor.chainId,
+      transactionHash: attestationTransactionHash,
+      attestor: deps.attestor.address,
+      expiresAt: new Date(attestationInput.expiresAt * 1_000).toISOString(),
+      submittedAt: now().toISOString(),
+    });
+  }
+  return { attestationTransactionHash };
+}
+
 export async function runOrchestratorPipeline(
   runId: string,
   deps: OrchestratorPipelineDependencies,
@@ -297,255 +611,31 @@ export async function runOrchestratorPipeline(
   }
 
   try {
-    // ANALYZING
     await advance('ORCHESTRATOR', 'ANALYZING');
-    let plan = checkpoint.plan as CompiledTestPlan | undefined;
-    let proposal = checkpoint.proposal as RiskClassification | undefined;
-    if (!plan) {
-      proposal = await deps.riskClassifier.classify({
-        targetServiceId: quote.request.targetServiceId,
-        targetVersionHash,
-        x402Endpoint: quote.request.x402Endpoint,
-        openApiUrl: quote.request.openApiUrl,
-        serviceSummary: `Controlled demo x402 paid resource used to prove payment-proof replay handling for ${quote.request.targetServiceId}.`,
-        mandatoryScenarios: deps.mandatoryScenarios,
-        availableScenarios: Object.keys(SCENARIO_EXECUTORS),
-        maximumToolBudgetAtomic: quote.refundableToolBudgetAtomic,
-      });
-      plan = compileTestPlan(proposal, deps.mandatoryScenarios, quote.refundableToolBudgetAtomic);
-      // proposal is kept only for the evidence pack's transparency fields (see AiRiskProposal) --
-      // plan above is the sole authority the rest of this pipeline ever reads from.
-      await deps.checkpointStore.merge(runId, { plan, proposal });
-    }
+    const { plan, proposal } = await runRiskAnalysisPhase(deps, runId, checkpoint, quote, targetVersionHash);
 
-    // PLAN_COMPILED
     await advance('POLICY_ENGINE', 'PLAN_COMPILED');
-    const deadlineEpochSeconds = Math.floor(now().getTime() / 1_000) + MANDATE_VALIDITY_SECONDS;
-    const mandate = buildMandate(plan, { toolAgentId: deps.demoTarget.toolAgentId, host: deps.demoTarget.host }, deadlineEpochSeconds);
 
-    // PROCURING
     await advance('PROCUREMENT_WORKER', 'PROCURING');
-    const purchaseAmount = BigInt(deps.demoTarget.minimumAtomicAmount);
-    if (purchaseAmount > BigInt(mandate.maximumSinglePurchase)) {
-      throw new Error('Demo target minimum purchase amount exceeds the compiled mandate ceiling');
-    }
+    const { purchaseAmount, paymentTransactionHash, purchaseReceipt } = await runProcurementPhase(
+      deps, runId, checkpoint, plan, quote, current.status, now,
+    );
 
-    // The procurement payment and the receipt it earns are each spend-once, real side effects
-    // (a second on-chain send double-spends; a second /purchase call is rejected by the demo
-    // target's own replay guard on that transaction hash) — checkpoint them immediately so a
-    // resumed attempt reuses what already happened instead of repeating it.
-    let paymentTransactionHash = checkpoint.paymentTransactionHash;
-    if (!paymentTransactionHash) {
-      const intent: PurchaseIntent = {
-        runId,
-        toolAgentId: deps.demoTarget.toolAgentId,
-        providerServiceId: deps.demoTarget.toolAgentId,
-        host: deps.demoTarget.host,
-        atomicAmount: purchaseAmount.toString(),
-        idempotencyKey: `orchestrator:${runId}:procure:1`,
-      };
-      const purchaseContext: PurchaseContext = {
-        nowEpochSeconds: Math.floor(now().getTime() / 1_000),
-        runStatus: current.status,
-        currentTotalSpend: '0',
-        completedToolCalls: 0,
-        priorAttemptsForTool: 0,
-        shipyardAgentId: deps.shipyardAgentId,
-        shipyardControlledHosts: [],
-        additionalSpendApproved: false,
-      };
-      const authorization = authorizePurchase(mandate, intent, purchaseContext);
-      if (!authorization.authorized) throw new ProcurementDeniedError(authorization.denialCodes);
-
-      let paymentNonce = checkpoint.paymentNonce;
-      if (paymentNonce === undefined) {
-        const reserved = await deps.paymentSender.reserveNonce();
-        // merge() can lose a race to a concurrent resumed attempt of this same run (e.g. a
-        // reclaimed job lease while the original worker is still alive and slow) -- COALESCE
-        // keeps whichever value landed first, and the returned row is the only way to find out
-        // which one that was. Using the local `reserved` value here regardless would let the
-        // loser broadcast a second, differently-nonced payment: the exact double-spend this
-        // checkpointing exists to prevent.
-        const persisted = await deps.checkpointStore.merge(runId, { paymentNonce: reserved });
-        paymentNonce = persisted.paymentNonce ?? reserved;
-      }
-      if (await deps.paymentSender.isNonceConsumed(paymentNonce)) {
-        throw new PaymentSendAmbiguousError(runId, paymentNonce, 'payment');
-      }
-
-      paymentTransactionHash = await deps.paymentSender.sendPayment({
-        toAddress: deps.demoTarget.receivingAddress,
-        valueWei: purchaseAmount,
-        nonce: paymentNonce,
-      });
-      await deps.checkpointStore.merge(runId, { paymentTransactionHash });
-    }
-    await deps.paymentSender.waitForConfirmation(paymentTransactionHash, deps.demoTarget.minimumConfirmations);
-
-    let purchaseReceipt = checkpoint.purchaseReceipt;
-    if (!purchaseReceipt) {
-      const purchase = await deps.purchaseClient.purchase(paymentTransactionHash);
-      purchaseReceipt = purchase.receipt;
-      await deps.checkpointStore.merge(runId, { purchaseReceipt });
-    }
-
-    // Refund: the customer prepaid up to refundableToolBudgetAtomic; procurement above only
-    // actually spent purchaseAmount. Same spend-once shape as the payment/attestation sends, so
-    // it is checkpointed the same way -- a resumed attempt reuses the tx instead of double-paying.
-    if (deps.refundSender) {
-      const refundAmount = BigInt(quote.refundableToolBudgetAtomic) - purchaseAmount;
-      if (refundAmount > 0n && !checkpoint.refundTransactionHash) {
-        let refundNonce = checkpoint.refundNonce;
-        if (refundNonce === undefined) {
-          const reserved = await deps.refundSender.reserveNonce();
-          const persisted = await deps.checkpointStore.merge(runId, { refundNonce: reserved });
-          refundNonce = persisted.refundNonce ?? reserved;
-        }
-        if (await deps.refundSender.isNonceConsumed(refundNonce)) {
-          throw new PaymentSendAmbiguousError(runId, refundNonce, 'refund');
-        }
-
-        const refundTransactionHash = await deps.refundSender.sendRefund({
-          tokenAddress: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
-          toAddress: quote.request.requesterAddress as `0x${string}`,
-          valueAtomic: refundAmount,
-          nonce: refundNonce,
-        });
-        await deps.checkpointStore.merge(runId, { refundTransactionHash });
-      }
-    }
-
-    // EXECUTING
     await advance('PROCUREMENT_WORKER', 'EXECUTING');
-    // Each scenario probe consumes something spend-once (the replay check spends the receipt;
-    // future scenarios may spend other one-shot state) — re-running the whole batch on resume
-    // would record false results, so the full set is checkpointed together like the payment above.
-    let scenarioResults = checkpoint.evidence as readonly ScenarioResult[] | undefined;
-    let startedAt = checkpoint.startedAt;
-    let completedAt = checkpoint.completedAt;
-    if (!scenarioResults || startedAt === undefined || completedAt === undefined) {
-      startedAt = Math.floor(now().getTime() / 1_000);
-      const context: ScenarioExecutionContext = {
-        targetServiceId: quote.request.targetServiceId,
-        targetVersionHash,
-        policyHash,
-        paymentReceipt: purchaseReceipt,
-        paymentTransactionHash,
-        deliveryClient: deps.deliveryClient,
-      };
-      const results: ScenarioResult[] = [];
-      for (const scenarioId of plan.scenarios) {
-        const executor = SCENARIO_EXECUTORS[scenarioId];
-        if (!executor) continue;
-        results.push(await executor(context));
-      }
-      if (results.length === 0) throw new Error('No scenario in the compiled plan has a registered executor');
-      scenarioResults = results;
-      completedAt = Math.floor(now().getTime() / 1_000);
-      await deps.checkpointStore.merge(runId, { evidence: scenarioResults, startedAt, completedAt });
-    }
-    scenarioResults = verifyScenarioProvenance(scenarioResults, deps.demoTarget.providerSignerAddress);
+    const { scenarioResults, startedAt, completedAt } = await runExecutionPhase(
+      deps, runId, checkpoint, plan, quote, targetVersionHash, policyHash, purchaseReceipt, paymentTransactionHash, now,
+    );
 
-    // EVIDENCE_BUILDING
     await advance('EXECUTION_WORKER', 'EVIDENCE_BUILDING');
-    const toolReceipts = [];
-    for (const scenarioResult of scenarioResults) {
-      const unsignedReceipt = buildUnsignedToolReceipt(scenarioResult.evidence, {
-        runId,
-        toolAgentId: deps.demoTarget.toolAgentId,
-        targetAgentId: quote.request.targetAgentId,
-        targetVersionHash,
-        policyHash,
-        chainTransactionHash: scenarioResult.chainTransactionHash,
-        chainId: deps.demoTarget.chainId,
-        startedAt,
-        completedAt,
-        toolVersion: deps.demoTarget.toolVersion,
-      });
-      const signature = await deps.toolReceiptSigner.sign(unsignedReceipt);
-      toolReceipts.push({ ...unsignedReceipt, signature });
-    }
-    const overallResult = aggregateScenarioResult(scenarioResults.map((result) => result.evidence));
+    const { evidencePack, evidenceURI, overallResult } = await runEvidencePhase(
+      deps, runId, quote, targetVersionHash, policyHash, plan, proposal, scenarioResults, startedAt, completedAt, now,
+    );
 
-    const evidencePack = buildEvidencePack({
-      runId,
-      targetServiceId: quote.request.targetServiceId,
-      targetVersionHash,
-      policyHash,
-      riskLevel: plan.riskLevel,
-      rationale: plan.rationale,
-      toolBudgetAtomic: plan.toolBudgetAtomic,
-      ...(proposal
-        ? {
-            aiProposal: {
-              riskLevel: proposal.riskLevel,
-              proposedScenarios: proposal.proposedScenarios,
-              proposedToolBudgetAtomic: proposal.proposedToolBudgetAtomic,
-              rationale: proposal.rationale,
-            },
-          }
-        : {}),
-      scenarios: scenarioResults.map((result) => result.evidence.scenarioId),
-      scenarioTraces: scenarioResults.map((result) => ({
-        scenarioId: result.evidence.scenarioId,
-        attempts: result.evidence.attempts,
-      })),
-      result: overallResult,
-      toolReceipts,
-    });
-    // Content-addressed and idempotent -- a resumed attempt republishing the same bytes gets the
-    // same CID back, so this needs no checkpoint guard (unlike the payment and attestation sends).
-    const evidenceURI = await deps.evidencePublisher.publish(canonicalEvidencePackContent(evidencePack.publicManifest));
-    if (!(await deps.evidencePackStore.getByRunId(runId))) {
-      await deps.evidencePackStore.put({
-        runId,
-        evidenceRoot: evidencePack.evidenceRoot,
-        toolReceiptRoot: evidencePack.toolReceiptRoot,
-        uri: evidenceURI,
-        contentHash: evidencePack.contentHash,
-        publicManifest: evidencePack.publicManifest,
-        builtAt: now().toISOString(),
-      });
-    }
-
-    // ATTESTING
     await advance('EVIDENCE_WORKER', 'ATTESTING');
-    const attestationInput = buildAttestationInput({
-      runId,
-      targetAgentId: quote.request.targetAgentId,
-      targetServiceId: quote.request.targetServiceId,
-      targetVersionHash,
-      policyHash,
-      customerPaymentProofHash,
-      toolReceiptRoot: evidencePack.toolReceiptRoot,
-      evidenceRoot: evidencePack.evidenceRoot,
-      evidenceURI,
-      requester: quote.request.requesterAddress as `0x${string}`,
-      shipyardAgent: deps.attestor.address,
-      customerPaymentToken: quote.capabilitySnapshot.tokenAddress as `0x${string}`,
-      toolSpendAtomic: purchaseAmount,
-      customerPaymentAtomic: BigInt(customerPaymentAtomic),
-      completedAt,
-      result: overallResult,
-    });
-    // The registry is append-only and will revert a second attestation for the same run, so a
-    // resumed attempt must reuse a checkpointed submission rather than resubmitting.
-    let attestationTransactionHash = checkpoint.attestationTransactionHash;
-    if (!attestationTransactionHash) {
-      attestationTransactionHash = await deps.attestor.submit(attestationInput);
-      await deps.checkpointStore.merge(runId, { attestationTransactionHash });
-    }
-    if (!(await deps.attestationStore.getByRunId(runId))) {
-      await deps.attestationStore.put({
-        runId,
-        registryAddress: deps.attestor.registryAddress,
-        chainId: deps.attestor.chainId,
-        transactionHash: attestationTransactionHash,
-        attestor: deps.attestor.address,
-        expiresAt: new Date(attestationInput.expiresAt * 1_000).toISOString(),
-        submittedAt: now().toISOString(),
-      });
-    }
+    const { attestationTransactionHash } = await runAttestationPhase(
+      deps, runId, checkpoint, quote, targetVersionHash, policyHash, customerPaymentProofHash, customerPaymentAtomic,
+      evidencePack, evidenceURI, purchaseAmount, completedAt, overallResult, now,
+    );
 
     // DELIVERED_*
     const finalStatus: RunStatus = overallResult === 'PASS'

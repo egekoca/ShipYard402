@@ -1,4 +1,4 @@
-import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
+import { resolveNetwork } from '@shipyard402/goat-network-config';
 import {
   TransactionNotFoundError,
   TransactionReceiptNotFoundError,
@@ -81,7 +81,7 @@ export function createGoatNativeTransferReader(
   environment: 'mainnet' | 'testnet3',
   rpcUrl: string,
 ): ViemNativeTransferReader {
-  const network = environment === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
+  const network = resolveNetwork(environment);
   const parsed = new URL(rpcUrl);
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
     throw new Error('GOAT RPC must be an HTTPS URL without embedded credentials');
