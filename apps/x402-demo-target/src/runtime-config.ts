@@ -1,4 +1,4 @@
-import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
+import { ConfigurationError, resolveRpcUrl } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
 const environmentSchema = z.object({
@@ -36,14 +36,15 @@ export type DemoTargetRuntimeConfig = Readonly<{
   }>;
 }>;
 
-export class DemoTargetConfigurationError extends Error {
-  readonly fields: readonly string[];
-
+export class DemoTargetConfigurationError extends ConfigurationError {
   constructor(message: string, fields: readonly string[]) {
-    super(message);
+    super(message, fields);
     this.name = 'DemoTargetConfigurationError';
-    this.fields = fields;
   }
+}
+
+function throwDemoTargetConfigurationError(message: string, fields: readonly string[]): never {
+  throw new DemoTargetConfigurationError(message, fields);
 }
 
 export function parseDemoTargetRuntimeConfig(environment: NodeJS.ProcessEnv): DemoTargetRuntimeConfig {
@@ -73,12 +74,11 @@ export function parseDemoTargetRuntimeConfig(environment: NodeJS.ProcessEnv): De
     );
   }
 
-  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
-  const rpcField = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? 'GOAT_MAINNET_RPC_URL' : 'GOAT_TESTNET_RPC_URL';
-  const rpcUrl = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet'
-    ? values.GOAT_MAINNET_RPC_URL ?? network.publicRpcUrl
-    : values.GOAT_TESTNET_RPC_URL ?? network.publicRpcUrl;
-  assertExactUrl(rpcUrl, network.publicRpcUrl, rpcField);
+  const rpcUrl = resolveRpcUrl(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    { mainnetRpcUrl: values.GOAT_MAINNET_RPC_URL, testnetRpcUrl: values.GOAT_TESTNET_RPC_URL },
+    throwDemoTargetConfigurationError,
+  );
 
   return {
     ...base,
@@ -90,14 +90,4 @@ export function parseDemoTargetRuntimeConfig(environment: NodeJS.ProcessEnv): De
       minimumConfirmations: Number(values.DEMO_TARGET_MINIMUM_CONFIRMATIONS),
     },
   };
-}
-
-function assertExactUrl(value: string, expected: string, field: string): void {
-  const parsed = new URL(value);
-  if (
-    parsed.origin !== expected || parsed.username || parsed.password ||
-    !['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash
-  ) {
-    throw new DemoTargetConfigurationError(`${field} must match the reviewed official origin`, [field]);
-  }
 }

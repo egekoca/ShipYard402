@@ -1,7 +1,8 @@
 import {
-  GOAT_MAINNET,
-  GOAT_TESTNET3,
-  flowRuntimeCapabilitySchema,
+  ConfigurationError,
+  assertPostgresUrl,
+  parseMerchantCapability,
+  resolveNetwork,
   type FlowRuntimeCapability,
 } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
@@ -67,14 +68,15 @@ export type ApiRuntimeConfig = Readonly<{
   sessionSigningSecret?: string;
 }>;
 
-export class RuntimeConfigurationError extends Error {
-  readonly fields: readonly string[];
-
+export class RuntimeConfigurationError extends ConfigurationError {
   constructor(message: string, fields: readonly string[]) {
-    super(message);
+    super(message, fields);
     this.name = 'RuntimeConfigurationError';
-    this.fields = fields;
   }
+}
+
+function throwRuntimeConfigurationError(message: string, fields: readonly string[]): never {
+  throw new RuntimeConfigurationError(message, fields);
 }
 
 export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeConfig {
@@ -97,7 +99,7 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
   if (!connectionString) {
     throw new RuntimeConfigurationError('Production requires durable PostgreSQL persistence', ['DATABASE_URL']);
   }
-  assertPostgresUrl(connectionString);
+  assertPostgresUrl(connectionString, throwRuntimeConfigurationError);
 
   if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
     throw new RuntimeConfigurationError('Production API must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
@@ -171,20 +173,15 @@ function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig
   }
 
   const required = values as SelectedEnvironment & Record<MerchantFieldName, string>;
-  const tokenDecimals = Number(required.GOATX402_TOKEN_DECIMALS);
-  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
-  const candidate = flowRuntimeCapabilitySchema.safeParse({
+  const candidate = parseMerchantCapability({
     environment: values.GOAT_NETWORK_ENVIRONMENT,
     merchantId: required.GOATX402_MERCHANT_ID,
-    mode: 'ERC20_DIRECT',
-    chainId: network.chainId,
     tokenAddress: required.GOATX402_TOKEN_ADDRESS,
     tokenSymbol: required.GOATX402_TOKEN_SYMBOL,
-    tokenDecimals,
+    tokenDecimals: Number(required.GOATX402_TOKEN_DECIMALS),
     receivingAddress: required.GOATX402_RECEIVING_ADDRESS,
     minimumAtomicAmount: required.GOATX402_MINIMUM_ATOMIC_AMOUNT,
     maximumAtomicAmount: required.GOATX402_MAXIMUM_ATOMIC_AMOUNT,
-    discoveredAt: new Date().toISOString(),
     source: 'PORTAL_REVIEW',
   });
   if (!candidate.success) {
@@ -202,17 +199,6 @@ function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig
   };
 }
 
-function assertPostgresUrl(value: string): void {
-  try {
-    const parsed = new URL(value);
-    if (!['postgresql:', 'postgres:'].includes(parsed.protocol) || !parsed.hostname || !parsed.pathname.slice(1)) {
-      throw new Error('invalid');
-    }
-  } catch {
-    throw new RuntimeConfigurationError('DATABASE_URL must be a PostgreSQL connection URL', ['DATABASE_URL']);
-  }
-}
-
 function validateWebOrigin(value: string): string {
   try {
     const parsed = new URL(value);
@@ -227,7 +213,7 @@ function validateWebOrigin(value: string): string {
 
 function assertReviewedApiUrl(value: string, environment: 'mainnet' | 'testnet3'): void {
   const parsed = new URL(value);
-  const expected = environment === 'mainnet' ? GOAT_MAINNET.flowApiUrl : GOAT_TESTNET3.flowApiUrl;
+  const expected = resolveNetwork(environment).flowApiUrl;
   if (
     parsed.origin !== expected ||
     parsed.username ||

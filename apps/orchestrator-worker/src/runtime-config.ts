@@ -1,4 +1,10 @@
-import { GOAT_MAINNET, GOAT_TESTNET3 } from '@shipyard402/goat-network-config';
+import {
+  ConfigurationError,
+  assertPostgresUrl,
+  parseBoundedInt,
+  resolveNetwork,
+  resolveRpcUrl,
+} from '@shipyard402/goat-network-config';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
@@ -89,14 +95,15 @@ export type OrchestratorWorkerRuntimeConfig = Readonly<{
   leaseDurationSeconds: number;
 }>;
 
-export class OrchestratorConfigurationError extends Error {
-  readonly fields: readonly string[];
-
+export class OrchestratorConfigurationError extends ConfigurationError {
   constructor(message: string, fields: readonly string[]) {
-    super(message);
+    super(message, fields);
     this.name = 'OrchestratorConfigurationError';
-    this.fields = fields;
   }
+}
+
+function throwOrchestratorConfigurationError(message: string, fields: readonly string[]): never {
+  throw new OrchestratorConfigurationError(message, fields);
 }
 
 export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.ProcessEnv): OrchestratorWorkerRuntimeConfig {
@@ -116,21 +123,21 @@ export function parseOrchestratorWorkerRuntimeConfig(environment: NodeJS.Process
   if (!connectionString) {
     throw new OrchestratorConfigurationError('Production orchestrator worker requires PostgreSQL', ['DATABASE_URL']);
   }
-  assertPostgresUrl(connectionString);
+  assertPostgresUrl(connectionString, throwOrchestratorConfigurationError);
 
-  const network = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? GOAT_MAINNET : GOAT_TESTNET3;
-  const rpcField = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet' ? 'GOAT_MAINNET_RPC_URL' : 'GOAT_TESTNET_RPC_URL';
-  const rpcUrl = values.GOAT_NETWORK_ENVIRONMENT === 'mainnet'
-    ? values.GOAT_MAINNET_RPC_URL ?? network.publicRpcUrl
-    : values.GOAT_TESTNET_RPC_URL ?? network.publicRpcUrl;
-  assertExactUrl(rpcUrl, network.publicRpcUrl, rpcField);
+  const network = resolveNetwork(values.GOAT_NETWORK_ENVIRONMENT);
+  const rpcUrl = resolveRpcUrl(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    { mainnetRpcUrl: values.GOAT_MAINNET_RPC_URL, testnetRpcUrl: values.GOAT_TESTNET_RPC_URL },
+    throwOrchestratorConfigurationError,
+  );
 
-  const poll = Number(values.ORCHESTRATOR_POLL_INTERVAL_MS ?? '3000');
-  if (!Number.isSafeInteger(poll) || poll < 250 || poll > 60_000) {
+  const poll = parseBoundedInt(values.ORCHESTRATOR_POLL_INTERVAL_MS, '3000', { min: 250, max: 60_000 });
+  if (poll === undefined) {
     throw new OrchestratorConfigurationError('Orchestrator poll interval must be between 250 and 60000 milliseconds', ['ORCHESTRATOR_POLL_INTERVAL_MS']);
   }
-  const lease = Number(values.ORCHESTRATOR_LEASE_SECONDS ?? '120');
-  if (!Number.isSafeInteger(lease) || lease < 5 || lease > 600) {
+  const lease = parseBoundedInt(values.ORCHESTRATOR_LEASE_SECONDS, '120', { min: 5, max: 600 });
+  if (lease === undefined) {
     throw new OrchestratorConfigurationError('Orchestrator lease must be between 5 and 600 seconds', ['ORCHESTRATOR_LEASE_SECONDS']);
   }
 
@@ -227,25 +234,4 @@ function resolveSignerKeySource(
     );
   }
   return new RawEnvKeySource(input.rawKey as `0x${string}`);
-}
-
-function assertPostgresUrl(value: string): void {
-  try {
-    const parsed = new URL(value);
-    if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || !parsed.hostname || !parsed.pathname.slice(1)) {
-      throw new Error('invalid');
-    }
-  } catch {
-    throw new OrchestratorConfigurationError('DATABASE_URL must be a PostgreSQL URL', ['DATABASE_URL']);
-  }
-}
-
-function assertExactUrl(value: string, expected: string, field: string): void {
-  const parsed = new URL(value);
-  if (
-    parsed.origin !== expected || parsed.username || parsed.password ||
-    !['', '/'].includes(parsed.pathname) || parsed.search || parsed.hash
-  ) {
-    throw new OrchestratorConfigurationError(`${field} must match the reviewed official origin`, [field]);
-  }
 }

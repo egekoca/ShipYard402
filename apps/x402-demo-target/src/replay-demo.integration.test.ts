@@ -4,7 +4,7 @@ import { ProtectedDeliveryReplayRunner, type ReplayScenario } from '@shipyard402
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDemoTargetApp, PAID_RESOURCE_ROUTE, type DemoTargetMode } from './app.js';
-import { createFetchProtectedDeliveryClient } from './protected-delivery-fetch-client.js';
+import { createFetchProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
 import { issueDemoReceipt } from './receipt.js';
 
 const SECRET = 'a'.repeat(32);

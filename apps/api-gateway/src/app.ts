@@ -206,6 +206,20 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   const now = dependencies.now ?? (() => new Date());
   const idFactory = dependencies.idFactory ?? randomUUID;
 
+  registerErrorHandler(app);
+  registerCors(app, dependencies);
+
+  registerHealthRoutes(app, dependencies);
+  registerAuthRoutes(app, dependencies, now);
+  registerOnboardingRoutes(app, dependencies, now);
+  registerQuoteRoutes(app, dependencies, now);
+  registerRunRoutes(app, dependencies, now, idFactory);
+  registerRunDetailRoutes(app, dependencies, now);
+
+  return app;
+}
+
+function registerErrorHandler(app: FastifyInstance): void {
   // Without this, Fastify's default handler serializes any unhandled exception's raw
   // error.message straight into the HTTP response -- including driver-level Postgres errors from
   // an unguarded repository call, which can carry connection/constraint detail no anonymous
@@ -221,7 +235,9 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     }
     return reply.code(500).send({ code: 'INTERNAL_ERROR', message: 'An internal error occurred.' });
   });
+}
 
+function registerCors(app: FastifyInstance, dependencies: AppDependencies): void {
   if (dependencies.allowedWebOrigins && dependencies.allowedWebOrigins.length > 0) {
     void app.register(cors, {
       origin: [...dependencies.allowedWebOrigins],
@@ -231,7 +247,9 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       maxAge: 600,
     });
   }
+}
 
+function registerHealthRoutes(app: FastifyInstance, dependencies: AppDependencies): void {
   app.get('/health', async (_request, reply) => {
     const runtime = dependencies.runtimeStatusProvider
       ? await dependencies.runtimeStatusProvider.getRuntimeStatus()
@@ -250,13 +268,24 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     });
   });
 
-  /**
-   * A wallet signs this once, right after connecting, to prove control of its address; the
-   * resulting bearer token is then attached to every request that needs to prove "this caller is
-   * this address" (quoting, creating a run, reading a run's own progress). Requiring a fresh
-   * signature on every request instead would mean a MetaMask popup on every poll -- a token traded
-   * for one signature is what makes that usable.
-   */
+  app.get('/v1/stats/step-durations', async (_request, reply) => {
+    const stats = dependencies.stepDurationStatsProvider
+      ? await dependencies.stepDurationStatsProvider.getRecentMedianDurations()
+      : null;
+    // Optional enhancement, not a resource lookup -- an unconfigured provider or a fresh
+    // install with no completed runs yet both just mean "no ETA hint available", not an error.
+    return reply.code(200).send(stats ?? { sampleSize: 0, medianMillisecondsByStep: {} });
+  });
+}
+
+/**
+ * A wallet signs this once, right after connecting, to prove control of its address; the
+ * resulting bearer token is then attached to every request that needs to prove "this caller is
+ * this address" (quoting, creating a run, reading a run's own progress). Requiring a fresh
+ * signature on every request instead would mean a MetaMask popup on every poll -- a token traded
+ * for one signature is what makes that usable.
+ */
+function registerAuthRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.post('/v1/auth/session', async (request, reply) => {
     if (!dependencies.sessionSecret) {
       return reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
@@ -277,52 +306,50 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     const token = issueSessionToken(dependencies.sessionSecret, address, nowEpochSeconds, SESSION_TOKEN_VALIDITY_SECONDS);
     return reply.code(200).send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
   });
+}
 
-  function requireSession(request: FastifyRequest, reply: FastifyReply): Session | null {
-    if (!dependencies.sessionSecret) {
-      reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
-      return null;
-    }
-    const header = request.headers.authorization;
-    const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) {
-      reply.code(401).send({ code: 'AUTH_REQUIRED' });
-      return null;
-    }
-    const session = verifySessionToken(dependencies.sessionSecret, token, Math.floor(now().getTime() / 1_000));
-    if (!session) {
-      reply.code(401).send({ code: 'AUTH_INVALID_OR_EXPIRED' });
-      return null;
-    }
-    return session;
+function requireSession(
+  dependencies: AppDependencies,
+  now: () => Date,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Session | null {
+  if (!dependencies.sessionSecret) {
+    reply.code(503).send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
+    return null;
   }
-
-  /**
-   * Loads a run only if the authenticated caller actually owns it (via the quote it was created
-   * from). A mismatch reads back identically to a genuinely missing run -- confirming a run exists
-   * for someone else's runId is its own small leak, so "not yours" and "doesn't exist" are
-   * deliberately indistinguishable from the response alone.
-   */
-  async function loadOwnedRun(runId: string, callerAddress: string): Promise<RunRecord | null> {
-    const record = await dependencies.runRepository.findById(runId);
-    if (!record) return null;
-    const quote = await dependencies.quoteRepository.findById(record.quoteId);
-    if (!quote) return null;
-    if (quote.request.requesterAddress.toLowerCase() !== callerAddress.toLowerCase()) return null;
-    return record;
+  const header = request.headers.authorization;
+  const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) {
+    reply.code(401).send({ code: 'AUTH_REQUIRED' });
+    return null;
   }
+  const session = verifySessionToken(dependencies.sessionSecret, token, Math.floor(now().getTime() / 1_000));
+  if (!session) {
+    reply.code(401).send({ code: 'AUTH_INVALID_OR_EXPIRED' });
+    return null;
+  }
+  return session;
+}
 
-  app.get('/v1/stats/step-durations', async (_request, reply) => {
-    const stats = dependencies.stepDurationStatsProvider
-      ? await dependencies.stepDurationStatsProvider.getRecentMedianDurations()
-      : null;
-    // Optional enhancement, not a resource lookup -- an unconfigured provider or a fresh
-    // install with no completed runs yet both just mean "no ETA hint available", not an error.
-    return reply.code(200).send(stats ?? { sampleSize: 0, medianMillisecondsByStep: {} });
-  });
+/**
+ * Loads a run only if the authenticated caller actually owns it (via the quote it was created
+ * from). A mismatch reads back identically to a genuinely missing run -- confirming a run exists
+ * for someone else's runId is its own small leak, so "not yours" and "doesn't exist" are
+ * deliberately indistinguishable from the response alone.
+ */
+async function loadOwnedRun(dependencies: AppDependencies, runId: string, callerAddress: string): Promise<RunRecord | null> {
+  const record = await dependencies.runRepository.findById(runId);
+  if (!record) return null;
+  const quote = await dependencies.quoteRepository.findById(record.quoteId);
+  if (!quote) return null;
+  if (quote.request.requesterAddress.toLowerCase() !== callerAddress.toLowerCase()) return null;
+  return record;
+}
 
+function registerOnboardingRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.post('/v1/services/onboard', async (request, reply) => {
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     const parsed = onboardServiceRequestSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -362,9 +389,11 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       throw error;
     }
   });
+}
 
+function registerQuoteRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.post('/v1/quotes', async (request, reply) => {
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     const parsed = quoteRequestSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -408,9 +437,16 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       throw error;
     }
   });
+}
 
+function registerRunRoutes(
+  app: FastifyInstance,
+  dependencies: AppDependencies,
+  now: () => Date,
+  idFactory: () => string,
+): void {
   app.post('/v1/runs', async (request, reply) => {
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     const parsed = createRunRequestSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -427,7 +463,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       if (existing.quoteId !== parsed.data.quoteId) {
         return reply.code(409).send({ code: 'IDEMPOTENCY_KEY_QUOTE_MISMATCH' });
       }
-      const owned = await loadOwnedRun(existing.aggregate.id, session.address);
+      const owned = await loadOwnedRun(dependencies, existing.aggregate.id, session.address);
       if (!owned) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
       return reply.code(200).send(toRunResponse(owned));
     }
@@ -475,7 +511,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.post('/v1/runs/:runId/payment-challenge', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     if (!dependencies.merchantAdapter) {
       return reply.code(503).send({
@@ -484,7 +520,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
       });
     }
 
-    const record = await loadOwnedRun(params.data.runId, session.address);
+    const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     if (record.paymentOrder) {
       const recovered = await ensurePaymentRequired(record, dependencies.runRepository, now);
@@ -526,7 +562,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs', async (request, reply) => {
     const query = listRunsQuerySchema.safeParse(request.query);
     if (!query.success) return reply.code(400).send({ code: 'INVALID_REQUESTER_ADDRESS' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     if (query.data.requester.toLowerCase() !== session.address.toLowerCase()) {
       return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
@@ -538,19 +574,21 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
-    const record = await loadOwnedRun(params.data.runId, session.address);
+    const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     return reply.code(200).send(toRunResponse(record));
   });
+}
 
+function registerRunDetailRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.get('/v1/runs/:runId/plan', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
-    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+    if (!(await loadOwnedRun(dependencies, params.data.runId, session.address))) {
       return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     }
     if (!dependencies.planProvider) {
@@ -567,9 +605,9 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId/evidence', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
-    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+    if (!(await loadOwnedRun(dependencies, params.data.runId, session.address))) {
       return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     }
     if (!dependencies.evidencePackProvider) {
@@ -586,9 +624,9 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.get('/v1/runs/:runId/attestation', async (request, reply) => {
     const params = runParamsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(request, reply);
+    const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
-    if (!(await loadOwnedRun(params.data.runId, session.address))) {
+    if (!(await loadOwnedRun(dependencies, params.data.runId, session.address))) {
       return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
     }
     if (!dependencies.attestationProvider) {
@@ -601,8 +639,6 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
     if (!attestation) return reply.code(404).send({ code: 'ATTESTATION_NOT_FOUND' });
     return reply.code(200).send(attestation);
   });
-
-  return app;
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
