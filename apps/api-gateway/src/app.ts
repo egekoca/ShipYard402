@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { QuoteBudgetExceededError, type QuoteEngine, quoteRequestSchema, type Quote } from '@shipyard402/quote-engine';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
 import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
@@ -201,14 +202,22 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   const idFactory = dependencies.idFactory ?? randomUUID;
 
   registerErrorHandler(app);
+  registerRateLimit(app);
   registerCors(app, dependencies);
 
-  registerHealthRoutes(app, dependencies);
-  registerAuthRoutes(app, dependencies, now);
-  registerOnboardingRoutes(app, dependencies, now);
-  registerQuoteRoutes(app, dependencies, now);
-  registerRunRoutes(app, dependencies, now, idFactory);
-  registerRunDetailRoutes(app, dependencies, now);
+  // Routes are declared once the rate-limit plugin has actually finished loading (not merely
+  // queued) -- @fastify/rate-limit wires its per-route config.rateLimit override via an onRoute
+  // hook, and a route declared before that hook is attached (as would happen if this ran
+  // synchronously right after the unawaited `register` calls above) would silently get no rate
+  // limiting at all.
+  app.after(() => {
+    registerHealthRoutes(app, dependencies);
+    registerAuthRoutes(app, dependencies, now);
+    registerOnboardingRoutes(app, dependencies, now);
+    registerQuoteRoutes(app, dependencies, now);
+    registerRunRoutes(app, dependencies, now, idFactory);
+    registerRunDetailRoutes(app, dependencies, now);
+  });
 
   return app;
 }
@@ -225,10 +234,36 @@ function registerErrorHandler(app: FastifyInstance): void {
       typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
         ? error.statusCode
         : 500;
+    if (error.code === 'RATE_LIMITED') {
+      return reply.code(statusCode).send({ code: error.code, message: error.message });
+    }
     if (statusCode < 500) {
       return reply.code(statusCode).send({ code: 'BAD_REQUEST', message: error.message });
     }
     return reply.code(500).send({ code: 'INTERNAL_ERROR', message: 'An internal error occurred.' });
+  });
+}
+
+/**
+ * A global per-IP ceiling covers every route (including ones added later without anyone
+ * remembering to think about abuse). Routes that trigger real cost or risk on top of that --
+ * external OpenAPI fetches, GOAT Flow order creation, login attempts -- get their own tighter
+ * `config.rateLimit` override below, since 300/minute is fine for reads but not for those.
+ */
+const GLOBAL_RATE_LIMIT = { max: 300, timeWindow: '1 minute' } as const;
+
+function registerRateLimit(app: FastifyInstance): void {
+  void app.register(rateLimit, {
+    ...GLOBAL_RATE_LIMIT,
+    // This return value is thrown and routed through the app's normal setErrorHandler above (it
+    // is not sent directly) -- statusCode has to be set explicitly here or that handler's
+    // `typeof error.statusCode === 'number'` check misses it and downgrades the response to a
+    // generic 500 that discards this message entirely.
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
+      code: 'RATE_LIMITED',
+      message: `Rate limit exceeded, retry in ${context.after}.`,
+    }),
   });
 }
 
@@ -281,35 +316,39 @@ function registerHealthRoutes(app: FastifyInstance, dependencies: AppDependencie
  * for one signature is what makes that usable.
  */
 function registerAuthRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
-  app.post('/v1/auth/session', async (request, reply) => {
-    if (!dependencies.sessionSecret) {
+  app.post(
+    '/v1/auth/session',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      if (!dependencies.sessionSecret) {
+        return reply
+          .code(503)
+          .send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
+      }
+      const parsed = loginRequestSchema.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ code: 'INVALID_LOGIN_REQUEST', issues: parsed.error.issues });
+
+      const nowEpochSeconds = Math.floor(now().getTime() / 1_000);
+      const address = parsed.data.address as `0x${string}`;
+      const valid = await verifyLoginSignature({
+        address,
+        signature: parsed.data.signature as `0x${string}`,
+        issuedAtEpochSeconds: parsed.data.issuedAt,
+        nowEpochSeconds,
+      });
+      if (!valid) return reply.code(401).send({ code: 'LOGIN_SIGNATURE_INVALID' });
+
+      const token = issueSessionToken(
+        dependencies.sessionSecret,
+        address,
+        nowEpochSeconds,
+        SESSION_TOKEN_VALIDITY_SECONDS,
+      );
       return reply
-        .code(503)
-        .send({ code: 'AUTH_NOT_CONFIGURED', message: 'Session authentication is not configured.' });
-    }
-    const parsed = loginRequestSchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ code: 'INVALID_LOGIN_REQUEST', issues: parsed.error.issues });
-
-    const nowEpochSeconds = Math.floor(now().getTime() / 1_000);
-    const address = parsed.data.address as `0x${string}`;
-    const valid = await verifyLoginSignature({
-      address,
-      signature: parsed.data.signature as `0x${string}`,
-      issuedAtEpochSeconds: parsed.data.issuedAt,
-      nowEpochSeconds,
-    });
-    if (!valid) return reply.code(401).send({ code: 'LOGIN_SIGNATURE_INVALID' });
-
-    const token = issueSessionToken(
-      dependencies.sessionSecret,
-      address,
-      nowEpochSeconds,
-      SESSION_TOKEN_VALIDITY_SECONDS,
-    );
-    return reply
-      .code(200)
-      .send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
-  });
+        .code(200)
+        .send({ token, expiresAt: new Date((nowEpochSeconds + SESSION_TOKEN_VALIDITY_SECONDS) * 1_000).toISOString() });
+    },
+  );
 }
 
 function requireSession(
@@ -356,51 +395,55 @@ async function loadOwnedRun(
 }
 
 function registerOnboardingRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
-  app.post('/v1/services/onboard', async (request, reply) => {
-    const session = requireSession(dependencies, now, request, reply);
-    if (!session) return;
-    const parsed = onboardServiceRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({ code: 'INVALID_ONBOARDING_REQUEST', issues: parsed.error.issues });
-    }
-    if (parsed.data.requesterAddress.toLowerCase() !== session.address.toLowerCase()) {
-      return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
-    }
-    if (!dependencies.serviceOnboardingProvider) {
-      return reply.code(503).send({
-        code: 'SERVICE_ONBOARDING_UNAVAILABLE',
-        message: 'Catalog onboarding storage is not configured.',
-      });
-    }
-    try {
-      const onboarded = await dependencies.serviceOnboardingProvider.onboard({
-        organizationName: parsed.data.organizationName,
-        requesterAddress: parsed.data.requesterAddress as `0x${string}`,
-        externalServiceId: parsed.data.externalServiceId,
-        serviceName: parsed.data.serviceName,
-        x402Endpoint: parsed.data.x402Endpoint,
-        openApiUrl: parsed.data.openApiUrl,
-        version: parsed.data.version,
-      });
-      return reply.code(201).send(onboarded);
-    } catch (error) {
-      const code = hasErrorCode(error, 'OPENAPI_HOST_FORBIDDEN')
-        ? 'OPENAPI_HOST_FORBIDDEN'
-        : hasErrorCode(error, 'OPENAPI_NOT_JSON')
-          ? 'OPENAPI_NOT_JSON'
-          : hasErrorCode(error, 'OPENAPI_FETCH_FAILED')
-            ? 'OPENAPI_FETCH_FAILED'
-            : null;
-      if (code) {
-        return reply.code(422).send({ code, message: error instanceof Error ? error.message : 'Onboarding failed' });
+  app.post(
+    '/v1/services/onboard',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const session = requireSession(dependencies, now, request, reply);
+      if (!session) return;
+      const parsed = onboardServiceRequestSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ code: 'INVALID_ONBOARDING_REQUEST', issues: parsed.error.issues });
       }
-      throw error;
-    }
-  });
+      if (parsed.data.requesterAddress.toLowerCase() !== session.address.toLowerCase()) {
+        return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
+      }
+      if (!dependencies.serviceOnboardingProvider) {
+        return reply.code(503).send({
+          code: 'SERVICE_ONBOARDING_UNAVAILABLE',
+          message: 'Catalog onboarding storage is not configured.',
+        });
+      }
+      try {
+        const onboarded = await dependencies.serviceOnboardingProvider.onboard({
+          organizationName: parsed.data.organizationName,
+          requesterAddress: parsed.data.requesterAddress as `0x${string}`,
+          externalServiceId: parsed.data.externalServiceId,
+          serviceName: parsed.data.serviceName,
+          x402Endpoint: parsed.data.x402Endpoint,
+          openApiUrl: parsed.data.openApiUrl,
+          version: parsed.data.version,
+        });
+        return reply.code(201).send(onboarded);
+      } catch (error) {
+        const code = hasErrorCode(error, 'OPENAPI_HOST_FORBIDDEN')
+          ? 'OPENAPI_HOST_FORBIDDEN'
+          : hasErrorCode(error, 'OPENAPI_NOT_JSON')
+            ? 'OPENAPI_NOT_JSON'
+            : hasErrorCode(error, 'OPENAPI_FETCH_FAILED')
+              ? 'OPENAPI_FETCH_FAILED'
+              : null;
+        if (code) {
+          return reply.code(422).send({ code, message: error instanceof Error ? error.message : 'Onboarding failed' });
+        }
+        throw error;
+      }
+    },
+  );
 }
 
 function registerQuoteRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
-  app.post('/v1/quotes', async (request, reply) => {
+  app.post('/v1/quotes', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     const parsed = quoteRequestSchema.safeParse(request.body);
@@ -453,7 +496,7 @@ function registerRunRoutes(
   now: () => Date,
   idFactory: () => string,
 ): void {
-  app.post('/v1/runs', async (request, reply) => {
+  app.post('/v1/runs', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const session = requireSession(dependencies, now, request, reply);
     if (!session) return;
     const parsed = createRunRequestSchema.safeParse(request.body);
@@ -516,56 +559,60 @@ function registerRunRoutes(
     return reply.code(201).send(toRunResponse(record));
   });
 
-  app.post('/v1/runs/:runId/payment-challenge', async (request, reply) => {
-    const params = runParamsSchema.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
-    const session = requireSession(dependencies, now, request, reply);
-    if (!session) return;
-    if (!dependencies.merchantAdapter) {
-      return reply.code(503).send({
-        code: 'GOAT_FLOW_MERCHANT_ADAPTER_UNAVAILABLE',
-        message: 'The backend merchant adapter is not configured.',
-      });
-    }
+  app.post(
+    '/v1/runs/:runId/payment-challenge',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const params = runParamsSchema.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+      const session = requireSession(dependencies, now, request, reply);
+      if (!session) return;
+      if (!dependencies.merchantAdapter) {
+        return reply.code(503).send({
+          code: 'GOAT_FLOW_MERCHANT_ADAPTER_UNAVAILABLE',
+          message: 'The backend merchant adapter is not configured.',
+        });
+      }
 
-    const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
-    if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
-    if (record.paymentOrder) {
-      const recovered = await ensurePaymentRequired(record, dependencies.runRepository, now);
-      return reply.code(paymentChallengeHttpStatus(recovered)).send(toRunResponse(recovered));
-    }
-    if (record.aggregate.status !== 'QUOTED') {
-      return reply.code(409).send({ code: 'RUN_NOT_QUOTED', status: record.aggregate.status });
-    }
-    const quote = await dependencies.quoteRepository.findById(record.quoteId);
-    if (!quote) return reply.code(409).send({ code: 'RUN_QUOTE_NOT_FOUND' });
-    if (now().getTime() >= Date.parse(quote.expiresAt)) {
-      return reply.code(410).send({ code: 'QUOTE_EXPIRED' });
-    }
+      const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
+      if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+      if (record.paymentOrder) {
+        const recovered = await ensurePaymentRequired(record, dependencies.runRepository, now);
+        return reply.code(paymentChallengeHttpStatus(recovered)).send(toRunResponse(recovered));
+      }
+      if (record.aggregate.status !== 'QUOTED') {
+        return reply.code(409).send({ code: 'RUN_NOT_QUOTED', status: record.aggregate.status });
+      }
+      const quote = await dependencies.quoteRepository.findById(record.quoteId);
+      if (!quote) return reply.code(409).send({ code: 'RUN_QUOTE_NOT_FOUND' });
+      if (now().getTime() >= Date.parse(quote.expiresAt)) {
+        return reply.code(410).send({ code: 'QUOTE_EXPIRED' });
+      }
 
-    try {
-      const order = await dependencies.merchantAdapter.createOrder({
-        dappOrderId: record.aggregate.id,
-        payerAddress: quote.request.requesterAddress as `0x${string}`,
-        atomicAmount: quote.totalAtomicAmount,
-        capability: quote.capabilitySnapshot,
-      });
-      const orderBoundRecord: RunRecord = {
-        ...record,
-        paymentOrder: order,
-      };
-      const updated = await ensurePaymentRequired(orderBoundRecord, dependencies.runRepository, now);
-      return reply.code(paymentChallengeHttpStatus(updated)).send(toRunResponse(updated));
-    } catch (error) {
-      const current = await dependencies.runRepository.findById(record.aggregate.id);
-      if (current?.paymentOrder) return reply.code(paymentChallengeHttpStatus(current)).send(toRunResponse(current));
-      request.log.error({ err: error, runId: record.aggregate.id }, 'GOAT Flow order creation failed');
-      return reply.code(502).send({
-        code: 'GOAT_FLOW_ORDER_CREATION_FAILED',
-        message: 'The payment challenge could not be created safely.',
-      });
-    }
-  });
+      try {
+        const order = await dependencies.merchantAdapter.createOrder({
+          dappOrderId: record.aggregate.id,
+          payerAddress: quote.request.requesterAddress as `0x${string}`,
+          atomicAmount: quote.totalAtomicAmount,
+          capability: quote.capabilitySnapshot,
+        });
+        const orderBoundRecord: RunRecord = {
+          ...record,
+          paymentOrder: order,
+        };
+        const updated = await ensurePaymentRequired(orderBoundRecord, dependencies.runRepository, now);
+        return reply.code(paymentChallengeHttpStatus(updated)).send(toRunResponse(updated));
+      } catch (error) {
+        const current = await dependencies.runRepository.findById(record.aggregate.id);
+        if (current?.paymentOrder) return reply.code(paymentChallengeHttpStatus(current)).send(toRunResponse(current));
+        request.log.error({ err: error, runId: record.aggregate.id }, 'GOAT Flow order creation failed');
+        return reply.code(502).send({
+          code: 'GOAT_FLOW_ORDER_CREATION_FAILED',
+          message: 'The payment challenge could not be created safely.',
+        });
+      }
+    },
+  );
 
   app.get('/v1/runs', async (request, reply) => {
     const query = listRunsQuerySchema.safeParse(request.query);

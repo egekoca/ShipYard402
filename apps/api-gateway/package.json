@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@fastify/cors": "11.3.0",
+    "@fastify/rate-limit": "11.2.0",
     "@shipyard402/goat-flow-adapter": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/persistence-postgres": "workspace:*",
