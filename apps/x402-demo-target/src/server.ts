@@ -10,13 +10,13 @@ async function start(): Promise<void> {
     ...(config.providerSignerPrivateKey ? { providerSignerPrivateKey: config.providerSignerPrivateKey } : {}),
     ...(config.purchase
       ? {
-        purchase: {
-          transferReader: createGoatNativeTransferReader(config.purchase.goatEnvironment, config.purchase.rpcUrl),
-          receivingAddress: config.purchase.receivingAddress,
-          minimumValueWei: BigInt(config.purchase.minimumAtomicAmount),
-          minimumConfirmations: config.purchase.minimumConfirmations,
-        },
-      }
+          purchase: {
+            transferReader: createGoatNativeTransferReader(config.purchase.goatEnvironment, config.purchase.rpcUrl),
+            receivingAddress: config.purchase.receivingAddress,
+            minimumValueWei: BigInt(config.purchase.minimumAtomicAmount),
+            minimumConfirmations: config.purchase.minimumConfirmations,
+          },
+        }
       : {}),
   });
 

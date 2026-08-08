@@ -260,7 +260,11 @@ export class ShipyardApiClient {
    * getter instead of a token lets every already-constructed client instance pick up a refreshed
    * token without needing to be recreated.
    */
-  constructor(baseUrl: string, fetchImplementation: typeof fetch = fetch.bind(globalThis), getSessionToken?: () => string | null) {
+  constructor(
+    baseUrl: string,
+    fetchImplementation: typeof fetch = fetch.bind(globalThis),
+    getSessionToken?: () => string | null,
+  ) {
     this.#baseUrl = normalizeBaseUrl(baseUrl);
     this.#fetch = fetchImplementation;
     this.#getSessionToken = getSessionToken;
@@ -268,11 +272,16 @@ export class ShipyardApiClient {
 
   /** Exchanges a wallet's signed login proof for a bearer token -- see session-auth.ts server-side. */
   async createSession(input: LoginRequest, signal?: AbortSignal): Promise<SessionResponse> {
-    return this.#request<SessionResponse>('/v1/auth/session', {
-      method: 'POST',
-      body: JSON.stringify(input),
-      ...(signal === undefined ? {} : { signal }),
-    }, new Set(), { skipAuth: true });
+    return this.#request<SessionResponse>(
+      '/v1/auth/session',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+        ...(signal === undefined ? {} : { signal }),
+      },
+      new Set(),
+      { skipAuth: true },
+    );
   }
 
   async onboardService(input: ServiceOnboardingRequest, signal?: AbortSignal): Promise<ServiceOnboardingResponse> {
@@ -300,10 +309,14 @@ export class ShipyardApiClient {
   }
 
   async requestPaymentChallenge(runId: string, signal?: AbortSignal): Promise<RunResponse> {
-    return this.#request<RunResponse>(`/v1/runs/${encodeURIComponent(runId)}/payment-challenge`, {
-      method: 'POST',
-      ...(signal === undefined ? {} : { signal }),
-    }, new Set([402]));
+    return this.#request<RunResponse>(
+      `/v1/runs/${encodeURIComponent(runId)}/payment-challenge`,
+      {
+        method: 'POST',
+        ...(signal === undefined ? {} : { signal }),
+      },
+      new Set([402]),
+    );
   }
 
   async getRun(runId: string, signal?: AbortSignal): Promise<RunResponse> {
@@ -371,7 +384,7 @@ export class ShipyardApiClient {
     acceptedErrorStatuses = new Set<number>(),
     options: Readonly<{ skipAuth?: boolean }> = {},
   ): Promise<T> {
-    const token = options.skipAuth ? null : this.#getSessionToken?.() ?? null;
+    const token = options.skipAuth ? null : (this.#getSessionToken?.() ?? null);
     const response = await this.#fetch(new URL(path, this.#baseUrl), {
       ...init,
       headers: {
@@ -388,7 +401,8 @@ export class ShipyardApiClient {
     if (!response.ok && !acceptedErrorStatuses.has(response.status)) {
       const error = payload as { code?: unknown; message?: unknown };
       const code = typeof error.code === 'string' ? error.code : 'SHIPYARD_API_ERROR';
-      const message = typeof error.message === 'string' ? error.message : `Shipyard API returned HTTP ${response.status}`;
+      const message =
+        typeof error.message === 'string' ? error.message : `Shipyard API returned HTTP ${response.status}`;
       throw new ShipyardApiError(response.status, code, message);
     }
     return payload as T;

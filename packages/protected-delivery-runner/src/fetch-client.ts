@@ -42,7 +42,11 @@ export function createFetchProtectedDeliveryClient(
 function parseDeliveryConfirmed(bodyText: string): boolean {
   try {
     const parsed: unknown = JSON.parse(bodyText);
-    return typeof parsed === 'object' && parsed !== null && (parsed as { deliveryConfirmed?: unknown }).deliveryConfirmed === true;
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { deliveryConfirmed?: unknown }).deliveryConfirmed === true
+    );
   } catch {
     return false;
   }

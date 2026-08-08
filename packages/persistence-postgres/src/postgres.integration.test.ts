@@ -35,7 +35,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
       // -- each integration test file needs its own synthetic wallet, not the shared fixture address
       // used elsewhere in this file for quote.request.requesterAddress.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Integration ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
+      [
+        organizationId,
+        `Integration ${fixtureSuffix}`,
+        hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`),
+      ],
     );
     await pool.query(
       `INSERT INTO services (
@@ -77,39 +81,46 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
     const quoteRepository = new PostgresQuoteRepository(pool);
     const firstRunRepository = new PostgresRunRepository(pool);
     const now = new Date();
-    const quote = new QuoteEngine({
-      pricingStatus: 'HYPOTHESIS',
-      feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
-      mandatoryToolBudgetAtomic: '100',
-      dynamicToolBudgetAtomic: '100',
-      modelInfrastructureReserveAtomic: '100',
-      chainStorageReserveAtomic: '100',
-      riskSupportReserveAtomic: '100',
-      quoteTtlSeconds: 900,
-    }, () => fixtureSuffix).createQuote({
-      organizationId,
-      requesterAddress: '0x2000000000000000000000000000000000000002',
-      targetAgentId: 'agent:external',
-      targetServiceId,
-      targetVersionHash,
-      policyHash,
-      x402Endpoint,
-      openApiUrl,
-      maximumCustomerBudgetAtomic: '1000',
-    }, {
-      environment: 'mainnet',
-      merchantId: 'integration-merchant',
-      mode: 'ERC20_DIRECT',
-      chainId: 2345,
-      tokenAddress: '0x1000000000000000000000000000000000000001',
-      tokenSymbol: 'INTEGRATION_ONLY',
-      tokenDecimals: 6,
-      receivingAddress: '0x3000000000000000000000000000000000000003',
-      minimumAtomicAmount: '1',
-      maximumAtomicAmount: '100000000',
-      discoveredAt: now.toISOString(),
-      source: 'PORTAL_REVIEW',
-    }, now);
+    const quote = new QuoteEngine(
+      {
+        pricingStatus: 'HYPOTHESIS',
+        feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
+        mandatoryToolBudgetAtomic: '100',
+        dynamicToolBudgetAtomic: '100',
+        modelInfrastructureReserveAtomic: '100',
+        chainStorageReserveAtomic: '100',
+        riskSupportReserveAtomic: '100',
+        quoteTtlSeconds: 900,
+      },
+      () => fixtureSuffix,
+    ).createQuote(
+      {
+        organizationId,
+        requesterAddress: '0x2000000000000000000000000000000000000002',
+        targetAgentId: 'agent:external',
+        targetServiceId,
+        targetVersionHash,
+        policyHash,
+        x402Endpoint,
+        openApiUrl,
+        maximumCustomerBudgetAtomic: '1000',
+      },
+      {
+        environment: 'mainnet',
+        merchantId: 'integration-merchant',
+        mode: 'ERC20_DIRECT',
+        chainId: 2345,
+        tokenAddress: '0x1000000000000000000000000000000000000001',
+        tokenSymbol: 'INTEGRATION_ONLY',
+        tokenDecimals: 6,
+        receivingAddress: '0x3000000000000000000000000000000000000003',
+        minimumAtomicAmount: '1',
+        maximumAtomicAmount: '100000000',
+        discoveredAt: now.toISOString(),
+        source: 'PORTAL_REVIEW',
+      },
+      now,
+    );
 
     await quoteRepository.save(quote);
     await expect(new PostgresQuoteRepository(pool).findById(quote.id)).resolves.toEqual(quote);
@@ -147,18 +158,24 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
       to: 'PAYMENT_REQUIRED',
     });
     if (!paymentRequired.event) throw new Error('Expected PAYMENT_REQUIRED domain event');
-    await restartedRepository.save({
-      ...recovered,
-      aggregate: paymentRequired.run,
-      uncommittedEvent: paymentRequired.event,
-    }, recovered.aggregate.revision);
+    await restartedRepository.save(
+      {
+        ...recovered,
+        aggregate: paymentRequired.run,
+        uncommittedEvent: paymentRequired.event,
+      },
+      recovered.aggregate.revision,
+    );
 
     const queue = new PostgresPaymentReconciliationJobQueue(pool);
     const firstClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
     expect(firstClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 24 });
-    await expect(queue.claimNext({
-      workerId: 'competing-worker', leaseDurationSeconds: 30,
-    })).resolves.toBeNull();
+    await expect(
+      queue.claimNext({
+        workerId: 'competing-worker',
+        leaseDurationSeconds: 30,
+      }),
+    ).resolves.toBeNull();
     await queue.markRetry(firstClaim!, 0, 'PAYMENT_NOT_READY');
     const retryClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
     expect(retryClaim).toMatchObject({ runId, attempt: 2, maximumAttempts: 24 });
@@ -166,48 +183,57 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
     const completedJob = await queue.findByRunId(runId);
     expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
     expect(completedJob).not.toHaveProperty('lastErrorCode');
-    await expect(pool.query(
-      `SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = $1 AND event_type = 'run.transitioned'`,
-      [runId],
-    )).resolves.toMatchObject({ rows: [{ count: 2 }] });
+    await expect(
+      pool.query(
+        `SELECT count(*)::int AS count FROM outbox_events WHERE aggregate_id = $1 AND event_type = 'run.transitioned'`,
+        [runId],
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 2 }] });
   });
 
   it('dead-letters a stale PROCESSING payment job whose attempts are already exhausted instead of reclaiming it forever', async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     const now = new Date();
-    const staleQuote = new QuoteEngine({
-      pricingStatus: 'HYPOTHESIS',
-      feeRateBps: 1667,
-      mandatoryToolBudgetAtomic: '100',
-      dynamicToolBudgetAtomic: '100',
-      modelInfrastructureReserveAtomic: '100',
-      chainStorageReserveAtomic: '100',
-      riskSupportReserveAtomic: '100',
-      quoteTtlSeconds: 900,
-    }, () => `${fixtureSuffix}-stale`).createQuote({
-      organizationId,
-      requesterAddress: '0x2000000000000000000000000000000000000002',
-      targetAgentId: 'agent:external',
-      targetServiceId,
-      targetVersionHash,
-      policyHash,
-      x402Endpoint,
-      openApiUrl,
-      maximumCustomerBudgetAtomic: '1000',
-    }, {
-      environment: 'mainnet',
-      merchantId: 'integration-merchant',
-      mode: 'ERC20_DIRECT',
-      chainId: 2345,
-      tokenAddress: '0x1000000000000000000000000000000000000001',
-      tokenSymbol: 'INTEGRATION_ONLY',
-      tokenDecimals: 6,
-      receivingAddress: '0x3000000000000000000000000000000000000003',
-      minimumAtomicAmount: '1',
-      maximumAtomicAmount: '100000000',
-      discoveredAt: now.toISOString(),
-      source: 'PORTAL_REVIEW',
-    }, now);
+    const staleQuote = new QuoteEngine(
+      {
+        pricingStatus: 'HYPOTHESIS',
+        feeRateBps: 1667,
+        mandatoryToolBudgetAtomic: '100',
+        dynamicToolBudgetAtomic: '100',
+        modelInfrastructureReserveAtomic: '100',
+        chainStorageReserveAtomic: '100',
+        riskSupportReserveAtomic: '100',
+        quoteTtlSeconds: 900,
+      },
+      () => `${fixtureSuffix}-stale`,
+    ).createQuote(
+      {
+        organizationId,
+        requesterAddress: '0x2000000000000000000000000000000000000002',
+        targetAgentId: 'agent:external',
+        targetServiceId,
+        targetVersionHash,
+        policyHash,
+        x402Endpoint,
+        openApiUrl,
+        maximumCustomerBudgetAtomic: '1000',
+      },
+      {
+        environment: 'mainnet',
+        merchantId: 'integration-merchant',
+        mode: 'ERC20_DIRECT',
+        chainId: 2345,
+        tokenAddress: '0x1000000000000000000000000000000000000001',
+        tokenSymbol: 'INTEGRATION_ONLY',
+        tokenDecimals: 6,
+        receivingAddress: '0x3000000000000000000000000000000000000003',
+        minimumAtomicAmount: '1',
+        maximumAtomicAmount: '100000000',
+        discoveredAt: now.toISOString(),
+        source: 'PORTAL_REVIEW',
+      },
+      now,
+    );
     await new PostgresQuoteRepository(pool).save(staleQuote);
 
     const draft = createDraftRun(staleExhaustedRunId, now.toISOString());

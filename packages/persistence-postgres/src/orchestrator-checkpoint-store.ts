@@ -146,7 +146,9 @@ function parseRow(row: CheckpointRow): OrchestratorRunCheckpoint {
     ...(row.evidence !== null && row.evidence !== undefined ? { evidence: row.evidence } : {}),
     ...(row.started_at !== null ? { startedAt: Number(row.started_at) } : {}),
     ...(row.completed_at !== null ? { completedAt: Number(row.completed_at) } : {}),
-    ...(row.attestation_transaction_hash ? { attestationTransactionHash: bufferToHex(row.attestation_transaction_hash) } : {}),
+    ...(row.attestation_transaction_hash
+      ? { attestationTransactionHash: bufferToHex(row.attestation_transaction_hash) }
+      : {}),
     ...(row.refund_nonce !== null ? { refundNonce: row.refund_nonce } : {}),
     ...(row.refund_transaction_hash ? { refundTransactionHash: bufferToHex(row.refund_transaction_hash) } : {}),
   };

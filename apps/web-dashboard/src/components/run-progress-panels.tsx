@@ -3,13 +3,25 @@
 import type { AttestationResponse, EvidenceResponse, PlanResponse, RunResponse } from '@shipyard402/public-api-client';
 import { useState } from 'react';
 
-import { explorerTxUrl, formatDurationEstimate, ipfsGatewayUrl, shortHash, useStepDurationStats } from '../hooks/use-run-progress';
+import {
+  explorerTxUrl,
+  formatDurationEstimate,
+  ipfsGatewayUrl,
+  shortHash,
+  useStepDurationStats,
+} from '../hooks/use-run-progress';
 import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
 import { WalletPayPanel } from './wallet-pay-panel';
 
-const STEPS = ['Customer payment', 'AI risk plan', 'Paid tool procurement', 'Deterministic evidence', 'GOAT attestation'];
+const STEPS = [
+  'Customer payment',
+  'AI risk plan',
+  'Paid tool procurement',
+  'Deterministic evidence',
+  'GOAT attestation',
+];
 /** Same order as STEPS -- maps each stepper label to the step-duration-stats bucket it corresponds to. */
 const STEP_DURATION_BUCKETS = ['payment', 'plan', 'procurement', 'evidence', 'attestation'] as const;
 
@@ -70,8 +82,12 @@ export function RunProgressPanels({
   const paymentState: PanelState = activeStep >= 0 ? 'ready' : 'active';
   const planState: PanelState = planView ? 'ready' : activeStep >= 1 ? 'active' : 'pending';
   const evidenceState: PanelState = evidence
-    ? (evidence.publicManifest.result === 'FAIL' ? 'fail' : 'ready')
-    : activeStep >= 2 ? 'active' : 'pending';
+    ? evidence.publicManifest.result === 'FAIL'
+      ? 'fail'
+      : 'ready'
+    : activeStep >= 2
+      ? 'active'
+      : 'pending';
   const attestationState: PanelState = attestation ? 'ready' : activeStep >= 4 ? 'active' : 'pending';
   // activeStep stays -1 while the run is only PAYMENT_REQUIRED (used above so the payment card
   // itself doesn't flip to "ready" early). The stepper is about showing where the run visibly is
@@ -81,19 +97,26 @@ export function RunProgressPanels({
 
   return (
     <>
-      <div className="workflow-section" aria-label="Run progress">
+      <section className="workflow-section" aria-label="Run progress">
         <Pipeline steps={STEPS} activeIndex={pipelineActiveIndex} stepEtas={stepEtas} />
-      </div>
+      </section>
 
       {isTerminal && (
         <div className={`run-verdict run-verdict--${run.run.status.toLowerCase()} state-in`}>
           <span className="run-verdict-label">{run.run.status.replace('DELIVERED_', '')}</span>
-          <p>Run {runId} reached a terminal state. {manifest ? `Scenarios: ${manifest.scenarios.join(', ')}.` : ''}</p>
+          <p>
+            Run {runId} reached a terminal state. {manifest ? `Scenarios: ${manifest.scenarios.join(', ')}.` : ''}
+          </p>
         </div>
       )}
 
       <div className="run-detail-grid">
-        <Panel index="01" label="PAYMENT" state={paymentState} expanded={Boolean(expanded.payment)} onToggle={() => toggle('payment')}
+        <Panel
+          index="01"
+          label="PAYMENT"
+          state={paymentState}
+          expanded={Boolean(expanded.payment)}
+          onToggle={() => toggle('payment')}
           summary={paymentState === 'ready' ? run.payment.status : 'Awaiting payment'}
           preview={
             paymentState === 'ready' ? (
@@ -124,18 +147,36 @@ export function RunProgressPanels({
           }
         >
           <dl>
-            <div><dt>Status</dt><dd>{run.payment.status}</dd></div>
-            <div><dt>Next action</dt><dd>{run.payment.nextAction}</dd></div>
-            {run.payment.orderId && <div><dt>GOAT Flow order</dt><dd className="mono">{run.payment.orderId}</dd></div>}
+            <div>
+              <dt>Status</dt>
+              <dd>{run.payment.status}</dd>
+            </div>
+            <div>
+              <dt>Next action</dt>
+              <dd>{run.payment.nextAction}</dd>
+            </div>
+            {run.payment.orderId && (
+              <div>
+                <dt>GOAT Flow order</dt>
+                <dd className="mono">{run.payment.orderId}</dd>
+              </div>
+            )}
           </dl>
         </Panel>
 
-        <Panel index="02" label="AI RISK PLAN" state={planState} expanded={Boolean(expanded.plan)} onToggle={() => toggle('plan')}
+        <Panel
+          index="02"
+          label="AI RISK PLAN"
+          state={planState}
+          expanded={Boolean(expanded.plan)}
+          onToggle={() => toggle('plan')}
           summary={planView ? `${planView.riskLevel} risk · ${planView.scenarios.length} scenarios` : 'Compiling…'}
           preview={
             planView ? (
               <div className="panel-preview-facts">
-                <span>{planView.riskLevel} risk · budget {planView.toolBudgetAtomic}</span>
+                <span>
+                  {planView.riskLevel} risk · budget {planView.toolBudgetAtomic}
+                </span>
                 <span>{planView.scenarios.join(', ')}</span>
               </div>
             ) : planState === 'active' ? (
@@ -148,28 +189,53 @@ export function RunProgressPanels({
           {planView && (
             <>
               <dl>
-                <div><dt>Risk level (compiled)</dt><dd>{planView.riskLevel}</dd></div>
-                <div><dt>Tool budget (compiled)</dt><dd className="mono">{planView.toolBudgetAtomic}</dd></div>
-                <div><dt>Scenarios run</dt><dd>{planView.scenarios.join(', ')}</dd></div>
+                <div>
+                  <dt>Risk level (compiled)</dt>
+                  <dd>{planView.riskLevel}</dd>
+                </div>
+                <div>
+                  <dt>Tool budget (compiled)</dt>
+                  <dd className="mono">{planView.toolBudgetAtomic}</dd>
+                </div>
+                <div>
+                  <dt>Scenarios run</dt>
+                  <dd>{planView.scenarios.join(', ')}</dd>
+                </div>
               </dl>
               <p className="ai-rationale">{planView.rationale}</p>
               {planView.aiProposal ? (
                 <div className="ai-proposal-diff">
                   <span className="panel-sublabel">AI PROPOSED THIS (ADVISORY, NOT BINDING)</span>
                   <dl>
-                    <div><dt>Risk level</dt><dd>{planView.aiProposal.riskLevel}</dd></div>
-                    <div><dt>Scenarios</dt><dd>{planView.aiProposal.proposedScenarios.join(', ')}</dd></div>
-                    <div><dt>Budget</dt><dd className="mono">{planView.aiProposal.proposedToolBudgetAtomic}</dd></div>
+                    <div>
+                      <dt>Risk level</dt>
+                      <dd>{planView.aiProposal.riskLevel}</dd>
+                    </div>
+                    <div>
+                      <dt>Scenarios</dt>
+                      <dd>{planView.aiProposal.proposedScenarios.join(', ')}</dd>
+                    </div>
+                    <div>
+                      <dt>Budget</dt>
+                      <dd className="mono">{planView.aiProposal.proposedToolBudgetAtomic}</dd>
+                    </div>
                   </dl>
                 </div>
               ) : (
-                <p className="ai-rationale">AI proposal not recorded for this run (resumed from an older checkpoint).</p>
+                <p className="ai-rationale">
+                  AI proposal not recorded for this run (resumed from an older checkpoint).
+                </p>
               )}
             </>
           )}
         </Panel>
 
-        <Panel index="03" label="EVIDENCE" state={evidenceState} expanded={Boolean(expanded.evidence)} onToggle={() => toggle('evidence')}
+        <Panel
+          index="03"
+          label="EVIDENCE"
+          state={evidenceState}
+          expanded={Boolean(expanded.evidence)}
+          onToggle={() => toggle('evidence')}
           summary={evidence ? evidence.publicManifest.result : 'Building…'}
           preview={
             evidence ? (
@@ -181,12 +247,17 @@ export function RunProgressPanels({
                 {evidence.publicManifest.toolReceipts[0] && (
                   <a
                     className="explorer-link"
-                    href={explorerTxUrl(evidence.publicManifest.toolReceipts[0].chainId, evidence.publicManifest.toolReceipts[0].chainTransactionHash)}
+                    href={explorerTxUrl(
+                      evidence.publicManifest.toolReceipts[0].chainId,
+                      evidence.publicManifest.toolReceipts[0].chainTransactionHash,
+                    )}
                     target="_blank"
                     rel="noreferrer"
                   >
                     view procurement tx ↗
-                    {evidence.publicManifest.toolReceipts.length > 1 ? ` (+${evidence.publicManifest.toolReceipts.length - 1} more below)` : ''}
+                    {evidence.publicManifest.toolReceipts.length > 1
+                      ? ` (+${evidence.publicManifest.toolReceipts.length - 1} more below)`
+                      : ''}
                   </a>
                 )}
               </div>
@@ -200,8 +271,14 @@ export function RunProgressPanels({
           {evidence && (
             <>
               <dl>
-                <div><dt>Result</dt><dd>{evidence.publicManifest.result}</dd></div>
-                <div><dt>Evidence root</dt><dd className="mono">{shortHash(evidence.evidenceRoot)}</dd></div>
+                <div>
+                  <dt>Result</dt>
+                  <dd>{evidence.publicManifest.result}</dd>
+                </div>
+                <div>
+                  <dt>Evidence root</dt>
+                  <dd className="mono">{shortHash(evidence.evidenceRoot)}</dd>
+                </div>
                 <div>
                   <dt>Evidence pack</dt>
                   <dd>
@@ -213,11 +290,15 @@ export function RunProgressPanels({
               </dl>
               <ul className="run-detail-receipts">
                 {evidence.publicManifest.toolReceipts.map((receipt) => {
-                  const trace = manifest?.scenarioTraces?.find((candidate) => candidate.scenarioId === receipt.scenarioId);
+                  const trace = manifest?.scenarioTraces?.find(
+                    (candidate) => candidate.scenarioId === receipt.scenarioId,
+                  );
                   return (
                     <li key={receipt.scenarioId}>
                       <div className="receipt-row">
-                        <span className={`receipt-result receipt-result--${receipt.result.toLowerCase()}`}>{receipt.result}</span>
+                        <span className={`receipt-result receipt-result--${receipt.result.toLowerCase()}`}>
+                          {receipt.result}
+                        </span>
                         <span className="mono">{receipt.scenarioId}</span>
                         <a
                           className="explorer-link"
@@ -230,15 +311,17 @@ export function RunProgressPanels({
                       </div>
                       {trace && trace.attempts.length > 0 && (
                         <ol className="scenario-trace">
-                          {trace.attempts.map((attempt, index) => (
-                            <li key={`${attempt.phase}-${index}`}>
+                          {trace.attempts.map((attempt) => (
+                            <li key={attempt.requestHash}>
                               <span className="trace-phase mono">{attempt.phase}</span>
                               <span>tool agent → target agent, {attempt.statusCode ?? 'no response'}</span>
                               {attempt.deliveryConfirmed !== undefined && (
                                 <span>{attempt.deliveryConfirmed ? 'delivery confirmed' : 'delivery rejected'}</span>
                               )}
                               <span className="mono">req {shortHash(attempt.requestHash)}</span>
-                              {attempt.responseHash && <span className="mono">res {shortHash(attempt.responseHash)}</span>}
+                              {attempt.responseHash && (
+                                <span className="mono">res {shortHash(attempt.responseHash)}</span>
+                              )}
                             </li>
                           ))}
                         </ol>
@@ -251,12 +334,22 @@ export function RunProgressPanels({
           )}
         </Panel>
 
-        <Panel index="04" label="ON-CHAIN ATTESTATION" state={attestationState} expanded={Boolean(expanded.attestation)} onToggle={() => toggle('attestation')}
+        <Panel
+          index="04"
+          label="ON-CHAIN ATTESTATION"
+          state={attestationState}
+          expanded={Boolean(expanded.attestation)}
+          onToggle={() => toggle('attestation')}
           summary={attestation ? 'Recorded on-chain' : 'Pending…'}
           preview={
             attestation ? (
               <div className="panel-preview-facts">
-                <a className="explorer-link" href={explorerTxUrl(attestation.chainId, attestation.transactionHash)} target="_blank" rel="noreferrer">
+                <a
+                  className="explorer-link"
+                  href={explorerTxUrl(attestation.chainId, attestation.transactionHash)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   view attestation tx ↗
                 </a>
                 <span>expires {new Date(attestation.expiresAt).toLocaleDateString()}</span>
@@ -270,16 +363,27 @@ export function RunProgressPanels({
         >
           {attestation && (
             <dl>
-              <div><dt>Registry</dt><dd className="mono">{shortHash(attestation.registryAddress)}</dd></div>
+              <div>
+                <dt>Registry</dt>
+                <dd className="mono">{shortHash(attestation.registryAddress)}</dd>
+              </div>
               <div>
                 <dt>Transaction</dt>
                 <dd>
-                  <a className="explorer-link" href={explorerTxUrl(attestation.chainId, attestation.transactionHash)} target="_blank" rel="noreferrer">
+                  <a
+                    className="explorer-link"
+                    href={explorerTxUrl(attestation.chainId, attestation.transactionHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {shortHash(attestation.transactionHash)} ↗
                   </a>
                 </dd>
               </div>
-              <div><dt>Expires</dt><dd>{new Date(attestation.expiresAt).toLocaleString()}</dd></div>
+              <div>
+                <dt>Expires</dt>
+                <dd>{new Date(attestation.expiresAt).toLocaleString()}</dd>
+              </div>
             </dl>
           )}
         </Panel>
@@ -315,7 +419,10 @@ function Panel({
   // box, so it isn't clickable at all until its own step actually begins.
   const canExpand = state !== 'pending';
   return (
-    <div className={`run-detail-panel glow-card state-in${expanded && canExpand ? ' is-expanded' : ''}`} data-state={state}>
+    <div
+      className={`run-detail-panel glow-card state-in${expanded && canExpand ? ' is-expanded' : ''}`}
+      data-state={state}
+    >
       <button
         type="button"
         className="panel-toggle"
@@ -323,14 +430,28 @@ function Panel({
         aria-expanded={canExpand && expanded}
         disabled={!canExpand}
       >
-        <span className="panel-label"><i>[{index}]</i> {label}</span>
+        <span className="panel-label">
+          <i>[{index}]</i> {label}
+        </span>
         <span className="panel-summary">
           {state === 'active' && <RadarMark className="panel-status-icon" />}
-          {state === 'ready' && <span className="panel-status-check" aria-hidden="true">✓</span>}
-          {state === 'fail' && <span className="panel-status-fail" aria-hidden="true">✕</span>}
+          {state === 'ready' && (
+            <span className="panel-status-check" aria-hidden="true">
+              ✓
+            </span>
+          )}
+          {state === 'fail' && (
+            <span className="panel-status-fail" aria-hidden="true">
+              ✕
+            </span>
+          )}
           {summary}
         </span>
-        {canExpand && <span className="panel-toggle-chevron" aria-hidden="true">+</span>}
+        {canExpand && (
+          <span className="panel-toggle-chevron" aria-hidden="true">
+            +
+          </span>
+        )}
       </button>
       <div className="panel-preview">{preview}</div>
       {canExpand && expanded && <div className="panel-body state-in">{children}</div>}
@@ -345,7 +466,9 @@ function Panel({
 function PanelLoadingRadar({ label }: Readonly<{ label: string }>) {
   return (
     <div className="panel-loading">
-      <span className="panel-loading-radar" aria-hidden="true"><span className="radar-sweep" /></span>
+      <span className="panel-loading-radar" aria-hidden="true">
+        <span className="radar-sweep" />
+      </span>
       <span>{label}</span>
     </div>
   );

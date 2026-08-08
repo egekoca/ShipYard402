@@ -7,7 +7,6 @@
   "scripts": {
     "build": "next build && node scripts/prepare-standalone.mjs",
     "dev": "next dev --hostname 127.0.0.1 --port 3000",
-    "format:check": "next typegen && tsc -p tsconfig.json --noEmit",
     "start": "node .next/standalone/apps/web-dashboard/server.js",
     "test": "vitest run --passWithNoTests",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit"

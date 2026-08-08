@@ -57,11 +57,7 @@ const rules = (...entries: Array<[RunStatus, RunActor[]]>): readonly TransitionR
   entries.map(([to, actors]) => ({ to, actors: new Set(actors) }));
 
 const TRANSITIONS: Readonly<Record<RunStatus, readonly TransitionRule[]>> = {
-  DRAFT: rules(
-    ['QUOTED', ['QUOTE_ENGINE']],
-    ['CANCELLED', ['REQUESTER', 'SYSTEM']],
-    ['EXPIRED', ['SYSTEM']],
-  ),
+  DRAFT: rules(['QUOTED', ['QUOTE_ENGINE']], ['CANCELLED', ['REQUESTER', 'SYSTEM']], ['EXPIRED', ['SYSTEM']]),
   QUOTED: rules(
     ['PAYMENT_REQUIRED', ['MERCHANT_GATEWAY']],
     ['CANCELLED', ['REQUESTER', 'SYSTEM']],
@@ -73,23 +69,14 @@ const TRANSITIONS: Readonly<Record<RunStatus, readonly TransitionRule[]>> = {
     ['EXPIRED', ['SYSTEM']],
   ),
   FUNDED: rules(['ANALYZING', ['ORCHESTRATOR']]),
-  ANALYZING: rules(
-    ['PLAN_COMPILED', ['POLICY_ENGINE']],
-    ['EVIDENCE_BUILDING', ['ORCHESTRATOR', 'SYSTEM']],
-  ),
-  PLAN_COMPILED: rules(
-    ['PROCURING', ['PROCUREMENT_WORKER']],
-    ['EVIDENCE_BUILDING', ['POLICY_ENGINE', 'SYSTEM']],
-  ),
+  ANALYZING: rules(['PLAN_COMPILED', ['POLICY_ENGINE']], ['EVIDENCE_BUILDING', ['ORCHESTRATOR', 'SYSTEM']]),
+  PLAN_COMPILED: rules(['PROCURING', ['PROCUREMENT_WORKER']], ['EVIDENCE_BUILDING', ['POLICY_ENGINE', 'SYSTEM']]),
   PROCURING: rules(
     ['EXECUTING', ['PROCUREMENT_WORKER', 'EXECUTION_WORKER']],
     ['REPLANNING', ['ORCHESTRATOR']],
     ['EVIDENCE_BUILDING', ['PROCUREMENT_WORKER', 'SYSTEM']],
   ),
-  EXECUTING: rules(
-    ['REPLANNING', ['ORCHESTRATOR']],
-    ['EVIDENCE_BUILDING', ['EXECUTION_WORKER', 'SYSTEM']],
-  ),
+  EXECUTING: rules(['REPLANNING', ['ORCHESTRATOR']], ['EVIDENCE_BUILDING', ['EXECUTION_WORKER', 'SYSTEM']]),
   REPLANNING: rules(
     ['PROCURING', ['POLICY_ENGINE', 'PROCUREMENT_WORKER']],
     ['EXECUTING', ['POLICY_ENGINE', 'EXECUTION_WORKER']],
@@ -196,10 +183,8 @@ export function transitionRun(run: RunAggregate, command: TransitionCommand): Tr
   }
 
   const rule = TRANSITIONS[run.status].find((candidate) => candidate.to === command.to);
-  if (!rule || !rule.actors.has(command.actor)) {
-    throw new IllegalRunTransitionError(
-      `${command.actor} cannot transition a run from ${run.status} to ${command.to}`,
-    );
+  if (!rule?.actors.has(command.actor)) {
+    throw new IllegalRunTransitionError(`${command.actor} cannot transition a run from ${run.status} to ${command.to}`);
   }
 
   const revision = run.revision + 1;

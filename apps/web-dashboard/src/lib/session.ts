@@ -1,4 +1,4 @@
-import { ShipyardApiClient } from '@shipyard402/public-api-client';
+import type { ShipyardApiClient } from '@shipyard402/public-api-client';
 
 import { signPersonalMessage } from './goat-wallet';
 

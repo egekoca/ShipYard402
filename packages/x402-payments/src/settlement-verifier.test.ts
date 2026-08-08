@@ -29,14 +29,16 @@ const order = {
   paymentRequired: {
     x402Version: 2,
     resource: { url: 'https://shipyard.example/v1/runs' },
-    accepts: [{
-      scheme: 'exact',
-      network: 'eip155:2345',
-      amount: '5000000',
-      asset: token,
-      payTo: recipient,
-      maxTimeoutSeconds: 900,
-    }],
+    accepts: [
+      {
+        scheme: 'exact',
+        network: 'eip155:2345',
+        amount: '5000000',
+        asset: token,
+        payTo: recipient,
+        maxTimeoutSeconds: 900,
+      },
+    ],
   },
 } as const;
 

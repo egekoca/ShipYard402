@@ -34,7 +34,11 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
       // -- each integration test file needs its own synthetic wallet, not the shared fixture address
       // used elsewhere in this file for the payer/requester address.
       `INSERT INTO organizations (id, name, billing_wallet) VALUES ($1, $2, $3)`,
-      [organizationId, `Duplicate-charge ${fixtureSuffix}`, hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`)],
+      [
+        organizationId,
+        `Duplicate-charge ${fixtureSuffix}`,
+        hexBuffer(digest(`org-wallet:${fixtureSuffix}`).slice(0, 42) as `0x${string}`),
+      ],
     );
     await pool.query(
       `INSERT INTO services (
@@ -45,7 +49,12 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
     await pool.query(
       `INSERT INTO releases (id, service_id, version, version_hash, manifest_hash)
        VALUES ($1, $2, 'integration', $3, $4)`,
-      [releaseId, serviceId, hexBuffer(digest(`release:${fixtureSuffix}`)), hexBuffer(digest(`manifest:${fixtureSuffix}`))],
+      [
+        releaseId,
+        serviceId,
+        hexBuffer(digest(`release:${fixtureSuffix}`)),
+        hexBuffer(digest(`manifest:${fixtureSuffix}`)),
+      ],
     );
     await pool.query(
       `INSERT INTO policies (id, name, version, policy_hash, mandatory_scenarios, mandate_template)
@@ -110,9 +119,7 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
     const runD = await createPaymentRequiredRun(pool, 'proof-hash-d');
 
     const sharedTransactionHash = `0x${'33'.repeat(32)}` as const;
-    await store.commitFundedRun(
-      fundingInput(runC, `0x${'cc'.repeat(32)}`, sharedTransactionHash, 0),
-    );
+    await store.commitFundedRun(fundingInput(runC, `0x${'cc'.repeat(32)}`, sharedTransactionHash, 0));
 
     await expect(
       store.commitFundedRun(fundingInput(runD, `0x${'dd'.repeat(32)}`, sharedTransactionHash, 0)),
@@ -165,26 +172,33 @@ async function createPaymentRequiredRun(pool: Pool, label: string): Promise<Paym
     source: 'PORTAL_REVIEW' as const,
   };
 
-  const quote = new QuoteEngine({
-    pricingStatus: 'HYPOTHESIS',
-    feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
-    mandatoryToolBudgetAtomic: '100',
-    dynamicToolBudgetAtomic: '100',
-    modelInfrastructureReserveAtomic: '100',
-    chainStorageReserveAtomic: '100',
-    riskSupportReserveAtomic: '100',
-    quoteTtlSeconds: 900,
-  }, () => `${label}-${fixtureSuffix}`).createQuote({
-    organizationId,
-    requesterAddress: '0x2000000000000000000000000000000000000002',
-    targetAgentId: 'agent:external',
-    targetServiceId,
-    targetVersionHash: digest(`release:${fixtureSuffix}`),
-    policyHash: digest(`policy:${fixtureSuffix}`),
-    x402Endpoint,
-    openApiUrl,
-    maximumCustomerBudgetAtomic: '1000',
-  }, capability, now);
+  const quote = new QuoteEngine(
+    {
+      pricingStatus: 'HYPOTHESIS',
+      feeRateBps: 1667, // chosen so total stays 600, matching this file's on-chain fixture amounts
+      mandatoryToolBudgetAtomic: '100',
+      dynamicToolBudgetAtomic: '100',
+      modelInfrastructureReserveAtomic: '100',
+      chainStorageReserveAtomic: '100',
+      riskSupportReserveAtomic: '100',
+      quoteTtlSeconds: 900,
+    },
+    () => `${label}-${fixtureSuffix}`,
+  ).createQuote(
+    {
+      organizationId,
+      requesterAddress: '0x2000000000000000000000000000000000000002',
+      targetAgentId: 'agent:external',
+      targetServiceId,
+      targetVersionHash: digest(`release:${fixtureSuffix}`),
+      policyHash: digest(`policy:${fixtureSuffix}`),
+      x402Endpoint,
+      openApiUrl,
+      maximumCustomerBudgetAtomic: '1000',
+    },
+    capability,
+    now,
+  );
 
   const quoteRepository = new PostgresQuoteRepository(pool);
   await quoteRepository.save(quote);
@@ -214,12 +228,15 @@ async function createPaymentRequiredRun(pool: Pool, label: string): Promise<Paym
     to: 'PAYMENT_REQUIRED',
   });
   if (!paymentRequired.event) throw new Error('Expected PAYMENT_REQUIRED domain event');
-  await runRepository.save({
-    aggregate: paymentRequired.run,
-    quoteId: quote.id,
-    requestIdempotencyKey: `request:${label}:${fixtureSuffix}`,
-    uncommittedEvent: paymentRequired.event,
-  }, quoted.run.revision);
+  await runRepository.save(
+    {
+      aggregate: paymentRequired.run,
+      quoteId: quote.id,
+      requestIdempotencyKey: `request:${label}:${fixtureSuffix}`,
+      uncommittedEvent: paymentRequired.event,
+    },
+    quoted.run.revision,
+  );
 
   const order: MerchantOrder = {
     orderId: `order_${label}_${fixtureSuffix}`,
@@ -234,14 +251,16 @@ async function createPaymentRequiredRun(pool: Pool, label: string): Promise<Paym
     paymentRequired: {
       x402Version: 1,
       resource: { url: x402Endpoint },
-      accepts: [{
-        scheme: 'exact',
-        network: `eip155:${capability.chainId}`,
-        amount: quote.totalAtomicAmount,
-        asset: capability.tokenAddress,
-        payTo: capability.receivingAddress,
-        maxTimeoutSeconds: 300,
-      }],
+      accepts: [
+        {
+          scheme: 'exact',
+          network: `eip155:${capability.chainId}`,
+          amount: quote.totalAtomicAmount,
+          asset: capability.tokenAddress,
+          payTo: capability.receivingAddress,
+          maxTimeoutSeconds: 300,
+        },
+      ],
     },
   };
   const orderContextStore = new PostgresFlowOrderContextStore(pool);
@@ -279,12 +298,14 @@ function fundingInput(
     chainId: fixture.order.chainId,
     transactionHash,
     status: 1,
-    logs: [{
-      address: fixture.order.tokenAddress,
-      topics: [`0x${'ff'.repeat(32)}`],
-      data: '0x',
-      index: logIndex,
-    }],
+    logs: [
+      {
+        address: fixture.order.tokenAddress,
+        topics: [`0x${'ff'.repeat(32)}`],
+        data: '0x',
+        index: logIndex,
+      },
+    ],
   };
 
   return {

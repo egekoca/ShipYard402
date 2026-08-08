@@ -20,7 +20,7 @@ export function createKuboEvidencePublisher(apiUrl: string): EvidencePublisherPo
         const body = await response.text().catch(() => '');
         throw new Error(`IPFS publish failed: ${response.status} ${body}`);
       }
-      const result = await response.json() as Readonly<{ Hash?: string }>;
+      const result = (await response.json()) as Readonly<{ Hash?: string }>;
       if (!result.Hash) throw new Error('IPFS publish returned no CID');
       return `ipfs://${result.Hash}`;
     },

@@ -84,16 +84,19 @@ describe('quote engine', () => {
   });
 
   it('rejects a fee rate outside (0, 10000) basis points', () => {
-    expect(() => new QuoteEngine({
-      pricingStatus: 'HYPOTHESIS',
-      feeRateBps: 0,
-      mandatoryToolBudgetAtomic: '1',
-      dynamicToolBudgetAtomic: '1',
-      modelInfrastructureReserveAtomic: '1',
-      chainStorageReserveAtomic: '1',
-      riskSupportReserveAtomic: '1',
-      quoteTtlSeconds: 900,
-    })).toThrow('Fee rate must be an integer number of basis points strictly between 0 and 10000');
+    expect(
+      () =>
+        new QuoteEngine({
+          pricingStatus: 'HYPOTHESIS',
+          feeRateBps: 0,
+          mandatoryToolBudgetAtomic: '1',
+          dynamicToolBudgetAtomic: '1',
+          modelInfrastructureReserveAtomic: '1',
+          chainStorageReserveAtomic: '1',
+          riskSupportReserveAtomic: '1',
+          quoteTtlSeconds: 900,
+        }),
+    ).toThrow('Fee rate must be an integer number of basis points strictly between 0 and 10000');
   });
 
   it('refuses to exceed the customer hard maximum', () => {

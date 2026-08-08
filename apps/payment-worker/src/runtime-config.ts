@@ -10,35 +10,53 @@ import {
 } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
-const environmentSchema = z.object({
-  APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('mainnet'),
-  DATABASE_URL: z.string().optional(),
-  DATABASE_TLS: z.enum(['true', 'false']).optional(),
-  GOAT_MAINNET_RPC_URL: z.string().url().optional(),
-  GOAT_TESTNET_RPC_URL: z.string().url().optional(),
-  GOATX402_API_URL: z.string().url().optional(),
-  GOATX402_MERCHANT_ID: z.string().min(1),
-  GOATX402_API_KEY: z.string().min(1),
-  GOATX402_API_SECRET: z.string().min(1),
-  GOATX402_TOKEN_ADDRESS: z.string().min(1),
-  GOATX402_TOKEN_SYMBOL: z.string().min(1),
-  GOATX402_TOKEN_DECIMALS: z.string().min(1),
-  GOATX402_RECEIVING_ADDRESS: z.string().min(1),
-  GOATX402_MINIMUM_ATOMIC_AMOUNT: z.string().min(1),
-  GOATX402_MAXIMUM_ATOMIC_AMOUNT: z.string().min(1),
-  PAYMENT_WORKER_ID: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional(),
-  PAYMENT_POLL_INTERVAL_MS: z.string().regex(/^\d+$/).optional(),
-  PAYMENT_LEASE_SECONDS: z.string().regex(/^\d+$/).optional(),
-}).strict();
+const environmentSchema = z
+  .object({
+    APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('mainnet'),
+    DATABASE_URL: z.string().optional(),
+    DATABASE_TLS: z.enum(['true', 'false']).optional(),
+    GOAT_MAINNET_RPC_URL: z.string().url().optional(),
+    GOAT_TESTNET_RPC_URL: z.string().url().optional(),
+    GOATX402_API_URL: z.string().url().optional(),
+    GOATX402_MERCHANT_ID: z.string().min(1),
+    GOATX402_API_KEY: z.string().min(1),
+    GOATX402_API_SECRET: z.string().min(1),
+    GOATX402_TOKEN_ADDRESS: z.string().min(1),
+    GOATX402_TOKEN_SYMBOL: z.string().min(1),
+    GOATX402_TOKEN_DECIMALS: z.string().min(1),
+    GOATX402_RECEIVING_ADDRESS: z.string().min(1),
+    GOATX402_MINIMUM_ATOMIC_AMOUNT: z.string().min(1),
+    GOATX402_MAXIMUM_ATOMIC_AMOUNT: z.string().min(1),
+    PAYMENT_WORKER_ID: z
+      .string()
+      .regex(/^[a-zA-Z0-9:_-]{1,200}$/)
+      .optional(),
+    PAYMENT_POLL_INTERVAL_MS: z.string().regex(/^\d+$/).optional(),
+    PAYMENT_LEASE_SECONDS: z.string().regex(/^\d+$/).optional(),
+  })
+  .strict();
 
 const selectedNames = [
-  'APP_ENV', 'GOAT_NETWORK_ENVIRONMENT', 'DATABASE_URL', 'DATABASE_TLS',
-  'GOAT_MAINNET_RPC_URL', 'GOAT_TESTNET_RPC_URL', 'GOATX402_API_URL',
-  'GOATX402_MERCHANT_ID', 'GOATX402_API_KEY', 'GOATX402_API_SECRET',
-  'GOATX402_TOKEN_ADDRESS', 'GOATX402_TOKEN_SYMBOL', 'GOATX402_TOKEN_DECIMALS',
-  'GOATX402_RECEIVING_ADDRESS', 'GOATX402_MINIMUM_ATOMIC_AMOUNT', 'GOATX402_MAXIMUM_ATOMIC_AMOUNT',
-  'PAYMENT_WORKER_ID', 'PAYMENT_POLL_INTERVAL_MS', 'PAYMENT_LEASE_SECONDS',
+  'APP_ENV',
+  'GOAT_NETWORK_ENVIRONMENT',
+  'DATABASE_URL',
+  'DATABASE_TLS',
+  'GOAT_MAINNET_RPC_URL',
+  'GOAT_TESTNET_RPC_URL',
+  'GOATX402_API_URL',
+  'GOATX402_MERCHANT_ID',
+  'GOATX402_API_KEY',
+  'GOATX402_API_SECRET',
+  'GOATX402_TOKEN_ADDRESS',
+  'GOATX402_TOKEN_SYMBOL',
+  'GOATX402_TOKEN_DECIMALS',
+  'GOATX402_RECEIVING_ADDRESS',
+  'GOATX402_MINIMUM_ATOMIC_AMOUNT',
+  'GOATX402_MAXIMUM_ATOMIC_AMOUNT',
+  'PAYMENT_WORKER_ID',
+  'PAYMENT_POLL_INTERVAL_MS',
+  'PAYMENT_LEASE_SECONDS',
 ] as const;
 
 export type PaymentWorkerRuntimeConfig = Readonly<{
@@ -77,15 +95,17 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     );
   }
   const values = parsed.data;
-  const connectionString = values.DATABASE_URL ?? (
-    values.APP_ENV === 'production' ? undefined : 'postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard'
-  );
+  const connectionString =
+    values.DATABASE_URL ??
+    (values.APP_ENV === 'production' ? undefined : 'postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard');
   if (!connectionString) {
     throw new PaymentWorkerConfigurationError('Production payment worker requires PostgreSQL', ['DATABASE_URL']);
   }
   assertPostgresUrl(connectionString, throwPaymentWorkerConfigurationError);
   if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
-    throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
+    throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', [
+      'GOAT_NETWORK_ENVIRONMENT',
+    ]);
   }
   const network = resolveNetwork(values.GOAT_NETWORK_ENVIRONMENT);
   const rpcUrl = resolveRpcUrl(
@@ -94,16 +114,25 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     throwPaymentWorkerConfigurationError,
   );
   if (values.GOATX402_API_URL) {
-    assertExactUrl(values.GOATX402_API_URL, network.flowApiUrl, 'GOATX402_API_URL', throwPaymentWorkerConfigurationError);
+    assertExactUrl(
+      values.GOATX402_API_URL,
+      network.flowApiUrl,
+      'GOATX402_API_URL',
+      throwPaymentWorkerConfigurationError,
+    );
   }
 
   const pollIntervalMilliseconds = parseBoundedInt(values.PAYMENT_POLL_INTERVAL_MS, '2000', { min: 250, max: 60_000 });
   if (pollIntervalMilliseconds === undefined) {
-    throw new PaymentWorkerConfigurationError('Payment poll interval must be between 250 and 60000 milliseconds', ['PAYMENT_POLL_INTERVAL_MS']);
+    throw new PaymentWorkerConfigurationError('Payment poll interval must be between 250 and 60000 milliseconds', [
+      'PAYMENT_POLL_INTERVAL_MS',
+    ]);
   }
   const leaseDurationSeconds = parseBoundedInt(values.PAYMENT_LEASE_SECONDS, '60', { min: 5, max: 600 });
   if (leaseDurationSeconds === undefined) {
-    throw new PaymentWorkerConfigurationError('Payment lease must be between 5 and 600 seconds', ['PAYMENT_LEASE_SECONDS']);
+    throw new PaymentWorkerConfigurationError('Payment lease must be between 5 and 600 seconds', [
+      'PAYMENT_LEASE_SECONDS',
+    ]);
   }
 
   const capability = parseMerchantCapability({
@@ -142,4 +171,3 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     },
   };
 }
-

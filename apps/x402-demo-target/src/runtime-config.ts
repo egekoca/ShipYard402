@@ -1,24 +1,43 @@
 import { ConfigurationError, resolveRpcUrl } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
-const environmentSchema = z.object({
-  HOST: z.string().min(1).default('127.0.0.1'),
-  PORT: z.string().regex(/^\d+$/).default('3002'),
-  DEMO_MODE: z.enum(['V1_VULNERABLE', 'V2_PROTECTED']),
-  DEMO_RECEIPT_SECRET: z.string().min(32),
-  GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('testnet3'),
-  GOAT_MAINNET_RPC_URL: z.string().url().optional(),
-  GOAT_TESTNET_RPC_URL: z.string().url().optional(),
-  DEMO_TARGET_RECEIVING_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
-  DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT: z.string().regex(/^(0|[1-9]\d*)$/).optional(),
-  DEMO_TARGET_MINIMUM_CONFIRMATIONS: z.string().regex(/^\d+$/).default('1'),
-  PROVIDER_SIGNER_PRIVATE_KEY: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
-}).strict();
+const environmentSchema = z
+  .object({
+    HOST: z.string().min(1).default('127.0.0.1'),
+    PORT: z.string().regex(/^\d+$/).default('3002'),
+    DEMO_MODE: z.enum(['V1_VULNERABLE', 'V2_PROTECTED']),
+    DEMO_RECEIPT_SECRET: z.string().min(32),
+    GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('testnet3'),
+    GOAT_MAINNET_RPC_URL: z.string().url().optional(),
+    GOAT_TESTNET_RPC_URL: z.string().url().optional(),
+    DEMO_TARGET_RECEIVING_ADDRESS: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .optional(),
+    DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT: z
+      .string()
+      .regex(/^(0|[1-9]\d*)$/)
+      .optional(),
+    DEMO_TARGET_MINIMUM_CONFIRMATIONS: z.string().regex(/^\d+$/).default('1'),
+    PROVIDER_SIGNER_PRIVATE_KEY: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{64}$/)
+      .optional(),
+  })
+  .strict();
 
 const selectedNames = [
-  'HOST', 'PORT', 'DEMO_MODE', 'DEMO_RECEIPT_SECRET', 'GOAT_NETWORK_ENVIRONMENT',
-  'GOAT_MAINNET_RPC_URL', 'GOAT_TESTNET_RPC_URL', 'DEMO_TARGET_RECEIVING_ADDRESS',
-  'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT', 'DEMO_TARGET_MINIMUM_CONFIRMATIONS', 'PROVIDER_SIGNER_PRIVATE_KEY',
+  'HOST',
+  'PORT',
+  'DEMO_MODE',
+  'DEMO_RECEIPT_SECRET',
+  'GOAT_NETWORK_ENVIRONMENT',
+  'GOAT_MAINNET_RPC_URL',
+  'GOAT_TESTNET_RPC_URL',
+  'DEMO_TARGET_RECEIVING_ADDRESS',
+  'DEMO_TARGET_MINIMUM_ATOMIC_AMOUNT',
+  'DEMO_TARGET_MINIMUM_CONFIRMATIONS',
+  'PROVIDER_SIGNER_PRIVATE_KEY',
 ] as const;
 
 export type DemoTargetRuntimeConfig = Readonly<{
@@ -63,7 +82,9 @@ export function parseDemoTargetRuntimeConfig(environment: NodeJS.ProcessEnv): De
     port: Number(values.PORT),
     mode: values.DEMO_MODE,
     receiptSecret: values.DEMO_RECEIPT_SECRET,
-    ...(values.PROVIDER_SIGNER_PRIVATE_KEY ? { providerSignerPrivateKey: values.PROVIDER_SIGNER_PRIVATE_KEY as `0x${string}` } : {}),
+    ...(values.PROVIDER_SIGNER_PRIVATE_KEY
+      ? { providerSignerPrivateKey: values.PROVIDER_SIGNER_PRIVATE_KEY as `0x${string}` }
+      : {}),
   };
 
   if (!values.DEMO_TARGET_RECEIVING_ADDRESS) return base;

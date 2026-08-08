@@ -16,22 +16,21 @@ export type PaymentJobResult =
   | Readonly<{ action: 'RETRY'; delayMilliseconds: number; reason: string }>
   | Readonly<{ action: 'DEAD_LETTER'; reason: string; failureCodes?: readonly string[] }>;
 
-export type LeasedPaymentReconciliationJob = PaymentReconciliationJob & Readonly<{
-  leaseOwner: string;
-}>;
+export type LeasedPaymentReconciliationJob = PaymentReconciliationJob &
+  Readonly<{
+    leaseOwner: string;
+  }>;
 
 export interface PaymentReconciliationJobQueue {
-  claimNext(input: Readonly<{
-    workerId: string;
-    leaseDurationSeconds: number;
-  }>): Promise<LeasedPaymentReconciliationJob | null>;
+  claimNext(
+    input: Readonly<{
+      workerId: string;
+      leaseDurationSeconds: number;
+    }>,
+  ): Promise<LeasedPaymentReconciliationJob | null>;
   markCompleted(job: LeasedPaymentReconciliationJob): Promise<void>;
   markRetry(job: LeasedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void>;
-  markDeadLetter(
-    job: LeasedPaymentReconciliationJob,
-    reason: string,
-    failureCodes?: readonly string[],
-  ): Promise<void>;
+  markDeadLetter(job: LeasedPaymentReconciliationJob, reason: string, failureCodes?: readonly string[]): Promise<void>;
 }
 
 export class PaymentReconciliationJobHandler {
@@ -52,28 +51,37 @@ export class PaymentReconciliationJobHandler {
       };
     } catch (error) {
       if (error instanceof SettlementRejectedError) {
-        return { action: 'DEAD_LETTER', reason: 'DETERMINISTIC_SETTLEMENT_REJECTION', failureCodes: error.failureCodes };
+        return {
+          action: 'DEAD_LETTER',
+          reason: 'DETERMINISTIC_SETTLEMENT_REJECTION',
+          failureCodes: error.failureCodes,
+        };
       }
       const isTransientWait = error instanceof PaymentNotReadyError || error instanceof ReceiptNotYetAvailableError;
       if (!isTransientWait) {
-        console.error(`[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`, error);
+        console.error(
+          `[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`,
+          error,
+        );
       }
       if (job.attempt >= job.maximumAttempts) {
-        const reason = error instanceof PaymentNotReadyError
-          ? 'PAYMENT_NOT_READY_TIMEOUT'
-          : error instanceof ReceiptNotYetAvailableError
-            ? 'RECEIPT_NOT_YET_AVAILABLE_TIMEOUT'
-            : classifyRetryableError(error);
+        const reason =
+          error instanceof PaymentNotReadyError
+            ? 'PAYMENT_NOT_READY_TIMEOUT'
+            : error instanceof ReceiptNotYetAvailableError
+              ? 'RECEIPT_NOT_YET_AVAILABLE_TIMEOUT'
+              : classifyRetryableError(error);
         return { action: 'DEAD_LETTER', reason };
       }
       return {
         action: 'RETRY',
         delayMilliseconds: retryDelay(job.attempt),
-        reason: error instanceof PaymentNotReadyError
-          ? 'PAYMENT_NOT_READY'
-          : error instanceof ReceiptNotYetAvailableError
-            ? 'RECEIPT_NOT_YET_AVAILABLE'
-            : classifyRetryableError(error),
+        reason:
+          error instanceof PaymentNotReadyError
+            ? 'PAYMENT_NOT_READY'
+            : error instanceof ReceiptNotYetAvailableError
+              ? 'RECEIPT_NOT_YET_AVAILABLE'
+              : classifyRetryableError(error),
       };
     }
   }

@@ -122,11 +122,11 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
     try {
       await this.#pool.query('SELECT 1');
       return {
-        status: this.#merchantConfigured ? 'ok' as const : 'degraded' as const,
+        status: this.#merchantConfigured ? ('ok' as const) : ('degraded' as const),
         environment: this.#environment,
         persistence: 'postgresql' as const,
         database: 'connected' as const,
-        merchantPayments: this.#merchantConfigured ? 'configured' as const : 'not_configured' as const,
+        merchantPayments: this.#merchantConfigured ? ('configured' as const) : ('not_configured' as const),
         mainnetWritesEnabled: this.#mainnetWritesEnabled,
       };
     } catch {
@@ -135,7 +135,7 @@ class PostgresRuntimeStatusProvider implements RuntimeStatusProvider {
         environment: this.#environment,
         persistence: 'postgresql' as const,
         database: 'unavailable' as const,
-        merchantPayments: this.#merchantConfigured ? 'configured' as const : 'not_configured' as const,
+        merchantPayments: this.#merchantConfigured ? ('configured' as const) : ('not_configured' as const),
         mainnetWritesEnabled: this.#mainnetWritesEnabled,
       };
     }
@@ -172,26 +172,27 @@ export async function buildApp(): Promise<BuiltApp> {
   const runRepository = new PostgresRunRepository(pool);
   const merchantConfig = config.merchant;
   const merchantAdapter = merchantConfig
-    ? (config.goatEnvironment === 'mainnet'
+    ? config.goatEnvironment === 'mainnet'
       ? GoatFlowMerchantAdapter.fromMainnetCredentials({
-        merchantId: merchantConfig.merchantId,
-        apiKey: merchantConfig.apiKey,
-        apiSecret: merchantConfig.apiSecret,
-        contextStore: new PostgresFlowOrderContextStore(pool),
-        capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
-      })
+          merchantId: merchantConfig.merchantId,
+          apiKey: merchantConfig.apiKey,
+          apiSecret: merchantConfig.apiSecret,
+          contextStore: new PostgresFlowOrderContextStore(pool),
+          capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
+        })
       : GoatFlowMerchantAdapter.fromTestnet3Credentials({
-        merchantId: merchantConfig.merchantId,
-        apiKey: merchantConfig.apiKey,
-        apiSecret: merchantConfig.apiSecret,
-        contextStore: new PostgresFlowOrderContextStore(pool),
-        capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
-      }))
+          merchantId: merchantConfig.merchantId,
+          apiKey: merchantConfig.apiKey,
+          apiSecret: merchantConfig.apiSecret,
+          contextStore: new PostgresFlowOrderContextStore(pool),
+          capabilitySource: new StaticReviewedCapabilitySource(merchantConfig.capability),
+        })
     : undefined;
 
-  const capabilityProvider = merchantAdapter && merchantConfig
-    ? new VerifiedMerchantCapabilityProvider(merchantAdapter, merchantConfig.capability)
-    : new UnavailableCapabilityProvider();
+  const capabilityProvider =
+    merchantAdapter && merchantConfig
+      ? new VerifiedMerchantCapabilityProvider(merchantAdapter, merchantConfig.capability)
+      : new UnavailableCapabilityProvider();
 
   const app = createApp({
     allowedWebOrigins: config.allowedWebOrigins,
@@ -262,6 +263,5 @@ function sameAddress(left: string, right: string): boolean {
 // Only bind a port when this file is run directly (`node server.js` / `tsx src/server.ts`) --
 // not when it's imported purely for buildApp(), as the Vercel serverless entrypoint does. Vercel
 // owns the request/response lifecycle itself and must never see this process try to listen.
-const isDirectlyExecuted = process.argv[1] !== undefined
-  && import.meta.url === `file://${process.argv[1]}`;
+const isDirectlyExecuted = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
 if (isDirectlyExecuted) await start();

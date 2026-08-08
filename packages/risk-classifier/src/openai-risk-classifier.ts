@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 
-import { riskClassificationSchema, type RiskClassification, type RiskClassificationInput, type RiskClassifier } from './ports.js';
+import {
+  riskClassificationSchema,
+  type RiskClassification,
+  type RiskClassificationInput,
+  type RiskClassifier,
+} from './ports.js';
 
 export class RiskClassificationUnavailableError extends Error {
   constructor(reason: string, options?: { cause?: unknown }) {
@@ -75,7 +80,9 @@ export class OpenAiRiskClassifier implements RiskClassifier {
 
     const validated = riskClassificationSchema.safeParse(parsed);
     if (!validated.success) {
-      throw new RiskClassificationUnavailableError('OpenAI response failed schema validation', { cause: validated.error });
+      throw new RiskClassificationUnavailableError('OpenAI response failed schema validation', {
+        cause: validated.error,
+      });
     }
     return validated.data;
   }

@@ -14,12 +14,14 @@ export function loginMessage(address: string, issuedAtEpochSeconds: number): str
   return `Shipyard402 login\naddress: ${address.toLowerCase()}\nissued at: ${issuedAtEpochSeconds}`;
 }
 
-export async function verifyLoginSignature(input: Readonly<{
-  address: `0x${string}`;
-  signature: `0x${string}`;
-  issuedAtEpochSeconds: number;
-  nowEpochSeconds: number;
-}>): Promise<boolean> {
+export async function verifyLoginSignature(
+  input: Readonly<{
+    address: `0x${string}`;
+    signature: `0x${string}`;
+    issuedAtEpochSeconds: number;
+    nowEpochSeconds: number;
+  }>,
+): Promise<boolean> {
   if (Math.abs(input.nowEpochSeconds - input.issuedAtEpochSeconds) > LOGIN_SIGNATURE_VALIDITY_SECONDS) return false;
   let recovered: `0x${string}`;
   try {
@@ -41,7 +43,12 @@ export type Session = Readonly<{ address: `0x${string}`; expiresAtEpochSeconds: 
  * SESSION_SIGNING_SECRET must never be logged or exposed (anyone holding it can mint a token for
  * any address).
  */
-export function issueSessionToken(secret: string, address: `0x${string}`, nowEpochSeconds: number, validitySeconds: number): string {
+export function issueSessionToken(
+  secret: string,
+  address: `0x${string}`,
+  nowEpochSeconds: number,
+  validitySeconds: number,
+): string {
   const expiresAtEpochSeconds = nowEpochSeconds + validitySeconds;
   const payload = `${address.toLowerCase()}.${expiresAtEpochSeconds}`;
   const signature = createHmac('sha256', secret).update(payload).digest('base64url');

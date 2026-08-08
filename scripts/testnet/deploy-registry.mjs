@@ -1,15 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import {
-  Contract,
-  ContractFactory,
-  JsonRpcProvider,
-  Wallet,
-  formatEther,
-  getAddress,
-  keccak256,
-} from 'ethers';
+import { Contract, ContractFactory, JsonRpcProvider, Wallet, formatEther, getAddress, keccak256 } from 'ethers';
 
 const RPC_URL = 'https://rpc.testnet3.goat.network';
 const EXPECTED_CHAIN_ID = 48816n;
@@ -35,7 +27,7 @@ const existing = await loadExistingDeployment();
 if (existing) {
   const code = await provider.getCode(existing.contractAddress);
   if (code !== '0x') {
-    process.stdout.write(JSON.stringify({ ...existing, reused: true }, null, 2) + '\n');
+    process.stdout.write(`${JSON.stringify({ ...existing, reused: true }, null, 2)}\n`);
     process.exit(0);
   }
   throw new Error('Existing deployment record points to an address without bytecode');
@@ -52,7 +44,7 @@ const [estimatedGas, feeData, balance] = await Promise.all([
 ]);
 const feePerGas = feeData.maxFeePerGas ?? feeData.gasPrice;
 if (!feePerGas || feePerGas <= 0n) throw new Error('RPC did not provide a usable deployment fee');
-const gasLimit = estimatedGas * 120n / 100n;
+const gasLimit = (estimatedGas * 120n) / 100n;
 const maximumCost = gasLimit * feePerGas;
 if (maximumCost > MAX_DEPLOYMENT_COST_WEI || maximumCost > balance) {
   throw new Error(`Deployment cost bound exceeded: ${maximumCost}`);
@@ -66,7 +58,7 @@ const contract = await factory.deploy(wallet.address, {
 const transaction = contract.deploymentTransaction();
 if (!transaction) throw new Error('Deployment transaction was not created');
 const receipt = await transaction.wait(1);
-if (!receipt || receipt.status !== 1 || transaction.chainId !== EXPECTED_CHAIN_ID) {
+if (receipt?.status !== 1 || transaction.chainId !== EXPECTED_CHAIN_ID) {
   throw new Error('Registry deployment was not successful on GOAT Testnet3');
 }
 const contractAddress = getAddress(await contract.getAddress());
@@ -91,8 +83,8 @@ const result = {
   feeBtc: formatEther(receipt.fee),
   runtimeBytecodeHash: keccak256(code),
 };
-await writeFile(deploymentPath, JSON.stringify(result, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
-process.stdout.write(JSON.stringify({ ...result, reused: false }, null, 2) + '\n');
+await writeFile(deploymentPath, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+process.stdout.write(`${JSON.stringify({ ...result, reused: false }, null, 2)}\n`);
 
 async function loadExistingDeployment() {
   try {

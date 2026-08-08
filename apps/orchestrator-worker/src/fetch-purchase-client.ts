@@ -36,7 +36,7 @@ export function createFetchPurchaseClient(baseUrl: string, signer: PurchaseClaim
         const body = await response.text().catch(() => '');
         throw new Error(`Demo target rejected the earned payment: ${response.status} ${body}`);
       }
-      return await response.json() as Readonly<{ receipt: string }>;
+      return (await response.json()) as Readonly<{ receipt: string }>;
     },
   };
 }

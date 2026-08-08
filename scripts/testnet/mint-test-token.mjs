@@ -33,24 +33,34 @@ if (wallet.address.toLowerCase() !== String(stored.address).toLowerCase()) {
   throw new Error('Testnet signer address mismatch');
 }
 
-const token = new Contract(deployment.contractAddress, [
-  'function mint(address to, uint256 amount) external',
-  'function balanceOf(address) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-], wallet);
+const token = new Contract(
+  deployment.contractAddress,
+  [
+    'function mint(address to, uint256 amount) external',
+    'function balanceOf(address) view returns (uint256)',
+    'function decimals() view returns (uint8)',
+  ],
+  wallet,
+);
 
 const decimals = Number(await token.decimals());
 const amountAtomic = parseUnits(amountTokens, decimals);
 const tx = await token.mint(to, amountAtomic);
 const receipt = await tx.wait(1);
-if (!receipt || receipt.status !== 1) throw new Error('Mint transaction did not confirm successfully');
+if (receipt?.status !== 1) throw new Error('Mint transaction did not confirm successfully');
 const newBalance = await token.balanceOf(to);
 
-process.stdout.write(JSON.stringify({
-  contractAddress: deployment.contractAddress,
-  to,
-  mintedAtomic: amountAtomic.toString(),
-  transactionHash: tx.hash,
-  explorerUrl: `https://explorer.testnet3.goat.network/tx/${tx.hash}`,
-  newBalanceAtomic: newBalance.toString(),
-}, null, 2) + '\n');
+process.stdout.write(
+  `${JSON.stringify(
+    {
+      contractAddress: deployment.contractAddress,
+      to,
+      mintedAtomic: amountAtomic.toString(),
+      transactionHash: tx.hash,
+      explorerUrl: `https://explorer.testnet3.goat.network/tx/${tx.hash}`,
+      newBalanceAtomic: newBalance.toString(),
+    },
+    null,
+    2,
+  )}\n`,
+);

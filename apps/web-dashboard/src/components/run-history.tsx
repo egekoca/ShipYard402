@@ -8,10 +8,8 @@ import { ensureSession, getStoredSessionToken } from '../lib/session';
 const PAGE_SIZE = 20;
 
 function apiClient(requesterAddress: `0x${string}`): ShipyardApiClient {
-  return new ShipyardApiClient(
-    process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
-    undefined,
-    () => getStoredSessionToken(requesterAddress),
+  return new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
+    getStoredSessionToken(requesterAddress),
   );
 }
 
@@ -55,9 +53,13 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
       })
       .catch((caught) => {
         if (cancelled) return;
-        setError(caught instanceof ShipyardApiError ? `${caught.code}: ${caught.message}` : 'Could not load your past runs');
+        setError(
+          caught instanceof ShipyardApiError ? `${caught.code}: ${caught.message}` : 'Could not load your past runs',
+        );
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [requesterAddress]);
 
   async function loadMore() {
@@ -83,10 +85,17 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
     <section className="run-history glow-card state-in" aria-label="Your past runs">
       <div className="run-history-header">
         <span className="panel-label">YOUR PAST RUNS</span>
-        {runs && <span className="run-history-count">{runs.length}{hasMore ? '+' : ''}</span>}
+        {runs && (
+          <span className="run-history-count">
+            {runs.length}
+            {hasMore ? '+' : ''}
+          </span>
+        )}
       </div>
       {!runs ? (
-        <p className="run-history-loading">Looking up runs for {requesterAddress.slice(0, 6)}…{requesterAddress.slice(-4)}…</p>
+        <p className="run-history-loading">
+          Looking up runs for {requesterAddress.slice(0, 6)}…{requesterAddress.slice(-4)}…
+        </p>
       ) : (
         <>
           <div className="run-history-table-wrap">
@@ -98,18 +107,30 @@ export function RunHistory({ requesterAddress }: Readonly<{ requesterAddress: `0
                   <th>Service</th>
                   <th>Run</th>
                   <th>Created</th>
+                  {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: a <th> has no default tabindex and isn't focusable; this hides an empty header cell from being announced as a blank column heading */}
                   <th className="run-history-col-action" aria-hidden="true" />
                 </tr>
               </thead>
               <tbody>
                 {runs.map((run, index) => (
-                  <tr key={run.id} onClick={() => { window.location.href = `/runs/${encodeURIComponent(run.id)}`; }}>
+                  <tr
+                    key={run.id}
+                    onClick={() => {
+                      window.location.href = `/runs/${encodeURIComponent(run.id)}`;
+                    }}
+                  >
                     <td className="run-history-col-index mono">{index + 1}</td>
                     <td>
-                      <span className={`run-history-status run-history-status--${statusTone(run)}`}>{statusLabel(run)}</span>
+                      <span className={`run-history-status run-history-status--${statusTone(run)}`}>
+                        {statusLabel(run)}
+                      </span>
                     </td>
-                    <td className="mono run-history-service" title={run.targetServiceId}>{shortServiceId(run.targetServiceId)}</td>
-                    <td className="mono" title={run.id}>{shortRunId(run.id)}</td>
+                    <td className="mono run-history-service" title={run.targetServiceId}>
+                      {shortServiceId(run.targetServiceId)}
+                    </td>
+                    <td className="mono" title={run.id}>
+                      {shortRunId(run.id)}
+                    </td>
                     <td className="run-history-date">{new Date(run.createdAt).toLocaleString()}</td>
                     <td className="run-history-col-action">
                       <a

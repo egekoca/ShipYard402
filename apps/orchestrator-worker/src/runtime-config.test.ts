@@ -58,30 +58,41 @@ describe('orchestrator worker signer key source configuration', () => {
   });
 
   it('requires either a raw key or an encrypted keystore', () => {
-    expect(() => parseOrchestratorWorkerRuntimeConfig({
-      ...baseEnvironment,
-      ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: rawKey,
-    })).toThrowError(OrchestratorConfigurationError);
+    expect(() =>
+      parseOrchestratorWorkerRuntimeConfig({
+        ...baseEnvironment,
+        ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: rawKey,
+      }),
+    ).toThrowError(OrchestratorConfigurationError);
   });
 
   it('refuses a raw key and a keystore configured at the same time', () => {
-    expect(() => parseOrchestratorWorkerRuntimeConfig(withSigner({
-      ORCHESTRATOR_SIGNER_KEYSTORE_PATH: keystorePath,
-      ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD: keystorePassword,
-    }))).toThrowError(/either a raw private key or an encrypted keystore, not both/);
+    expect(() =>
+      parseOrchestratorWorkerRuntimeConfig(
+        withSigner({
+          ORCHESTRATOR_SIGNER_KEYSTORE_PATH: keystorePath,
+          ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD: keystorePassword,
+        }),
+      ),
+    ).toThrowError(/either a raw private key or an encrypted keystore, not both/);
   });
 
   it('requires both a keystore path and password, not just one', () => {
-    expect(() => parseOrchestratorWorkerRuntimeConfig({
-      ...baseEnvironment,
-      ORCHESTRATOR_SIGNER_KEYSTORE_PATH: keystorePath,
-      ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: rawKey,
-    })).toThrowError(/requires both a path and a password/);
+    expect(() =>
+      parseOrchestratorWorkerRuntimeConfig({
+        ...baseEnvironment,
+        ORCHESTRATOR_SIGNER_KEYSTORE_PATH: keystorePath,
+        ORCHESTRATOR_TOOL_RECEIPT_SIGNER_PRIVATE_KEY: rawKey,
+      }),
+    ).toThrowError(/requires both a path and a password/);
   });
 
   it('refuses a raw private key in production', () => {
-    expect(() => parseOrchestratorWorkerRuntimeConfig(withSigner({ APP_ENV: 'production', DATABASE_URL: 'postgresql://database.example/shipyard' })))
-      .toThrowError(/production must use an encrypted keystore/);
+    expect(() =>
+      parseOrchestratorWorkerRuntimeConfig(
+        withSigner({ APP_ENV: 'production', DATABASE_URL: 'postgresql://database.example/shipyard' }),
+      ),
+    ).toThrowError(/production must use an encrypted keystore/);
   });
 
   it('loads a real encrypted keystore and decrypts it to the original signer address, including in production', async () => {
@@ -100,10 +111,14 @@ describe('orchestrator worker signer key source configuration', () => {
   });
 
   it('rejects a keystore path that does not exist', () => {
-    expect(() => parseOrchestratorWorkerRuntimeConfig(withSigner({
-      ORCHESTRATOR_SIGNER_PRIVATE_KEY: undefined as unknown as string,
-      ORCHESTRATOR_SIGNER_KEYSTORE_PATH: join(keystoreDir, 'does-not-exist.json'),
-      ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD: keystorePassword,
-    }))).toThrowError(/could not read the keystore file/);
+    expect(() =>
+      parseOrchestratorWorkerRuntimeConfig(
+        withSigner({
+          ORCHESTRATOR_SIGNER_PRIVATE_KEY: undefined as unknown as string,
+          ORCHESTRATOR_SIGNER_KEYSTORE_PATH: join(keystoreDir, 'does-not-exist.json'),
+          ORCHESTRATOR_SIGNER_KEYSTORE_PASSWORD: keystorePassword,
+        }),
+      ),
+    ).toThrowError(/could not read the keystore file/);
   });
 });

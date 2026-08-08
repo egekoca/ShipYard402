@@ -12,7 +12,13 @@ import type { FormEvent, InputHTMLAttributes } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
-import { connectWallet, ensureChain, formatWalletError, getAuthorizedAccount, GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import {
+  connectWallet,
+  ensureChain,
+  formatWalletError,
+  getAuthorizedAccount,
+  GOAT_TESTNET3_CHAIN_ID,
+} from '../lib/goat-wallet';
 import { ensureSession, getStoredSessionToken } from '../lib/session';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
@@ -72,11 +78,10 @@ export function ReleaseRunForm() {
   // collapsed so a first-time visitor sees "what am I testing" in plain language, not a form.
   const [showTechnical, setShowTechnical] = useState(false);
   const client = useMemo(
-    () => new ShipyardApiClient(
-      process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
-      undefined,
-      () => getStoredSessionToken(form.requesterAddress ? (form.requesterAddress as `0x${string}`) : null),
-    ),
+    () =>
+      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
+        getStoredSessionToken(form.requesterAddress ? (form.requesterAddress as `0x${string}`) : null),
+      ),
     [form.requesterAddress],
   );
 
@@ -96,19 +101,29 @@ export function ReleaseRunForm() {
   // Restores the connected address after a full page navigation (e.g. back from a run's detail
   // page): the wallet extension's own permission grant survives navigation even though this
   // component's state doesn't, so without this a customer looks disconnected every time they
-  // return here despite never actually having disconnected anything.
+  // return here despite never actually having disconnected anything. Intentionally mount-only --
+  // client is recreated whenever requesterAddress changes, so depending on it would re-run this
+  // restore effect right after it just set that same address, which is pointless at best.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above -- mount-only by design
   useEffect(() => {
     let cancelled = false;
-    getAuthorizedAccount().then((address) => {
-      if (cancelled || !address) return;
-      setForm((current) => ({ ...current, requesterAddress: address }));
-      void ensureChain(GOAT_TESTNET3_CHAIN_ID).catch(() => { /* WalletPayPanel retries this later */ });
-      // Best-effort: if this signature is skipped or fails, the first protected API call below
-      // (requestQuote/createRun) tries again before it actually needs the token.
-      void ensureSession(client, address).catch(() => {});
-    }).catch(() => { /* no wallet, or the user hasn't authorized this site -- fine, show Connect */ });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    getAuthorizedAccount()
+      .then((address) => {
+        if (cancelled || !address) return;
+        setForm((current) => ({ ...current, requesterAddress: address }));
+        void ensureChain(GOAT_TESTNET3_CHAIN_ID).catch(() => {
+          /* WalletPayPanel retries this later */
+        });
+        // Best-effort: if this signature is skipped or fails, the first protected API call below
+        // (requestQuote/createRun) tries again before it actually needs the token.
+        void ensureSession(client, address).catch(() => {});
+      })
+      .catch(() => {
+        /* no wallet, or the user hasn't authorized this site -- fine, show Connect */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function update(field: keyof FormState, value: string) {
@@ -205,7 +220,9 @@ export function ReleaseRunForm() {
             {form.requesterAddress ? (
               <div className="wallet-connected">
                 <span className="live-pulse" aria-hidden="true" />
-                <span className="mono">{form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}</span>
+                <span className="mono">
+                  {form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}
+                </span>
               </div>
             ) : (
               <button className="wallet-button" type="button" disabled={busy} onClick={handleConnectWallet}>
@@ -218,36 +235,92 @@ export function ReleaseRunForm() {
             <div className="target-summary">
               <p>
                 {form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
-                  <>Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on GOAT Testnet3.</>
+                  <>
+                    Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on
+                    GOAT Testnet3.
+                  </>
                 ) : (
-                  <>Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding below.</>
-                )}
-                {' '}Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
+                  <>
+                    Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding
+                    below.
+                  </>
+                )}{' '}
+                Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
               </p>
               <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
                 {showTechnical ? 'Hide' : 'Show'} technical identifiers
               </button>
               {form.requesterAddress && (
-                <ServiceOnboarding requesterAddress={form.requesterAddress as `0x${string}`} onOnboarded={handleOnboarded} />
+                <ServiceOnboarding
+                  requesterAddress={form.requesterAddress as `0x${string}`}
+                  onOnboarded={handleOnboarded}
+                />
               )}
             </div>
             {showTechnical && (
               <div className="technical-fields">
-                <Field label="Organization ID" value={form.organizationId} onChange={(value) => update('organizationId', value)} placeholder="UUID from onboarding" />
-                <Field label="Target agent ID" value={form.targetAgentId} onChange={(value) => update('targetAgentId', value)} placeholder="ERC-8004 ID or external identity" />
-                <Field label="Target service ID" value={form.targetServiceId} onChange={(value) => update('targetServiceId', value)} placeholder="Registered service ID" />
-                <Field label="Version hash" value={form.targetVersionHash} onChange={(value) => update('targetVersionHash', value)} placeholder="0x + 32 bytes" />
-                <Field label="Policy hash" value={form.policyHash} onChange={(value) => update('policyHash', value)} placeholder="0x + 32 bytes" />
-                <Field label="Paid x402 endpoint" value={form.x402Endpoint} onChange={(value) => update('x402Endpoint', value)} placeholder="https://service.example/paid" type="url" />
-                <Field label="OpenAPI document" value={form.openApiUrl} onChange={(value) => update('openApiUrl', value)} placeholder="https://service.example/openapi.json" type="url" />
-                <Field label="Maximum budget (atomic units)" value={form.maximumCustomerBudgetAtomic} onChange={(value) => update('maximumCustomerBudgetAtomic', value)} placeholder="Token-specific atomic amount" inputMode="numeric" />
+                <Field
+                  label="Organization ID"
+                  value={form.organizationId}
+                  onChange={(value) => update('organizationId', value)}
+                  placeholder="UUID from onboarding"
+                />
+                <Field
+                  label="Target agent ID"
+                  value={form.targetAgentId}
+                  onChange={(value) => update('targetAgentId', value)}
+                  placeholder="ERC-8004 ID or external identity"
+                />
+                <Field
+                  label="Target service ID"
+                  value={form.targetServiceId}
+                  onChange={(value) => update('targetServiceId', value)}
+                  placeholder="Registered service ID"
+                />
+                <Field
+                  label="Version hash"
+                  value={form.targetVersionHash}
+                  onChange={(value) => update('targetVersionHash', value)}
+                  placeholder="0x + 32 bytes"
+                />
+                <Field
+                  label="Policy hash"
+                  value={form.policyHash}
+                  onChange={(value) => update('policyHash', value)}
+                  placeholder="0x + 32 bytes"
+                />
+                <Field
+                  label="Paid x402 endpoint"
+                  value={form.x402Endpoint}
+                  onChange={(value) => update('x402Endpoint', value)}
+                  placeholder="https://service.example/paid"
+                  type="url"
+                />
+                <Field
+                  label="OpenAPI document"
+                  value={form.openApiUrl}
+                  onChange={(value) => update('openApiUrl', value)}
+                  placeholder="https://service.example/openapi.json"
+                  type="url"
+                />
+                <Field
+                  label="Maximum budget (atomic units)"
+                  value={form.maximumCustomerBudgetAtomic}
+                  onChange={(value) => update('maximumCustomerBudgetAtomic', value)}
+                  placeholder="Token-specific atomic amount"
+                  inputMode="numeric"
+                />
               </div>
             )}
           </div>
           <div className="form-footer">
             <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
               {busy && <span className="spinner" aria-hidden="true" />}
-              {!form.requesterAddress ? 'Connect a wallet first' : busy ? 'Checking capability…' : 'Request transparent quote'}
+              {!form.requesterAddress
+                ? 'Connect a wallet first'
+                : busy
+                  ? 'Checking capability…'
+                  : 'Request transparent quote'}
             </button>
           </div>
         </form>
@@ -256,9 +329,14 @@ export function ReleaseRunForm() {
           <span className="panel-label">ECONOMIC COMMITMENT</span>
           {!quote && !error && (
             <div className="empty-state state-in">
-              <div className="radar"><span className="radar-sweep" /></div>
+              <div className="radar">
+                <span className="radar-sweep" />
+              </div>
               <h3>No fabricated quote</h3>
-              <p>A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address capability.</p>
+              <p>
+                A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address
+                capability.
+              </p>
             </div>
           )}
           {error && (
@@ -272,22 +350,41 @@ export function ReleaseRunForm() {
               <div className="quote-status">
                 <span>HYPOTHESIS</span>
                 {!run && quoteExpiresInMs !== null && (
-                  <small className={quoteExpiresInMs <= 60_000 ? 'quote-countdown quote-countdown--low' : 'quote-countdown'}>
+                  <small
+                    className={quoteExpiresInMs <= 60_000 ? 'quote-countdown quote-countdown--low' : 'quote-countdown'}
+                  >
                     {quoteExpired ? 'expired' : `expires in ${formatCountdown(quoteExpiresInMs)}`}
                   </small>
                 )}
               </div>
-              <p className="amount">{formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)} <small>{quote.capabilitySnapshot.tokenSymbol}</small></p>
+              <p className="amount">
+                {formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)}{' '}
+                <small>{quote.capabilitySnapshot.tokenSymbol}</small>
+              </p>
               <dl>
-                <div><dt>Network</dt><dd>GOAT / {quote.capabilitySnapshot.chainId}</dd></div>
-                <div><dt>Mode</dt><dd>{quote.capabilitySnapshot.mode}</dd></div>
-                <div><dt>Refundable tool budget</dt><dd>{quote.refundableToolBudgetAtomic}</dd></div>
-                <div><dt>Commitment</dt><dd className="mono">{shortHash(quote.quoteCommitment)}</dd></div>
+                <div>
+                  <dt>Network</dt>
+                  <dd>GOAT / {quote.capabilitySnapshot.chainId}</dd>
+                </div>
+                <div>
+                  <dt>Mode</dt>
+                  <dd>{quote.capabilitySnapshot.mode}</dd>
+                </div>
+                <div>
+                  <dt>Refundable tool budget</dt>
+                  <dd>{quote.refundableToolBudgetAtomic}</dd>
+                </div>
+                <div>
+                  <dt>Commitment</dt>
+                  <dd className="mono">{shortHash(quote.quoteCommitment)}</dd>
+                </div>
               </dl>
               {quoteExpired && !run ? (
                 <div className="quote-expired-notice">
                   <p>This quote expired before a run was created. Request a fresh one to continue.</p>
-                  <button className="primary-button" type="button" onClick={() => setQuote(null)}>Request a new quote</button>
+                  <button className="primary-button" type="button" onClick={() => setQuote(null)}>
+                    Request a new quote
+                  </button>
                 </div>
               ) : (
                 <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
@@ -307,7 +404,12 @@ export function ReleaseRunForm() {
               <i>[RUN]</i> {run.run.id}
               {!progress.isTerminal && <span className="live-pulse" aria-hidden="true" />}
             </span>
-            <a className="explorer-link" href={`/runs/${encodeURIComponent(run.run.id)}`} target="_blank" rel="noreferrer">
+            <a
+              className="explorer-link"
+              href={`/runs/${encodeURIComponent(run.run.id)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
               Open standalone page ↗
             </a>
           </div>
@@ -326,7 +428,9 @@ export function ReleaseRunForm() {
             />
           ) : (
             <div className="run-detail-loading">
-              <div className="radar"><span className="radar-sweep" /></div>
+              <div className="radar">
+                <span className="radar-sweep" />
+              </div>
               <p>Looking up run…</p>
             </div>
           )}
@@ -336,7 +440,17 @@ export function ReleaseRunForm() {
   );
 }
 
-function Field({ label, onChange, value, ...input }: Readonly<{ label: string; onChange: (value: string) => void; value: string } & Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>>) {
+function Field({
+  label,
+  onChange,
+  value,
+  ...input
+}: Readonly<
+  { label: string; onChange: (value: string) => void; value: string } & Omit<
+    InputHTMLAttributes<HTMLInputElement>,
+    'onChange' | 'value'
+  >
+>) {
   return (
     <label className="field">
       <span>{label}</span>

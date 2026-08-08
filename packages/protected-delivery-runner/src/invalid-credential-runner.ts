@@ -50,7 +50,9 @@ export class InvalidCredentialRejectionRunner {
       });
       validateAttempt(response);
     } catch {
-      return evidence(scenario, presentedReceipt, 'INCONCLUSIVE', 'INVALID_CREDENTIAL_PROBE_INCONCLUSIVE', [{ phase: 'INITIAL', requestHash }]);
+      return evidence(scenario, presentedReceipt, 'INCONCLUSIVE', 'INVALID_CREDENTIAL_PROBE_INCONCLUSIVE', [
+        { phase: 'INITIAL', requestHash },
+      ]);
     }
 
     const attempt = {
@@ -95,7 +97,8 @@ function evidence(
 }
 
 function validateScenario(scenario: InvalidCredentialScenario): void {
-  if (!scenario.scenarioId || !scenario.targetServiceId) throw new Error('Invalid-credential scenario identity is required');
+  if (!scenario.scenarioId || !scenario.targetServiceId)
+    throw new Error('Invalid-credential scenario identity is required');
   const routeBase = 'https://protected-target.invalid';
   const parsedRoute = new URL(scenario.route, routeBase);
   if (

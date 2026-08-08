@@ -49,11 +49,13 @@ describe('protected delivery replay runner', () => {
       { statusCode: 409, deliveryConfirmed: false, responseBodyHash: `0x${'bb'.repeat(32)}` },
     ]);
 
-    await expect(new ProtectedDeliveryReplayRunner(client).run({
-      ...scenario,
-      targetVersionHash: `0x${'44'.repeat(32)}`,
-      route: '/v2/protected-report',
-    })).resolves.toMatchObject({ result: 'PASS', attempts: [{ statusCode: 200 }, { statusCode: 409 }] });
+    await expect(
+      new ProtectedDeliveryReplayRunner(client).run({
+        ...scenario,
+        targetVersionHash: `0x${'44'.repeat(32)}`,
+        route: '/v2/protected-report',
+      }),
+    ).resolves.toMatchObject({ result: 'PASS', attempts: [{ statusCode: 200 }, { statusCode: 409 }] });
   });
 
   it('returns INCONCLUSIVE rather than a false PASS when the replay probe times out', async () => {
@@ -82,28 +84,29 @@ describe('protected delivery replay runner', () => {
       },
     };
 
-    await expect(new ProtectedDeliveryReplayRunner(client).run({
-      ...scenario,
-      route: 'https://attacker.example/protected',
-    })).rejects.toThrow(/origin-relative/);
+    await expect(
+      new ProtectedDeliveryReplayRunner(client).run({
+        ...scenario,
+        route: 'https://attacker.example/protected',
+      }),
+    ).rejects.toThrow(/origin-relative/);
     expect(called).toBe(false);
   });
 
-  it.each([
-    '/\\\\attacker.example/protected',
-    '/%5c%5cattacker.example/protected',
-    '/protected#ignored-fragment',
-  ])('rejects ambiguous origin-relative route %s', async (route) => {
-    const client: ProtectedDeliveryClient = {
-      async execute() {
-        throw new Error('must not execute');
-      },
-    };
+  it.each(['/\\\\attacker.example/protected', '/%5c%5cattacker.example/protected', '/protected#ignored-fragment'])(
+    'rejects ambiguous origin-relative route %s',
+    async (route) => {
+      const client: ProtectedDeliveryClient = {
+        async execute() {
+          throw new Error('must not execute');
+        },
+      };
 
-    await expect(new ProtectedDeliveryReplayRunner(client).run({ ...scenario, route })).rejects.toThrow(
-      /origin-relative/,
-    );
-  });
+      await expect(new ProtectedDeliveryReplayRunner(client).run({ ...scenario, route })).rejects.toThrow(
+        /origin-relative/,
+      );
+    },
+  );
 });
 
 function sequence(attempts: readonly ProtectedDeliveryAttempt[]): ProtectedDeliveryClient {

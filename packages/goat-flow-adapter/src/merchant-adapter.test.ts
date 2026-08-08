@@ -2,11 +2,7 @@ import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import type { X402PaymentRequired } from 'goatflow-sdk-server';
 import { describe, expect, it } from 'vitest';
 
-import {
-  GoatFlowMerchantAdapter,
-  InMemoryFlowOrderContextStore,
-  type GoatFlowClientPort,
-} from './merchant-adapter.js';
+import { GoatFlowMerchantAdapter, InMemoryFlowOrderContextStore, type GoatFlowClientPort } from './merchant-adapter.js';
 
 const capability: FlowRuntimeCapability = {
   environment: 'mainnet',
@@ -25,31 +21,56 @@ const capability: FlowRuntimeCapability = {
 
 function client(overrides: Partial<GoatFlowClientPort> = {}): GoatFlowClientPort {
   return {
-    async createOrder() { return {
-      orderId: 'flow-order-1', flow: 'ERC20_DIRECT', tokenSymbol: 'RUNTIME_TOKEN',
-      tokenContract: capability.tokenAddress, payToAddress: capability.receivingAddress,
-      fromChainId: 2345, payToChainId: 2345, amountWei: '4700000', expiresAt: 1_786_000_000,
-      x402: paymentRequired(capability.receivingAddress),
-    }; },
-    async getOrderStatus() { return {
-      orderId: 'flow-order-1', merchantId: 'merchant-1', dappOrderId: 'run-1', chainId: 2345,
-      tokenContract: capability.tokenAddress, tokenSymbol: 'RUNTIME_TOKEN',
-      fromAddress: '0x2000000000000000000000000000000000000002', amountWei: '4700000',
-      status: 'PAYMENT_CONFIRMED',
-    }; },
-    async getOrderProof() { return {
-      payload: {
-        order_id: 'flow-order-1', tx_hash: `0x${'ab'.repeat(32)}`, log_index: 7,
-        from_addr: '0x2000000000000000000000000000000000000002',
-        to_addr: capability.receivingAddress, amount_wei: '4700000', from_chain_id: 2345,
+    async createOrder() {
+      return {
+        orderId: 'flow-order-1',
+        flow: 'ERC20_DIRECT',
+        tokenSymbol: 'RUNTIME_TOKEN',
+        tokenContract: capability.tokenAddress,
+        payToAddress: capability.receivingAddress,
+        fromChainId: 2345,
+        payToChainId: 2345,
+        amountWei: '4700000',
+        expiresAt: 1_786_000_000,
+        x402: paymentRequired(capability.receivingAddress),
+      };
+    },
+    async getOrderStatus() {
+      return {
+        orderId: 'flow-order-1',
+        merchantId: 'merchant-1',
+        dappOrderId: 'run-1',
+        chainId: 2345,
+        tokenContract: capability.tokenAddress,
+        tokenSymbol: 'RUNTIME_TOKEN',
+        fromAddress: '0x2000000000000000000000000000000000000002',
+        amountWei: '4700000',
         status: 'PAYMENT_CONFIRMED',
-      },
-      signature: `0x${'cd'.repeat(32)}`,
-    }; },
-    async getMerchant() { return {
-      merchantId: 'merchant-1', name: 'Shipyard402', receiveType: 'DIRECT',
-      supportedTokens: [{ chainId: 2345, symbol: 'RUNTIME_TOKEN', tokenContract: capability.tokenAddress }],
-    }; },
+      };
+    },
+    async getOrderProof() {
+      return {
+        payload: {
+          order_id: 'flow-order-1',
+          tx_hash: `0x${'ab'.repeat(32)}`,
+          log_index: 7,
+          from_addr: '0x2000000000000000000000000000000000000002',
+          to_addr: capability.receivingAddress,
+          amount_wei: '4700000',
+          from_chain_id: 2345,
+          status: 'PAYMENT_CONFIRMED',
+        },
+        signature: `0x${'cd'.repeat(32)}`,
+      };
+    },
+    async getMerchant() {
+      return {
+        merchantId: 'merchant-1',
+        name: 'Shipyard402',
+        receiveType: 'DIRECT',
+        supportedTokens: [{ chainId: 2345, symbol: 'RUNTIME_TOKEN', tokenContract: capability.tokenAddress }],
+      };
+    },
     ...overrides,
   };
 }
@@ -59,7 +80,11 @@ function adapter(flowClient = client()) {
     merchantId: 'merchant-1',
     client: flowClient,
     contextStore: new InMemoryFlowOrderContextStore(),
-    capabilitySource: { async loadReviewedCapabilities() { return [capability]; } },
+    capabilitySource: {
+      async loadReviewedCapabilities() {
+        return [capability];
+      },
+    },
   });
 }
 
@@ -82,20 +107,31 @@ describe('GOAT Flow merchant adapter', () => {
       chainId: 48816,
     };
     const testnetClient = client({
-      async getMerchant() { return {
-        merchantId: 'merchant-1', name: 'Shipyard402 Testnet', receiveType: 'DIRECT',
-        supportedTokens: [{
-          chainId: 48816, symbol: testnetCapability.tokenSymbol,
-          tokenContract: testnetCapability.tokenAddress,
-        }],
-      }; },
+      async getMerchant() {
+        return {
+          merchantId: 'merchant-1',
+          name: 'Shipyard402 Testnet',
+          receiveType: 'DIRECT',
+          supportedTokens: [
+            {
+              chainId: 48816,
+              symbol: testnetCapability.tokenSymbol,
+              tokenContract: testnetCapability.tokenAddress,
+            },
+          ],
+        };
+      },
     });
     const subject = new GoatFlowMerchantAdapter({
       merchantId: 'merchant-1',
       environment: 'testnet3',
       client: testnetClient,
       contextStore: new InMemoryFlowOrderContextStore(),
-      capabilitySource: { async loadReviewedCapabilities() { return [capability, testnetCapability]; } },
+      capabilitySource: {
+        async loadReviewedCapabilities() {
+          return [capability, testnetCapability];
+        },
+      },
     });
 
     await expect(subject.discoverRuntimeCapabilities()).resolves.toEqual([testnetCapability]);
@@ -114,13 +150,20 @@ describe('GOAT Flow merchant adapter', () => {
 
   it('rejects a provider order whose recipient differs from the reviewed capability', async () => {
     const wrongRecipientClient = client({
-      async createOrder() { return {
-        orderId: 'bad-order', flow: 'ERC20_DIRECT', tokenSymbol: 'RUNTIME_TOKEN',
-        tokenContract: capability.tokenAddress,
-        payToAddress: '0x4000000000000000000000000000000000000004',
-        fromChainId: 2345, payToChainId: 2345, amountWei: '4700000', expiresAt: 1_786_000_000,
-        x402: paymentRequired('0x4000000000000000000000000000000000000004'),
-      }; },
+      async createOrder() {
+        return {
+          orderId: 'bad-order',
+          flow: 'ERC20_DIRECT',
+          tokenSymbol: 'RUNTIME_TOKEN',
+          tokenContract: capability.tokenAddress,
+          payToAddress: '0x4000000000000000000000000000000000000004',
+          fromChainId: 2345,
+          payToChainId: 2345,
+          amountWei: '4700000',
+          expiresAt: 1_786_000_000,
+          x402: paymentRequired('0x4000000000000000000000000000000000000004'),
+        };
+      },
     });
     await expect(adapter(wrongRecipientClient).createOrder(createInput)).rejects.toThrow('recipient');
   });
@@ -131,7 +174,11 @@ describe('GOAT Flow merchant adapter', () => {
       merchantId: 'merchant-1',
       client: client(),
       contextStore: store,
-      capabilitySource: { async loadReviewedCapabilities() { return [capability]; } },
+      capabilitySource: {
+        async loadReviewedCapabilities() {
+          return [capability];
+        },
+      },
     });
     const first = await subject.createOrder(createInput);
     const conflicting = {
@@ -151,14 +198,16 @@ function paymentRequired(recipient: string): X402PaymentRequired {
   return {
     x402Version: 2,
     resource: { url: 'https://shipyard.example/v1/runs/run-1' },
-    accepts: [{
-      scheme: 'exact',
-      network: 'eip155:2345',
-      amount: '4700000',
-      asset: capability.tokenAddress,
-      payTo: recipient,
-      maxTimeoutSeconds: 900,
-    }],
+    accepts: [
+      {
+        scheme: 'exact',
+        network: 'eip155:2345',
+        amount: '4700000',
+        asset: capability.tokenAddress,
+        payTo: recipient,
+        maxTimeoutSeconds: 900,
+      },
+    ],
     order_id: 'flow-order-1',
     flow: 'ERC20_DIRECT',
     token_symbol: 'RUNTIME_TOKEN',

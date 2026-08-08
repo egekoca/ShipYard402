@@ -9,7 +9,12 @@ import {
   type ReplayScenario,
 } from '@shipyard402/protected-delivery-runner';
 import type { Quote } from '@shipyard402/quote-engine';
-import { compileTestPlan, type CompiledTestPlan, type RiskClassification, type RiskClassifier } from '@shipyard402/risk-classifier';
+import {
+  compileTestPlan,
+  type CompiledTestPlan,
+  type RiskClassification,
+  type RiskClassifier,
+} from '@shipyard402/risk-classifier';
 import { transitionRun, type RunActor, type RunStatus } from '@shipyard402/run-domain';
 import { keccak256, toUtf8Bytes } from 'ethers';
 
@@ -114,10 +119,11 @@ function verifyScenarioProvenance(
   if (!expectedSigner) return results;
   return results.map((result) => {
     if (result.evidence.result !== 'PASS') return result;
-    const unverified = result.evidence.attempts.some((attempt) => (
-      attempt.responseHash !== undefined &&
-      !verifyResponseSignature(attempt.responseHash, attempt.providerSignature, expectedSigner)
-    ));
+    const unverified = result.evidence.attempts.some(
+      (attempt) =>
+        attempt.responseHash !== undefined &&
+        !verifyResponseSignature(attempt.responseHash, attempt.providerSignature, expectedSigner),
+    );
     if (!unverified) return result;
     return {
       ...result,
@@ -132,11 +138,23 @@ function verifyScenarioProvenance(
  * persisted status and checkpoint already reflect, rather than requiring a fresh FUNDED run.
  */
 const RESUMABLE_STATUSES = new Set<RunStatus>([
-  'FUNDED', 'ANALYZING', 'PLAN_COMPILED', 'PROCURING', 'EXECUTING', 'EVIDENCE_BUILDING', 'ATTESTING',
+  'FUNDED',
+  'ANALYZING',
+  'PLAN_COMPILED',
+  'PROCURING',
+  'EXECUTING',
+  'EVIDENCE_BUILDING',
+  'ATTESTING',
 ]);
 
 const STATUS_ORDER: readonly RunStatus[] = [
-  'FUNDED', 'ANALYZING', 'PLAN_COMPILED', 'PROCURING', 'EXECUTING', 'EVIDENCE_BUILDING', 'ATTESTING',
+  'FUNDED',
+  'ANALYZING',
+  'PLAN_COMPILED',
+  'PROCURING',
+  'EXECUTING',
+  'EVIDENCE_BUILDING',
+  'ATTESTING',
 ];
 
 export interface EvidencePackStorePort {
@@ -225,7 +243,9 @@ export class ProcurementDeniedError extends Error {
  */
 export class PaymentSendAmbiguousError extends Error {
   constructor(runId: string, nonce: number, purpose: 'payment' | 'refund') {
-    super(`Run ${runId}: ${purpose} nonce ${nonce} was already consumed on-chain but no transaction hash was checkpointed. Manual reconciliation required before retrying.`);
+    super(
+      `Run ${runId}: ${purpose} nonce ${nonce} was already consumed on-chain but no transaction hash was checkpointed. Manual reconciliation required before retrying.`,
+    );
     this.name = 'PaymentSendAmbiguousError';
   }
 }
@@ -292,7 +312,11 @@ async function runProcurementPhase(
   now: () => Date,
 ): Promise<Readonly<{ purchaseAmount: bigint; paymentTransactionHash: `0x${string}`; purchaseReceipt: string }>> {
   const deadlineEpochSeconds = Math.floor(now().getTime() / 1_000) + MANDATE_VALIDITY_SECONDS;
-  const mandate = buildMandate(plan, { toolAgentId: deps.demoTarget.toolAgentId, host: deps.demoTarget.host }, deadlineEpochSeconds);
+  const mandate = buildMandate(
+    plan,
+    { toolAgentId: deps.demoTarget.toolAgentId, host: deps.demoTarget.host },
+    deadlineEpochSeconds,
+  );
 
   const purchaseAmount = BigInt(deps.demoTarget.minimumAtomicAmount);
   if (purchaseAmount > BigInt(mandate.maximumSinglePurchase)) {
@@ -441,11 +465,13 @@ async function runEvidencePhase(
   startedAt: number,
   completedAt: number,
   now: () => Date,
-): Promise<Readonly<{
-  evidencePack: ReturnType<typeof buildEvidencePack>;
-  evidenceURI: string;
-  overallResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
-}>> {
+): Promise<
+  Readonly<{
+    evidencePack: ReturnType<typeof buildEvidencePack>;
+    evidenceURI: string;
+    overallResult: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
+  }>
+> {
   const toolReceipts: (ReturnType<typeof buildUnsignedToolReceipt> & { signature: `0x${string}` })[] = [];
   for (const scenarioResult of scenarioResults) {
     const unsignedReceipt = buildUnsignedToolReceipt(scenarioResult.evidence, {
@@ -618,31 +644,69 @@ export async function runOrchestratorPipeline(
 
     await advance('PROCUREMENT_WORKER', 'PROCURING');
     const { purchaseAmount, paymentTransactionHash, purchaseReceipt } = await runProcurementPhase(
-      deps, runId, checkpoint, plan, quote, current.status, now,
+      deps,
+      runId,
+      checkpoint,
+      plan,
+      quote,
+      current.status,
+      now,
     );
 
     await advance('PROCUREMENT_WORKER', 'EXECUTING');
     const { scenarioResults, startedAt, completedAt } = await runExecutionPhase(
-      deps, runId, checkpoint, plan, quote, targetVersionHash, policyHash, purchaseReceipt, paymentTransactionHash, now,
+      deps,
+      runId,
+      checkpoint,
+      plan,
+      quote,
+      targetVersionHash,
+      policyHash,
+      purchaseReceipt,
+      paymentTransactionHash,
+      now,
     );
 
     await advance('EXECUTION_WORKER', 'EVIDENCE_BUILDING');
     const { evidencePack, evidenceURI, overallResult } = await runEvidencePhase(
-      deps, runId, quote, targetVersionHash, policyHash, plan, proposal, scenarioResults, startedAt, completedAt, now,
+      deps,
+      runId,
+      quote,
+      targetVersionHash,
+      policyHash,
+      plan,
+      proposal,
+      scenarioResults,
+      startedAt,
+      completedAt,
+      now,
     );
 
     await advance('EVIDENCE_WORKER', 'ATTESTING');
     const { attestationTransactionHash } = await runAttestationPhase(
-      deps, runId, checkpoint, quote, targetVersionHash, policyHash, customerPaymentProofHash, customerPaymentAtomic,
-      evidencePack, evidenceURI, purchaseAmount, completedAt, overallResult, now,
+      deps,
+      runId,
+      checkpoint,
+      quote,
+      targetVersionHash,
+      policyHash,
+      customerPaymentProofHash,
+      customerPaymentAtomic,
+      evidencePack,
+      evidenceURI,
+      purchaseAmount,
+      completedAt,
+      overallResult,
+      now,
     );
 
     // DELIVERED_*
-    const finalStatus: RunStatus = overallResult === 'PASS'
-      ? 'DELIVERED_PASS'
-      : overallResult === 'FAIL'
-        ? 'DELIVERED_FAIL'
-        : 'DELIVERED_INCONCLUSIVE';
+    const finalStatus: RunStatus =
+      overallResult === 'PASS'
+        ? 'DELIVERED_PASS'
+        : overallResult === 'FAIL'
+          ? 'DELIVERED_FAIL'
+          : 'DELIVERED_INCONCLUSIVE';
     if (current.status !== finalStatus) {
       const result = transitionRun(current, {
         actor: 'ATTESTOR',
@@ -663,6 +727,8 @@ export async function runOrchestratorPipeline(
     return { runId, finalStatus, attestationTransactionHash };
   } catch (error) {
     if (error instanceof ProcurementDeniedError || error instanceof PaymentSendAmbiguousError) throw error;
-    throw new OrchestratorPipelineError(`Orchestrator pipeline failed for run ${runId}`, advancedPastFunded, { cause: error });
+    throw new OrchestratorPipelineError(`Orchestrator pipeline failed for run ${runId}`, advancedPastFunded, {
+      cause: error,
+    });
   }
 }

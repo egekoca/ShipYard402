@@ -37,32 +37,42 @@ describe('payment worker runtime configuration', () => {
   });
 
   it('rejects arbitrary RPC and x402 hosts to prevent configuration-based SSRF', () => {
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      GOAT_MAINNET_RPC_URL: 'https://attacker.example',
-    })).toThrowError(/official origin/);
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      GOATX402_API_URL: 'https://attacker.example',
-    })).toThrowError(/official origin/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        GOAT_MAINNET_RPC_URL: 'https://attacker.example',
+      }),
+    ).toThrowError(/official origin/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        GOATX402_API_URL: 'https://attacker.example',
+      }),
+    ).toThrowError(/official origin/);
   });
 
   it('bounds polling and lease durations', () => {
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      PAYMENT_POLL_INTERVAL_MS: '10',
-    })).toThrowError(/poll interval/);
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      PAYMENT_LEASE_SECONDS: '1000',
-    })).toThrowError(/lease/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        PAYMENT_POLL_INTERVAL_MS: '10',
+      }),
+    ).toThrowError(/poll interval/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        PAYMENT_LEASE_SECONDS: '1000',
+      }),
+    ).toThrowError(/lease/);
   });
 
   it('requires an explicit TLS-defaulted database in production', () => {
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      APP_ENV: 'production',
-    })).toThrowError(/PostgreSQL/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        APP_ENV: 'production',
+      }),
+    ).toThrowError(/PostgreSQL/);
     const config = parsePaymentWorkerRuntimeConfig({
       ...completeEnvironment,
       APP_ENV: 'production',
@@ -86,12 +96,14 @@ describe('payment worker runtime configuration', () => {
   });
 
   it('refuses to start the production payment worker against Testnet3', () => {
-    expect(() => parsePaymentWorkerRuntimeConfig({
-      ...completeEnvironment,
-      APP_ENV: 'production',
-      DATABASE_URL: 'postgresql://database.example/shipyard',
-      GOAT_NETWORK_ENVIRONMENT: 'testnet3',
-      GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
-    })).toThrowError(/Production payment worker must use GOAT mainnet/);
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeEnvironment,
+        APP_ENV: 'production',
+        DATABASE_URL: 'postgresql://database.example/shipyard',
+        GOAT_NETWORK_ENVIRONMENT: 'testnet3',
+        GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
+      }),
+    ).toThrowError(/Production payment worker must use GOAT mainnet/);
   });
 });

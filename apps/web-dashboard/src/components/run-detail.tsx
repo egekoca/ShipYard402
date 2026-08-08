@@ -21,12 +21,18 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
   useEffect(() => {
     let cancelled = false;
-    getAuthorizedAccount().then(async (address) => {
-      if (cancelled || !address) return;
-      const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
-      await ensureSession(client, address);
-    }).catch(() => { /* no wallet, or the user hasn't authorized this site -- the Connect button below handles it */ });
-    return () => { cancelled = true; };
+    getAuthorizedAccount()
+      .then(async (address) => {
+        if (cancelled || !address) return;
+        const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
+        await ensureSession(client, address);
+      })
+      .catch(() => {
+        /* no wallet, or the user hasn't authorized this site -- the Connect button below handles it */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleConnect() {
@@ -50,11 +56,18 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
       <SiteHeader homeHref="/" showTryApp={false} />
 
       <section className="run-detail-hero">
-        <a className="run-detail-back" href="/app">← Back to your runs</a>
-        <span className="eyebrow"><i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}</span>
+        <a className="run-detail-back" href="/app">
+          ← Back to your runs
+        </a>
+        <span className="eyebrow">
+          <i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}
+        </span>
         <h1 className="mono run-detail-id">{runId}</h1>
         {lastPolledAt && (
-          <p className="run-detail-polled">Last updated {lastPolledAt.toLocaleTimeString()}{!isTerminal ? ' — refreshing automatically' : ''}</p>
+          <p className="run-detail-polled">
+            Last updated {lastPolledAt.toLocaleTimeString()}
+            {!isTerminal ? ' — refreshing automatically' : ''}
+          </p>
         )}
         {needsAuth ? (
           <div className="error-card state-in">
@@ -66,14 +79,21 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
             </button>
             {connectError && <p>{connectError}</p>}
           </div>
-        ) : error && (
-          <div className="error-card state-in"><strong>Request blocked</strong><p>{error}</p></div>
+        ) : (
+          error && (
+            <div className="error-card state-in">
+              <strong>Request blocked</strong>
+              <p>{error}</p>
+            </div>
+          )
         )}
       </section>
 
       {!run && !error && (
         <section className="run-detail-loading">
-          <div className="radar"><span className="radar-sweep" /></div>
+          <div className="radar">
+            <span className="radar-sweep" />
+          </div>
           <p>Looking up run…</p>
         </section>
       )}

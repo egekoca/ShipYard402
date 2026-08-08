@@ -2,9 +2,7 @@ import { Interface, getAddress, id, zeroPadValue, toBeHex } from 'ethers';
 
 import type { GoatFlowOrderStatus, MerchantOrder, MerchantPaymentProof } from './ports.js';
 
-const transferInterface = new Interface([
-  'event Transfer(address indexed from, address indexed to, uint256 value)',
-]);
+const transferInterface = new Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
 
 const TRANSFER_TOPIC = id('Transfer(address,address,uint256)');
 const SUCCESSFUL_ORDER_STATUSES = new Set<GoatFlowOrderStatus>(['PAYMENT_CONFIRMED', 'INVOICED']);
@@ -45,14 +43,24 @@ export function verifySettlement(
   const failures: string[] = [];
   if (!SUCCESSFUL_ORDER_STATUSES.has(order.status)) failures.push('ORDER_NOT_CONFIRMED');
   if (order.orderId !== expected.orderId || proof.orderId !== expected.orderId) failures.push('ORDER_MISMATCH');
-  if (order.chainId !== expected.chainId || proof.chainId !== expected.chainId || receipt.chainId !== expected.chainId) {
+  if (
+    order.chainId !== expected.chainId ||
+    proof.chainId !== expected.chainId ||
+    receipt.chainId !== expected.chainId
+  ) {
     failures.push('CHAIN_MISMATCH');
   }
   if (!sameAddress(order.tokenAddress, expected.tokenAddress)) failures.push('TOKEN_MISMATCH');
-  if (!sameAddress(order.payerAddress, expected.payerAddress) || !sameAddress(proof.fromAddress, expected.payerAddress)) {
+  if (
+    !sameAddress(order.payerAddress, expected.payerAddress) ||
+    !sameAddress(proof.fromAddress, expected.payerAddress)
+  ) {
     failures.push('PAYER_MISMATCH');
   }
-  if (!sameAddress(order.payToAddress, expected.recipientAddress) || !sameAddress(proof.toAddress, expected.recipientAddress)) {
+  if (
+    !sameAddress(order.payToAddress, expected.recipientAddress) ||
+    !sameAddress(proof.toAddress, expected.recipientAddress)
+  ) {
     failures.push('RECIPIENT_MISMATCH');
   }
   if (order.atomicAmount !== expected.atomicAmount || proof.atomicAmount !== expected.atomicAmount) {
@@ -116,11 +124,7 @@ export function encodeTransferLog(
 ): NormalizedTransactionReceipt['logs'][number] {
   return {
     address: token,
-    topics: [
-      TRANSFER_TOPIC,
-      zeroPadValue(from, 32),
-      zeroPadValue(to, 32),
-    ],
+    topics: [TRANSFER_TOPIC, zeroPadValue(from, 32), zeroPadValue(to, 32)],
     data: zeroPadValue(toBeHex(BigInt(atomicAmount)), 32),
     index,
   };

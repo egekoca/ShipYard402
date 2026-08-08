@@ -108,10 +108,9 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
 
   const merchant = parseMerchantConfig(values);
   if (values.APP_ENV === 'production' && !merchant) {
-    throw new RuntimeConfigurationError(
-      'Production requires complete reviewed GOAT x402 merchant configuration',
-      [...merchantFieldNames],
-    );
+    throw new RuntimeConfigurationError('Production requires complete reviewed GOAT x402 merchant configuration', [
+      ...merchantFieldNames,
+    ]);
   }
   if (values.APP_ENV === 'production' && !values.SESSION_SIGNING_SECRET) {
     throw new RuntimeConfigurationError(
@@ -169,7 +168,10 @@ function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig
   if (provided.length === 0) return undefined;
   if (provided.length !== merchantFieldNames.length) {
     const missing = merchantFieldNames.filter((field) => values[field] === undefined);
-    throw new RuntimeConfigurationError('GOAT x402 merchant configuration must be provided as one complete group', missing);
+    throw new RuntimeConfigurationError(
+      'GOAT x402 merchant configuration must be provided as one complete group',
+      missing,
+    );
   }
 
   const required = values as SelectedEnvironment & Record<MerchantFieldName, string>;
@@ -222,9 +224,8 @@ function assertReviewedApiUrl(value: string, environment: 'mainnet' | 'testnet3'
     parsed.search ||
     parsed.hash
   ) {
-    throw new RuntimeConfigurationError(
-      `GOAT x402 API origin must match the reviewed ${environment} origin`,
-      ['GOATX402_API_URL'],
-    );
+    throw new RuntimeConfigurationError(`GOAT x402 API origin must match the reviewed ${environment} origin`, [
+      'GOATX402_API_URL',
+    ]);
   }
 }

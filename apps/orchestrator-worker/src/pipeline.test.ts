@@ -83,7 +83,9 @@ function runAtStatus(status: RunStatus): RunAggregate {
   return run;
 }
 
-function fakeCheckpointStore(initial: OrchestratorRunCheckpoint = {}): CheckpointStorePort & { state: OrchestratorRunCheckpoint } {
+function fakeCheckpointStore(
+  initial: OrchestratorRunCheckpoint = {},
+): CheckpointStorePort & { state: OrchestratorRunCheckpoint } {
   const store = {
     state: initial,
     async load(_runId: string) {
@@ -118,7 +120,9 @@ function fakeEvidencePackStore(existing: EvidencePack | null = null): EvidencePa
   return store;
 }
 
-function fakeAttestationStore(existing: AttestationRecord | null = null): AttestationStorePort & { puts: AttestationRecord[] } {
+function fakeAttestationStore(
+  existing: AttestationRecord | null = null,
+): AttestationStorePort & { puts: AttestationRecord[] } {
   const store = {
     puts: [] as AttestationRecord[],
     stored: existing,
@@ -218,8 +222,12 @@ function baseDeps(overrides: Partial<OrchestratorPipelineDependencies> = {}): Or
       },
     },
     paymentSender: {
-      async reserveNonce() { return 0; },
-      async isNonceConsumed() { return false; },
+      async reserveNonce() {
+        return 0;
+      },
+      async isNonceConsumed() {
+        return false;
+      },
       async sendPayment() {
         return `0x${'55'.repeat(32)}`;
       },
@@ -265,7 +273,13 @@ describe('runOrchestratorPipeline', () => {
     const result = await runOrchestratorPipeline(RUN_ID, deps);
     expect(result).toMatchObject({ runId: RUN_ID, finalStatus: 'DELIVERED_PASS' });
     expect((deps.runRepository as ReturnType<typeof fakeRunRepository>).saved.map((event) => event.to)).toEqual([
-      'ANALYZING', 'PLAN_COMPILED', 'PROCURING', 'EXECUTING', 'EVIDENCE_BUILDING', 'ATTESTING', 'DELIVERED_PASS',
+      'ANALYZING',
+      'PLAN_COMPILED',
+      'PROCURING',
+      'EXECUTING',
+      'EVIDENCE_BUILDING',
+      'ATTESTING',
+      'DELIVERED_PASS',
     ]);
   });
 
@@ -313,10 +327,11 @@ describe('runOrchestratorPipeline', () => {
     const result = await runOrchestratorPipeline(RUN_ID, deps);
     expect(result.finalStatus).toBe('DELIVERED_PASS');
     const stored = evidencePackStore.puts[0];
-    expect(stored?.publicManifest).toMatchObject({
+    if (!stored) throw new Error('expected an evidence pack to have been stored');
+    expect(stored.publicManifest).toMatchObject({
       scenarios: expect.arrayContaining(['payment-proof-replay', 'unpaid-access-denial']),
     });
-    expect((stored?.publicManifest as { toolReceipts: readonly unknown[] }).toolReceipts).toHaveLength(2);
+    expect((stored.publicManifest as { toolReceipts: readonly unknown[] }).toolReceipts).toHaveLength(2);
   });
 
   it('presents a deliberately corrupted receipt for tampered-receipt-rejection, not the real one', async () => {
@@ -339,7 +354,10 @@ describe('runOrchestratorPipeline', () => {
             sawTamperedReceipt = true;
             return { statusCode: 402, deliveryConfirmed: false, responseBodyHash: `0x${'ee'.repeat(32)}` };
           }
-          if (input.paymentReceipt === 'fake-earned-receipt-token' && !input.idempotencyKey.startsWith('payment-proof-replay:')) {
+          if (
+            input.paymentReceipt === 'fake-earned-receipt-token' &&
+            !input.idempotencyKey.startsWith('payment-proof-replay:')
+          ) {
             sawRealReceiptOutsideItsOwnScenario = true;
           }
           return {
@@ -395,7 +413,7 @@ describe('runOrchestratorPipeline', () => {
     const responseHash = `0x${'44'.repeat(32)}` as const;
 
     async function signedDeliveryClient(hash: `0x${string}`, signer: Wallet | null) {
-      const signature = signer ? await signer.signMessage(getBytes(hash)) as `0x${string}` : undefined;
+      const signature = signer ? ((await signer.signMessage(getBytes(hash))) as `0x${string}`) : undefined;
       return {
         async execute(input: { idempotencyKey: string }) {
           return {
@@ -421,7 +439,9 @@ describe('runOrchestratorPipeline', () => {
         demoTarget: { ...baseDeps().demoTarget, providerSignerAddress: providerAddress },
         deliveryClient: await signedDeliveryClient(responseHash, null),
       });
-      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_INCONCLUSIVE' });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({
+        finalStatus: 'DELIVERED_INCONCLUSIVE',
+      });
     });
 
     it('downgrades PASS to INCONCLUSIVE when the signature is real but from the wrong signer', async () => {
@@ -430,7 +450,9 @@ describe('runOrchestratorPipeline', () => {
         demoTarget: { ...baseDeps().demoTarget, providerSignerAddress: providerAddress },
         deliveryClient: await signedDeliveryClient(responseHash, impostorWallet),
       });
-      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({ finalStatus: 'DELIVERED_INCONCLUSIVE' });
+      await expect(runOrchestratorPipeline(RUN_ID, deps)).resolves.toMatchObject({
+        finalStatus: 'DELIVERED_INCONCLUSIVE',
+      });
     });
 
     it('does not check signatures at all when no provider signer is registered (default)', async () => {
@@ -443,8 +465,12 @@ describe('runOrchestratorPipeline', () => {
     const refundCalls: Array<{ tokenAddress: string; toAddress: string; valueAtomic: bigint; nonce: number }> = [];
     const deps = baseDeps({
       refundSender: {
-        async reserveNonce() { return 0; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 0;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendRefund(input) {
           refundCalls.push(input);
           return `0x${'88'.repeat(32)}`;
@@ -455,12 +481,14 @@ describe('runOrchestratorPipeline', () => {
     const result = await runOrchestratorPipeline(RUN_ID, deps);
     expect(result.finalStatus).toBe('DELIVERED_PASS');
     // refundableToolBudgetAtomic (200) - demoTarget.minimumAtomicAmount (100) = 100 unspent
-    expect(refundCalls).toEqual([{
-      tokenAddress: '0x1000000000000000000000000000000000000001',
-      toAddress: '0x2000000000000000000000000000000000000002',
-      valueAtomic: 100n,
-      nonce: 0,
-    }]);
+    expect(refundCalls).toEqual([
+      {
+        tokenAddress: '0x1000000000000000000000000000000000000001',
+        toAddress: '0x2000000000000000000000000000000000000002',
+        valueAtomic: 100n,
+        nonce: 0,
+      },
+    ]);
   });
 
   it('never sends a refund when no refund sender is configured (still the default)', async () => {
@@ -481,8 +509,12 @@ describe('runOrchestratorPipeline', () => {
         refundTransactionHash: `0x${'88'.repeat(32)}`,
       }),
       refundSender: {
-        async reserveNonce() { return 0; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 0;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendRefund() {
           refundCalls += 1;
           return `0x${'99'.repeat(32)}`;
@@ -509,8 +541,12 @@ describe('runOrchestratorPipeline', () => {
         },
       },
       refundSender: {
-        async reserveNonce() { return 0; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 0;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendRefund(input) {
           refundCalls.push(input);
           return `0x${'88'.repeat(32)}`;
@@ -539,8 +575,12 @@ describe('runOrchestratorPipeline', () => {
   it('wraps a mid-pipeline failure with advancedPastFunded=true', async () => {
     const deps = baseDeps({
       paymentSender: {
-        async reserveNonce() { return 0; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 0;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendPayment() {
           throw new Error('RPC unreachable');
         },
@@ -563,8 +603,12 @@ describe('runOrchestratorPipeline', () => {
         paymentTransactionHash: `0x${'55'.repeat(32)}`,
       }),
       paymentSender: {
-        async reserveNonce() { return 0; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 0;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendPayment() {
           sendPaymentCalls += 1;
           return `0x${'55'.repeat(32)}`;
@@ -584,8 +628,12 @@ describe('runOrchestratorPipeline', () => {
     const deps = baseDeps({
       checkpointStore,
       paymentSender: {
-        async reserveNonce() { return 7; },
-        async isNonceConsumed() { return false; },
+        async reserveNonce() {
+          return 7;
+        },
+        async isNonceConsumed() {
+          return false;
+        },
         async sendPayment(input) {
           // The nonce must already be durably checkpointed before the send is broadcast, so a
           // crash right after this call still leaves enough state to detect it on resume.
@@ -605,9 +653,15 @@ describe('runOrchestratorPipeline', () => {
     const deps = baseDeps({
       checkpointStore: fakeCheckpointStore({ paymentNonce: 3 }),
       paymentSender: {
-        async reserveNonce() { throw new Error('should not reserve a new nonce when one is already checkpointed'); },
-        async isNonceConsumed(nonce) { return nonce === 3; },
-        async sendPayment() { throw new Error('should not resend once the nonce is known to be ambiguous'); },
+        async reserveNonce() {
+          throw new Error('should not reserve a new nonce when one is already checkpointed');
+        },
+        async isNonceConsumed(nonce) {
+          return nonce === 3;
+        },
+        async sendPayment() {
+          throw new Error('should not resend once the nonce is known to be ambiguous');
+        },
         async waitForConfirmation(transactionHash) {
           return { transactionHash, confirmations: 1 };
         },
@@ -616,7 +670,7 @@ describe('runOrchestratorPipeline', () => {
     await expect(runOrchestratorPipeline(RUN_ID, deps)).rejects.toBeInstanceOf(PaymentSendAmbiguousError);
   });
 
-  it('uses the checkpoint store\'s authoritative nonce, not its own reservation, when it loses a concurrent-merge race', async () => {
+  it("uses the checkpoint store's authoritative nonce, not its own reservation, when it loses a concurrent-merge race", async () => {
     // Simulates a concurrent resumed attempt of this same run (e.g. a reclaimed job lease while
     // the original worker is still alive) already having reserved and checkpointed nonce 9 by the
     // time this attempt's own merge() call lands -- the real store's COALESCE would keep 9, not
@@ -635,8 +689,13 @@ describe('runOrchestratorPipeline', () => {
     const deps = baseDeps({
       checkpointStore,
       paymentSender: {
-        async reserveNonce() { return 7; },
-        async isNonceConsumed(nonce) { expect(nonce).toBe(9); return false; },
+        async reserveNonce() {
+          return 7;
+        },
+        async isNonceConsumed(nonce) {
+          expect(nonce).toBe(9);
+          return false;
+        },
         async sendPayment(input) {
           // Must send with the winner's nonce (9), never its own losing reservation (7) -- using
           // 7 here would broadcast a second, independently-nonced payment for the same run.
@@ -662,8 +721,20 @@ describe('runOrchestratorPipeline', () => {
       presentedReceiptHash: `0x${'aa'.repeat(32)}`,
       result: 'PASS' as const,
       attempts: [
-        { phase: 'INITIAL' as const, requestHash: `0x${'bb'.repeat(32)}` as const, responseHash: `0x${'44'.repeat(32)}` as const, statusCode: 200, deliveryConfirmed: true },
-        { phase: 'REPLAY' as const, requestHash: `0x${'cc'.repeat(32)}` as const, responseHash: `0x${'44'.repeat(32)}` as const, statusCode: 409, deliveryConfirmed: false },
+        {
+          phase: 'INITIAL' as const,
+          requestHash: `0x${'bb'.repeat(32)}` as const,
+          responseHash: `0x${'44'.repeat(32)}` as const,
+          statusCode: 200,
+          deliveryConfirmed: true,
+        },
+        {
+          phase: 'REPLAY' as const,
+          requestHash: `0x${'cc'.repeat(32)}` as const,
+          responseHash: `0x${'44'.repeat(32)}` as const,
+          statusCode: 409,
+          deliveryConfirmed: false,
+        },
       ],
     };
     const deps = baseDeps({
@@ -706,22 +777,36 @@ describe('runOrchestratorPipeline', () => {
         plan: { riskLevel: 'MEDIUM', scenarios: ['payment-proof-replay'], toolBudgetAtomic: '150', rationale: 'test' },
         paymentTransactionHash: `0x${'55'.repeat(32)}`,
         purchaseReceipt: 'fake-earned-receipt-token',
-        evidence: [{
-          evidence: {
-            scenarioId: 'payment-proof-replay',
-            targetServiceId: 'service:demo',
-            targetVersionHash: `0x${'11'.repeat(32)}`,
-            policyHash: `0x${'22'.repeat(32)}`,
-            paymentProofHash: `0x${'99'.repeat(32)}`,
-            presentedReceiptHash: `0x${'aa'.repeat(32)}`,
-            result: 'PASS',
-            attempts: [
-              { phase: 'INITIAL', requestHash: `0x${'bb'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 200, deliveryConfirmed: true },
-              { phase: 'REPLAY', requestHash: `0x${'cc'.repeat(32)}`, responseHash: `0x${'44'.repeat(32)}`, statusCode: 409, deliveryConfirmed: false },
-            ],
+        evidence: [
+          {
+            evidence: {
+              scenarioId: 'payment-proof-replay',
+              targetServiceId: 'service:demo',
+              targetVersionHash: `0x${'11'.repeat(32)}`,
+              policyHash: `0x${'22'.repeat(32)}`,
+              paymentProofHash: `0x${'99'.repeat(32)}`,
+              presentedReceiptHash: `0x${'aa'.repeat(32)}`,
+              result: 'PASS',
+              attempts: [
+                {
+                  phase: 'INITIAL',
+                  requestHash: `0x${'bb'.repeat(32)}`,
+                  responseHash: `0x${'44'.repeat(32)}`,
+                  statusCode: 200,
+                  deliveryConfirmed: true,
+                },
+                {
+                  phase: 'REPLAY',
+                  requestHash: `0x${'cc'.repeat(32)}`,
+                  responseHash: `0x${'44'.repeat(32)}`,
+                  statusCode: 409,
+                  deliveryConfirmed: false,
+                },
+              ],
+            },
+            chainTransactionHash: `0x${'55'.repeat(32)}`,
           },
-          chainTransactionHash: `0x${'55'.repeat(32)}`,
-        }],
+        ],
         startedAt: 1_000,
         completedAt: 1_010,
         attestationTransactionHash: `0x${'77'.repeat(32)}`,

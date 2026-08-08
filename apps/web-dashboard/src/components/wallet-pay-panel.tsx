@@ -45,13 +45,17 @@ export function WalletPayPanel({
     let cancelled = false;
     setNetworkStatus('checking');
     ensureChain(chainId)
-      .then(() => { if (!cancelled) setNetworkStatus('ready'); })
+      .then(() => {
+        if (!cancelled) setNetworkStatus('ready');
+      })
       .catch((caught: unknown) => {
         if (cancelled) return;
         setNetworkStatus('failed');
         setError(formatWalletError(caught));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [address, chainId]);
 
   async function handleConnect() {
@@ -95,8 +99,16 @@ export function WalletPayPanel({
   return (
     <div className="wallet-pay-panel state-in">
       <dl>
-        <div><dt>Amount</dt><dd>{amountLabel} <small>{assetLabel}</small></dd></div>
-        <div><dt>Pay to</dt><dd className="mono">{shortAddress(challenge.payTo)}</dd></div>
+        <div>
+          <dt>Amount</dt>
+          <dd>
+            {amountLabel} <small>{assetLabel}</small>
+          </dd>
+        </div>
+        <div>
+          <dt>Pay to</dt>
+          <dd className="mono">{shortAddress(challenge.payTo)}</dd>
+        </div>
         {txHash && (
           <div>
             <dt>Transaction</dt>
@@ -130,9 +142,18 @@ export function WalletPayPanel({
           {busy ? busyLabel : 'Connect wallet'}
         </button>
       ) : (
-        <button className="primary-button" type="button" disabled={busy || networkStatus === 'checking'} onClick={handlePay}>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={busy || networkStatus === 'checking'}
+          onClick={handlePay}
+        >
           {(busy || networkStatus === 'checking') && <span className="spinner" aria-hidden="true" />}
-          {busy ? busyLabel : networkStatus === 'checking' ? 'Adding GOAT network…' : `Pay ${amountLabel} ${assetLabel}`}
+          {busy
+            ? busyLabel
+            : networkStatus === 'checking'
+              ? 'Adding GOAT network…'
+              : `Pay ${amountLabel} ${assetLabel}`}
         </button>
       )}
     </div>

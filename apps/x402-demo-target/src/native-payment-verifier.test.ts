@@ -7,14 +7,16 @@ const HASH = `0x${'aa'.repeat(32)}` as const;
 const FROM = '0x2000000000000000000000000000000000000002' as const;
 const TO = '0x3000000000000000000000000000000000000003' as const;
 
-function fakeClient(overrides: Partial<{
-  chainId: number;
-  transaction: { from: `0x${string}`; to: `0x${string}` | null; value: bigint };
-  receiptStatus: 'success' | 'reverted';
-  blockNumber: bigint | null;
-  currentBlock: bigint;
-  throwNotFound: boolean;
-}>): PublicClient {
+function fakeClient(
+  overrides: Partial<{
+    chainId: number;
+    transaction: { from: `0x${string}`; to: `0x${string}` | null; value: bigint };
+    receiptStatus: 'success' | 'reverted';
+    blockNumber: bigint | null;
+    currentBlock: bigint;
+    throwNotFound: boolean;
+  }>,
+): PublicClient {
   const {
     chainId = 48816,
     transaction = { from: FROM, to: TO, value: 1_000_000_000_000n },

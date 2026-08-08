@@ -1,4 +1,9 @@
-import { buildToolReceiptRoot, hashToolReceipt, type ToolReceipt, type UnsignedToolReceipt } from '@shipyard402/evidence-sdk';
+import {
+  buildToolReceiptRoot,
+  hashToolReceipt,
+  type ToolReceipt,
+  type UnsignedToolReceipt,
+} from '@shipyard402/evidence-sdk';
 import type { ReplayEvidence } from '@shipyard402/protected-delivery-runner';
 import { keccak256, toUtf8Bytes } from 'ethers';
 
@@ -36,7 +41,7 @@ export function buildUnsignedToolReceipt(evidence: ReplayEvidence, input: ToolRe
     startedAt: input.startedAt,
     completedAt: input.completedAt,
     result: evidence.result,
-    failureCode: evidence.result === 'PASS' ? '' : evidence.failureCode ?? 'UNKNOWN',
+    failureCode: evidence.result === 'PASS' ? '' : (evidence.failureCode ?? 'UNKNOWN'),
     toolVersion: input.toolVersion,
     signatureScheme: 'EIP712',
   };
@@ -88,14 +93,18 @@ export type BuiltEvidencePack = Readonly<{
 export function buildEvidencePack(content: EvidencePackContent): BuiltEvidencePack {
   if (content.toolReceipts.length === 0) throw new Error('An evidence pack requires at least one tool receipt');
   const toolReceiptRoot = buildToolReceiptRoot(content.toolReceipts.map((receipt) => hashToolReceipt(receipt)));
-  const evidenceRoot = keccak256(toUtf8Bytes(canonicalJson({
-    runId: content.runId,
-    toolReceiptRoot,
-    result: content.result,
-    scenarios: content.scenarios,
-    targetVersionHash: content.targetVersionHash,
-    policyHash: content.policyHash,
-  }))) as `0x${string}`;
+  const evidenceRoot = keccak256(
+    toUtf8Bytes(
+      canonicalJson({
+        runId: content.runId,
+        toolReceiptRoot,
+        result: content.result,
+        scenarios: content.scenarios,
+        targetVersionHash: content.targetVersionHash,
+        policyHash: content.policyHash,
+      }),
+    ),
+  ) as `0x${string}`;
   const contentHash = keccak256(toUtf8Bytes(canonicalJson(content))) as `0x${string}`;
 
   return { evidenceRoot, toolReceiptRoot, contentHash, publicManifest: content };

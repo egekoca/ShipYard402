@@ -60,7 +60,8 @@ describe('createEgressSafeFetch', () => {
   });
 
   it('follows a redirect chain into another allowed host', async () => {
-    const baseFetch = vi.fn()
+    const baseFetch = vi
+      .fn()
       .mockResolvedValueOnce(redirectResponse('https://b.example.com/next', 302))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const egressFetch = createEgressSafeFetch(baseFetch, {
@@ -73,7 +74,8 @@ describe('createEgressSafeFetch', () => {
   });
 
   it('strips caller-supplied headers before following a redirect into a different origin', async () => {
-    const baseFetch = vi.fn()
+    const baseFetch = vi
+      .fn()
       .mockResolvedValueOnce(redirectResponse('https://b.example.com/next', 302))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const egressFetch = createEgressSafeFetch(baseFetch, {
@@ -84,14 +86,17 @@ describe('createEgressSafeFetch', () => {
       headers: { 'x-payment-receipt': 'secret-receipt', 'x-idempotency-key': 'secret-key', accept: 'application/json' },
     });
 
-    const secondCallHeaders = new Headers((baseFetch.mock.calls[1]?.[1] as { headers?: HeadersInit }).headers);
+    const secondCall = baseFetch.mock.calls[1];
+    if (!secondCall) throw new Error('expected a second fetch call (the redirect follow-up)');
+    const secondCallHeaders = new Headers((secondCall[1] as { headers?: HeadersInit }).headers);
     expect(secondCallHeaders.get('x-payment-receipt')).toBeNull();
     expect(secondCallHeaders.get('x-idempotency-key')).toBeNull();
     expect(secondCallHeaders.get('accept')).toBe('application/json');
   });
 
   it('keeps caller-supplied headers across a same-origin redirect', async () => {
-    const baseFetch = vi.fn()
+    const baseFetch = vi
+      .fn()
       .mockResolvedValueOnce(redirectResponse('https://a.example.com/next', 302))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const egressFetch = createEgressSafeFetch(baseFetch, {
@@ -100,7 +105,9 @@ describe('createEgressSafeFetch', () => {
 
     await egressFetch('https://a.example.com/start', { headers: { 'x-payment-receipt': 'secret-receipt' } });
 
-    const secondCallHeaders = new Headers((baseFetch.mock.calls[1]?.[1] as { headers?: HeadersInit }).headers);
+    const secondCall = baseFetch.mock.calls[1];
+    if (!secondCall) throw new Error('expected a second fetch call (the redirect follow-up)');
+    const secondCallHeaders = new Headers((secondCall[1] as { headers?: HeadersInit }).headers);
     expect(secondCallHeaders.get('x-payment-receipt')).toBe('secret-receipt');
   });
 
@@ -126,7 +133,8 @@ describe('createEgressSafeFetch', () => {
   });
 
   it('downgrades a POST to a bodyless GET on a 303 redirect', async () => {
-    const baseFetch = vi.fn()
+    const baseFetch = vi
+      .fn()
       .mockResolvedValueOnce(redirectResponse('https://a.example.com/done', 303))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const egressFetch = createEgressSafeFetch(baseFetch, {
@@ -140,7 +148,8 @@ describe('createEgressSafeFetch', () => {
   });
 
   it('preserves method and body across a 307 redirect', async () => {
-    const baseFetch = vi.fn()
+    const baseFetch = vi
+      .fn()
       .mockResolvedValueOnce(redirectResponse('https://a.example.com/done', 307))
       .mockResolvedValueOnce(jsonResponse({ ok: true }));
     const egressFetch = createEgressSafeFetch(baseFetch, {

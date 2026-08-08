@@ -64,11 +64,7 @@ describe('policy-bound purchase authorization', () => {
   });
 
   it('requires approval beyond the configured threshold', () => {
-    const result = authorizePurchase(
-      mandate,
-      allowedIntent,
-      { ...baseContext, currentTotalSpend: '600000' },
-    );
+    const result = authorizePurchase(mandate, allowedIntent, { ...baseContext, currentTotalSpend: '600000' });
     expect(result.authorized).toBe(false);
     expect(result.denialCodes).toContain('ADDITIONAL_APPROVAL_REQUIRED');
   });

@@ -41,30 +41,38 @@ async function start(): Promise<void> {
       contextStore: new PostgresFlowOrderContextStore(pool),
       capabilitySource: new StaticReviewedCapabilitySource(config.merchant.capability),
     };
-    const adapter = config.goatEnvironment === 'mainnet'
-      ? GoatFlowMerchantAdapter.fromMainnetCredentials(credentials)
-      : GoatFlowMerchantAdapter.fromTestnet3Credentials(credentials);
+    const adapter =
+      config.goatEnvironment === 'mainnet'
+        ? GoatFlowMerchantAdapter.fromMainnetCredentials(credentials)
+        : GoatFlowMerchantAdapter.fromTestnet3Credentials(credentials);
     const verified = await adapter.discoverRuntimeCapabilities();
     if (verified.length !== 1 || !capabilitiesMatch(verified[0]!, config.merchant.capability)) {
       throw new Error('MERCHANT_CAPABILITY_VERIFICATION_FAILED');
     }
 
-    const handler = new PaymentReconciliationJobHandler(new PaymentReconciler({
-      merchantAdapter: adapter,
-      receiptReader: createGoatReceiptReader(config.goatEnvironment, config.rpcUrl),
-      store: new PostgresPaymentReconciliationStore(pool),
-    }));
+    const handler = new PaymentReconciliationJobHandler(
+      new PaymentReconciler({
+        merchantAdapter: adapter,
+        receiptReader: createGoatReceiptReader(config.goatEnvironment, config.rpcUrl),
+        store: new PostgresPaymentReconciliationStore(pool),
+      }),
+    );
     const queue = new PostgresPaymentReconciliationJobQueue(pool);
     const controller = new AbortController();
     process.once('SIGINT', () => controller.abort());
     process.once('SIGTERM', () => controller.abort());
-    process.stdout.write(JSON.stringify({ event: 'payment_worker_ready', workerId: config.workerId }) + '\n');
+    process.stdout.write(`${JSON.stringify({ event: 'payment_worker_ready', workerId: config.workerId })}\n`);
 
     while (!controller.signal.aborted) {
-      const processed = await processNextPaymentJob(queue, handler, {
-        workerId: config.workerId,
-        leaseDurationSeconds: config.leaseDurationSeconds,
-      }, controller.signal);
+      const processed = await processNextPaymentJob(
+        queue,
+        handler,
+        {
+          workerId: config.workerId,
+          leaseDurationSeconds: config.leaseDurationSeconds,
+        },
+        controller.signal,
+      );
       if (!processed) await abortableDelay(config.pollIntervalMilliseconds, controller.signal);
     }
   } finally {
@@ -73,12 +81,14 @@ async function start(): Promise<void> {
 }
 
 function capabilitiesMatch(left: FlowRuntimeCapability, right: FlowRuntimeCapability): boolean {
-  return left.merchantId === right.merchantId &&
+  return (
+    left.merchantId === right.merchantId &&
     left.chainId === right.chainId &&
     left.tokenAddress.toLowerCase() === right.tokenAddress.toLowerCase() &&
     left.receivingAddress.toLowerCase() === right.receivingAddress.toLowerCase() &&
     left.minimumAtomicAmount === right.minimumAtomicAmount &&
-    left.maximumAtomicAmount === right.maximumAtomicAmount;
+    left.maximumAtomicAmount === right.maximumAtomicAmount
+  );
 }
 
 async function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {
@@ -95,6 +105,6 @@ async function abortableDelay(milliseconds: number, signal: AbortSignal): Promis
 }
 
 await start().catch(() => {
-  process.stderr.write(JSON.stringify({ event: 'payment_worker_stopped', code: 'SAFE_RUNTIME_FAILURE' }) + '\n');
+  process.stderr.write(`${JSON.stringify({ event: 'payment_worker_stopped', code: 'SAFE_RUNTIME_FAILURE' })}\n`);
   process.exitCode = 1;
 });

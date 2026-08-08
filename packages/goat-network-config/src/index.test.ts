@@ -60,9 +60,11 @@ describe('GOAT network configuration', () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues).toEqual(expect.arrayContaining([
-        expect.objectContaining({ path: ['chainId'], message: 'Chain does not match testnet3' }),
-      ]));
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ['chainId'], message: 'Chain does not match testnet3' }),
+        ]),
+      );
     }
   });
 });
@@ -100,15 +102,27 @@ describe('assertPostgresUrl', () => {
 
 describe('assertExactUrl', () => {
   it('accepts a URL whose origin matches exactly with no path, credentials, query, or fragment', () => {
-    expect(() => assertExactUrl('https://rpc.goat.network', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).not.toThrow();
-    expect(() => assertExactUrl('https://rpc.goat.network/', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).not.toThrow();
+    expect(() =>
+      assertExactUrl('https://rpc.goat.network', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).not.toThrow();
+    expect(() =>
+      assertExactUrl('https://rpc.goat.network/', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).not.toThrow();
   });
 
   it('rejects a mismatched origin, embedded credentials, a path, a query, or a fragment', () => {
-    expect(() => assertExactUrl('https://attacker.example', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).toThrow(/RPC_URL/);
-    expect(() => assertExactUrl('https://user:pass@rpc.goat.network', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).toThrow();
-    expect(() => assertExactUrl('https://rpc.goat.network/extra', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).toThrow();
-    expect(() => assertExactUrl('https://rpc.goat.network?x=1', 'https://rpc.goat.network', 'RPC_URL', throwTestError)).toThrow();
+    expect(() =>
+      assertExactUrl('https://attacker.example', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).toThrow(/RPC_URL/);
+    expect(() =>
+      assertExactUrl('https://user:pass@rpc.goat.network', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).toThrow();
+    expect(() =>
+      assertExactUrl('https://rpc.goat.network/extra', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).toThrow();
+    expect(() =>
+      assertExactUrl('https://rpc.goat.network?x=1', 'https://rpc.goat.network', 'RPC_URL', throwTestError),
+    ).toThrow();
   });
 });
 
@@ -119,11 +133,15 @@ describe('resolveRpcUrl', () => {
   });
 
   it('accepts a matching override for the selected environment only', () => {
-    expect(resolveRpcUrl('mainnet', { mainnetRpcUrl: GOAT_MAINNET.publicRpcUrl }, throwTestError)).toBe(GOAT_MAINNET.publicRpcUrl);
+    expect(resolveRpcUrl('mainnet', { mainnetRpcUrl: GOAT_MAINNET.publicRpcUrl }, throwTestError)).toBe(
+      GOAT_MAINNET.publicRpcUrl,
+    );
   });
 
   it('rejects an override that does not match the reviewed origin', () => {
-    expect(() => resolveRpcUrl('mainnet', { mainnetRpcUrl: 'https://attacker.example' }, throwTestError)).toThrow(TestConfigurationError);
+    expect(() => resolveRpcUrl('mainnet', { mainnetRpcUrl: 'https://attacker.example' }, throwTestError)).toThrow(
+      TestConfigurationError,
+    );
   });
 });
 

@@ -27,13 +27,13 @@ try {
     )
   `);
 
-  const filenames = (await readdir(migrationDirectory))
-    .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name))
-    .sort();
-  const migrations = await Promise.all(filenames.map(async (filename) => {
-    const sql = await readFile(resolve(migrationDirectory, filename), 'utf8');
-    return { filename, sql, checksum: createHash('sha256').update(sql).digest('hex') };
-  }));
+  const filenames = (await readdir(migrationDirectory)).filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort();
+  const migrations = await Promise.all(
+    filenames.map(async (filename) => {
+      const sql = await readFile(resolve(migrationDirectory, filename), 'utf8');
+      return { filename, sql, checksum: createHash('sha256').update(sql).digest('hex') };
+    }),
+  );
 
   await baselineEntrypointMigration(client, migrations);
   const appliedResult = await client.query(`SELECT version, checksum FROM shipyard_schema_migrations`);
@@ -52,10 +52,10 @@ try {
     await client.query('BEGIN');
     try {
       await client.query(body);
-      await client.query(
-        `INSERT INTO shipyard_schema_migrations (version, checksum) VALUES ($1, $2)`,
-        [migration.filename, migration.checksum],
-      );
+      await client.query(`INSERT INTO shipyard_schema_migrations (version, checksum) VALUES ($1, $2)`, [
+        migration.filename,
+        migration.checksum,
+      ]);
       await client.query('COMMIT');
       process.stdout.write(`Applied migration ${migration.filename}\n`);
     } catch (error) {
@@ -72,9 +72,7 @@ try {
 async function baselineEntrypointMigration(client, migrations) {
   const core = migrations.find((migration) => migration.filename === '0001_core.sql');
   if (!core) throw new Error('Required migration 0001_core.sql is missing');
-  const recorded = await client.query(
-    `SELECT 1 FROM shipyard_schema_migrations WHERE version = '0001_core.sql'`,
-  );
+  const recorded = await client.query(`SELECT 1 FROM shipyard_schema_migrations WHERE version = '0001_core.sql'`);
   if (recorded.rowCount) return;
 
   const schema = await client.query(`
@@ -87,10 +85,10 @@ async function baselineEntrypointMigration(client, migrations) {
   if (!existing?.has_organizations || !existing?.has_outbox) {
     throw new Error('Refusing to baseline a partially initialized core schema');
   }
-  await client.query(
-    `INSERT INTO shipyard_schema_migrations (version, checksum) VALUES ($1, $2)`,
-    [core.filename, core.checksum],
-  );
+  await client.query(`INSERT INTO shipyard_schema_migrations (version, checksum) VALUES ($1, $2)`, [
+    core.filename,
+    core.checksum,
+  ]);
   process.stdout.write('Baselined entrypoint migration 0001_core.sql\n');
 }
 

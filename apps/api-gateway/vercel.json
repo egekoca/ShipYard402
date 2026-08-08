@@ -4,7 +4,5 @@
   "outputDirectory": "public",
   "installCommand": "cd ../.. && corepack pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && corepack pnpm turbo run build --filter=@shipyard402/api-gateway",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }

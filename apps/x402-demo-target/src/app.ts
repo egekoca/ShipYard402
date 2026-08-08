@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { NativeTransferReader } from './native-payment-verifier.js';
 import { createProviderSigner, signResponseBody } from './provider-signing.js';
 import { purchaseClaimMessage } from './purchase-claim.js';
-import { DemoReceiptInvalidError, issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
+import { DemoReceiptInvalidError, issueDemoReceipt, verifyDemoReceipt, type DemoPaymentReceipt } from './receipt.js';
 
 export type DemoTargetMode = 'V1_VULNERABLE' | 'V2_PROTECTED';
 
@@ -77,7 +77,9 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
   const redemptionStore = options.redemptionStore ?? new InMemoryRedemptionStore();
   const purchaseLedger = options.purchase?.purchaseLedger ?? new InMemoryPurchaseLedger();
   const now = options.now ?? (() => new Date());
-  const providerSigner = options.providerSignerPrivateKey ? createProviderSigner(options.providerSignerPrivateKey) : undefined;
+  const providerSigner = options.providerSignerPrivateKey
+    ? createProviderSigner(options.providerSignerPrivateKey)
+    : undefined;
   const app = Fastify({ logger: { level: process.env['NODE_ENV'] === 'test' ? 'silent' : 'info' } });
 
   async function sendPaidResourceReply(reply: FastifyReply, statusCode: number, payload: unknown): Promise<void> {
@@ -146,7 +148,9 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
       now(),
     );
 
-    return reply.status(200).send({ receipt, resource: PAID_RESOURCE_ROUTE, atomicAmount: transfer.valueWei.toString() });
+    return reply
+      .status(200)
+      .send({ receipt, resource: PAID_RESOURCE_ROUTE, atomicAmount: transfer.valueWei.toString() });
   });
 
   app.route({
@@ -159,7 +163,7 @@ export function createDemoTargetApp(options: DemoTargetOptions): FastifyInstance
         return sendPaidResourceReply(reply, 402, { error: 'PAYMENT_RECEIPT_REQUIRED' });
       }
 
-      let receipt;
+      let receipt: DemoPaymentReceipt;
       try {
         receipt = verifyDemoReceipt(token, options.receiptSecret, now());
       } catch (error) {

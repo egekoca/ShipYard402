@@ -26,8 +26,10 @@ const keystoreJson = await wallet.encrypt(password);
 const keystorePath = resolve(`.local/testnet/goat-testnet3-${label}-keystore.json`);
 await writeFile(keystorePath, keystoreJson, { flag: 'wx', mode: 0o600 });
 
-process.stdout.write(JSON.stringify({
-  address: wallet.address,
-  keystoreFile: keystorePath,
-  note: 'Set the *_KEYSTORE_PATH env var to this file and *_KEYSTORE_PASSWORD to the password used here; delete the plaintext signer file once you have verified it decrypts.',
-}) + '\n');
+process.stdout.write(
+  `${JSON.stringify({
+    address: wallet.address,
+    keystoreFile: keystorePath,
+    note: 'Set the *_KEYSTORE_PATH env var to this file and *_KEYSTORE_PASSWORD to the password used here; delete the plaintext signer file once you have verified it decrypts.',
+  })}\n`,
+);

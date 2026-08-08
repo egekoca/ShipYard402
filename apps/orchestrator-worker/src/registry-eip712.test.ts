@@ -49,7 +49,8 @@ describe('registry EIP-712 attestation encoding', () => {
     const valueB = attestationTypedDataValue({ ...attestation, result: 'FAIL' });
 
     const signatureA = await wallet.signTypedData(domain, ATTESTATION_TYPED_DATA_TYPES, valueA);
-    expect(verifyTypedData(domain, ATTESTATION_TYPED_DATA_TYPES, valueB, signatureA).toLowerCase())
-      .not.toBe(wallet.address.toLowerCase());
+    expect(verifyTypedData(domain, ATTESTATION_TYPED_DATA_TYPES, valueB, signatureA).toLowerCase()).not.toBe(
+      wallet.address.toLowerCase(),
+    );
   });
 });

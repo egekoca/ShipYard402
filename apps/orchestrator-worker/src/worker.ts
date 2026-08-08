@@ -7,7 +7,10 @@ import {
   type PipelineResult,
 } from './pipeline.js';
 
-export type OrchestratorPipelineRunner = (runId: string, deps: OrchestratorPipelineDependencies) => Promise<PipelineResult>;
+export type OrchestratorPipelineRunner = (
+  runId: string,
+  deps: OrchestratorPipelineDependencies,
+) => Promise<PipelineResult>;
 
 export type OrchestratorJob = Readonly<{
   runId: string;
@@ -33,7 +36,10 @@ export class OrchestratorJobHandler {
   readonly #deps: OrchestratorPipelineDependencies;
   readonly #runPipeline: OrchestratorPipelineRunner;
 
-  constructor(deps: OrchestratorPipelineDependencies, runPipeline: OrchestratorPipelineRunner = runOrchestratorPipeline) {
+  constructor(
+    deps: OrchestratorPipelineDependencies,
+    runPipeline: OrchestratorPipelineRunner = runOrchestratorPipeline,
+  ) {
     this.#deps = deps;
     this.#runPipeline = runPipeline;
   }
@@ -42,9 +48,16 @@ export class OrchestratorJobHandler {
     validateJob(job);
     try {
       const result = await this.#runPipeline(job.runId, this.#deps);
-      return { action: 'ACK', finalStatus: result.finalStatus, attestationTransactionHash: result.attestationTransactionHash };
+      return {
+        action: 'ACK',
+        finalStatus: result.finalStatus,
+        attestationTransactionHash: result.attestationTransactionHash,
+      };
     } catch (error) {
-      console.error(`[orchestrator-worker] pipeline failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`, error);
+      console.error(
+        `[orchestrator-worker] pipeline failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`,
+        error,
+      );
       if (error instanceof RunNotReadyForOrchestrationError) {
         return { action: 'DEAD_LETTER', reason: 'UNEXPECTED_RUN_STATE' };
       }
@@ -104,6 +117,7 @@ function retryDelay(attempt: number): number {
 function classifyRetryableError(error: unknown): string {
   const pattern = /timeout|temporar|rate|RPC|fetch/i;
   if (error instanceof Error && pattern.test(error.message)) return 'TRANSIENT_DEPENDENCY_FAILURE';
-  if (error instanceof Error && error.cause instanceof Error && pattern.test(error.cause.message)) return 'TRANSIENT_DEPENDENCY_FAILURE';
+  if (error instanceof Error && error.cause instanceof Error && pattern.test(error.cause.message))
+    return 'TRANSIENT_DEPENDENCY_FAILURE';
   return 'UNCLASSIFIED_ORCHESTRATION_FAILURE';
 }

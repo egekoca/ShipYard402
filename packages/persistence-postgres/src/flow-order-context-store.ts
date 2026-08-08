@@ -5,37 +5,49 @@ import type { Pool, QueryResultRow } from 'pg';
 import { z } from 'zod';
 
 const addressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/);
-const challengeSchema = z.object({
-  x402Version: z.number().int().nonnegative(),
-  resource: z.object({
-    url: z.string().url(),
-    description: z.string().optional(),
-    mimeType: z.string().optional(),
-  }).passthrough(),
-  accepts: z.array(z.object({
-    scheme: z.string().min(1),
-    network: z.string().min(1),
-    amount: z.string().regex(/^(0|[1-9]\d*)$/),
-    asset: addressSchema,
-    payTo: addressSchema,
-    maxTimeoutSeconds: z.number().int().nonnegative(),
-    extra: z.record(z.unknown()).optional(),
-  }).passthrough()).min(1),
-  extensions: z.record(z.unknown()).optional(),
-}).passthrough();
+const challengeSchema = z
+  .object({
+    x402Version: z.number().int().nonnegative(),
+    resource: z
+      .object({
+        url: z.string().url(),
+        description: z.string().optional(),
+        mimeType: z.string().optional(),
+      })
+      .passthrough(),
+    accepts: z
+      .array(
+        z
+          .object({
+            scheme: z.string().min(1),
+            network: z.string().min(1),
+            amount: z.string().regex(/^(0|[1-9]\d*)$/),
+            asset: addressSchema,
+            payTo: addressSchema,
+            maxTimeoutSeconds: z.number().int().nonnegative(),
+            extra: z.record(z.unknown()).optional(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    extensions: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
 
-const orderSchema = z.object({
-  orderId: z.string().min(1),
-  dappOrderId: z.string().min(1),
-  status: z.enum(['CHECKOUT_VERIFIED', 'PAYMENT_CONFIRMED', 'INVOICED', 'FAILED', 'EXPIRED', 'CANCELLED']),
-  chainId: z.number().int().positive(),
-  tokenAddress: addressSchema,
-  atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
-  payerAddress: addressSchema,
-  payToAddress: addressSchema,
-  expiresAt: z.string().datetime(),
-  paymentRequired: challengeSchema,
-}).strict();
+const orderSchema = z
+  .object({
+    orderId: z.string().min(1),
+    dappOrderId: z.string().min(1),
+    status: z.enum(['CHECKOUT_VERIFIED', 'PAYMENT_CONFIRMED', 'INVOICED', 'FAILED', 'EXPIRED', 'CANCELLED']),
+    chainId: z.number().int().positive(),
+    tokenAddress: addressSchema,
+    atomicAmount: z.string().regex(/^(0|[1-9]\d*)$/),
+    payerAddress: addressSchema,
+    payToAddress: addressSchema,
+    expiresAt: z.string().datetime(),
+    paymentRequired: challengeSchema,
+  })
+  .strict();
 
 type ContextRow = QueryResultRow & {
   order_snapshot: unknown;

@@ -71,11 +71,19 @@ describe('x402 demo target app', () => {
       NOW,
     );
 
-    const first = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+    const first = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': token },
+    });
     expect(first.statusCode).toBe(200);
     expect(first.json()).toMatchObject({ deliveryConfirmed: true });
 
-    const replay = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+    const replay = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': token },
+    });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({ deliveryConfirmed: true });
   });
@@ -88,10 +96,18 @@ describe('x402 demo target app', () => {
       NOW,
     );
 
-    const first = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+    const first = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': token },
+    });
     expect(first.statusCode).toBe(200);
 
-    const replay = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+    const replay = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': token },
+    });
     expect(replay.statusCode).toBe(409);
     expect(replay.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_ALREADY_REDEEMED' });
   });
@@ -109,8 +125,16 @@ describe('x402 demo target app', () => {
       NOW,
     );
 
-    const responseA = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': tokenA } });
-    const responseB = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': tokenB } });
+    const responseA = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': tokenA },
+    });
+    const responseB = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': tokenB },
+    });
     expect(responseA.statusCode).toBe(200);
     expect(responseB.statusCode).toBe(200);
   });
@@ -122,7 +146,11 @@ describe('x402 demo target app', () => {
       SECRET,
       NOW,
     );
-    const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+    const response = await app.inject({
+      method: 'GET',
+      url: PAID_RESOURCE_ROUTE,
+      headers: { 'x-payment-receipt': token },
+    });
     expect(response.statusCode).toBe(402);
     expect(response.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
   });
@@ -138,13 +166,22 @@ describe('x402 demo target app', () => {
     });
 
     it('signs a successful delivery response with the configured provider key', async () => {
-      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      app = createDemoTargetApp({
+        mode: 'V1_VULNERABLE',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        providerSignerPrivateKey: providerKey,
+      });
       const token = issueDemoReceipt(
         { orderId: 'signed-order', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
         SECRET,
         NOW,
       );
-      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment-receipt': token } });
+      const response = await app.inject({
+        method: 'GET',
+        url: PAID_RESOURCE_ROUTE,
+        headers: { 'x-payment-receipt': token },
+      });
       expect(response.statusCode).toBe(200);
       const signature = response.headers['x-provider-signature'] as `0x${string}`;
       expect(signature).toBeDefined();
@@ -154,7 +191,12 @@ describe('x402 demo target app', () => {
     });
 
     it('signs a rejection response too, not only successful deliveries', async () => {
-      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      app = createDemoTargetApp({
+        mode: 'V1_VULNERABLE',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        providerSignerPrivateKey: providerKey,
+      });
       const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
       expect(response.statusCode).toBe(402);
       const signature = response.headers['x-provider-signature'] as `0x${string}`;
@@ -163,7 +205,12 @@ describe('x402 demo target app', () => {
     });
 
     it('does not verify against a signer address other than the one actually configured', async () => {
-      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW, providerSignerPrivateKey: providerKey });
+      app = createDemoTargetApp({
+        mode: 'V1_VULNERABLE',
+        receiptSecret: SECRET,
+        now: () => NOW,
+        providerSignerPrivateKey: providerKey,
+      });
       const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
       const signature = response.headers['x-provider-signature'] as `0x${string}`;
       const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
@@ -193,12 +240,16 @@ describe('x402 demo target app', () => {
       });
 
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
       });
       expect(response.statusCode).toBe(200);
       const { receipt } = response.json() as { receipt: string };
-      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH, resource: PAID_RESOURCE_ROUTE });
+      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({
+        orderId: TX_HASH,
+        resource: PAID_RESOURCE_ROUTE,
+      });
     });
 
     it('rejects a transaction that cannot be found on-chain', async () => {
@@ -214,7 +265,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
       });
       expect(response.statusCode).toBe(402);
@@ -234,7 +286,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
       });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_REVERTED' });
@@ -253,7 +306,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
       });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_NOT_YET_CONFIRMED' });
@@ -272,7 +326,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
       });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_WRONG_RECIPIENT' });
@@ -291,7 +346,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
       });
       expect(response.json()).toMatchObject({ error: 'PAYMENT_INSUFFICIENT_AMOUNT' });
@@ -313,7 +369,8 @@ describe('x402 demo target app', () => {
       // payer's private key cannot produce a signature that recovers to transfer.from.
       const impostorKey = `0x${'99'.repeat(32)}` as const;
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
       });
       expect(response.statusCode).toBe(401);
@@ -333,7 +390,8 @@ describe('x402 demo target app', () => {
         },
       });
       const response = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: `0x${'ab'.repeat(65)}` },
       });
       expect(response.statusCode).toBe(401);
@@ -353,11 +411,19 @@ describe('x402 demo target app', () => {
         },
       });
       const signature = await signPurchaseClaim(TX_HASH);
-      const first = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH, signature } });
+      const first = await app.inject({
+        method: 'POST',
+        url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature },
+      });
       expect(first.statusCode).toBe(200);
       // This is exactly what an orchestrator retry after a checkpoint-write failure looks like:
       // the same signer re-submitting the same already-earned transaction hash.
-      const second = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH, signature } });
+      const second = await app.inject({
+        method: 'POST',
+        url: '/purchase',
+        payload: { transactionHash: TX_HASH, signature },
+      });
       expect(second.statusCode).toBe(200);
       const { receipt } = second.json() as { receipt: string };
       expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH });
@@ -376,13 +442,15 @@ describe('x402 demo target app', () => {
         },
       });
       const first = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
       });
       expect(first.statusCode).toBe(200);
       const impostorKey = `0x${'44'.repeat(32)}` as const;
       const second = await app.inject({
-        method: 'POST', url: '/purchase',
+        method: 'POST',
+        url: '/purchase',
         payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
       });
       expect(second.statusCode).toBe(401);
