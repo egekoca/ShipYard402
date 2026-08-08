@@ -290,6 +290,17 @@ describe('api gateway vertical slice', () => {
       expect(response.json()).toEqual({ code: 'LOGIN_SIGNATURE_INVALID' });
     });
 
+    it('rate-limits repeated login attempts against the same instance', async () => {
+      const app = testApp();
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const response = await app.inject({ method: 'POST', url: '/v1/auth/session', payload: {} });
+        expect(response.statusCode).not.toBe(429);
+      }
+      const limited = await app.inject({ method: 'POST', url: '/v1/auth/session', payload: {} });
+      expect(limited.statusCode).toBe(429);
+      expect(limited.json()).toMatchObject({ code: 'RATE_LIMITED' });
+    });
+
     it('fails closed on every protected route when auth is not configured', async () => {
       const app = testApp(true, { sessionSecret: undefined });
       const response = await app.inject({
