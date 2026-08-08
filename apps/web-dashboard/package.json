@@ -2,6 +2,8 @@
   "name": "@shipyard402/web-dashboard",
   "version": "0.1.0",
   "private": true,
+  "description": "Next.js dashboard for launching and monitoring Shipyard402 runs.",
+  "license": "UNLICENSED",
   "scripts": {
     "build": "next build && node scripts/prepare-standalone.mjs",
     "dev": "next dev --hostname 127.0.0.1 --port 3000",

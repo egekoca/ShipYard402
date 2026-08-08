@@ -2,6 +2,8 @@
   "name": "@shipyard402/api-gateway",
   "version": "0.1.0",
   "private": true,
+  "description": "Public REST API (Vercel) for creating Shipyard402 runs/quotes and serving evidence to the web dashboard.",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

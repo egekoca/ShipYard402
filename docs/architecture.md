@@ -8,17 +8,16 @@ Shipyard402 receives release assurance requests from customer agents, CI systems
 
 ## Containers
 
+The containers below (`apps/*`) are what is actually implemented and deployable today. A separate Sentinel Worker (risk-adjusted canary scheduling/drift detection) and a standalone Signer Service were part of the original target design but were never split out: signing lives in-process in Orchestrator Worker and Payment Worker via a `SignerKeySource` (raw key in development, encrypted keystore in production), and durable job queuing is PostgreSQL-backed leased jobs rather than a separate broker (there is no Redis/BullMQ in this system).
+
 | Container | Responsibility | Trust level |
 |---|---|---|
-| API Gateway | Auth, quote, x402 merchant boundary, public run reads | Internet-facing |
-| Orchestrator Worker | Manifest/OpenAPI analysis, risk plan, replanning | No secrets/signers/direct DB writes |
-| Execution Worker | Deterministic conformance, settlement, delivery and schema checks | Restricted egress |
-| Procurement Worker | Policy authorization and paid provider calls | Isolated payer signer capability |
-| Sentinel Worker | Risk-adjusted canary scheduling and drift detection | Restricted budgets |
-| PostgreSQL | State, receipts, evidence metadata and accounting | Private data boundary |
-| Redis/BullMQ | Durable jobs and bounded retries | Private queue boundary |
-| Signer Service | Payer and attestor signing after typed-policy validation | Highest-trust boundary |
-| Web Dashboard/Public Viewer | Release-run UI, redacted evidence and economic metadata; public API client only | Public, no secrets |
+| API Gateway (`apps/api-gateway`) | Auth, quote, x402 merchant boundary, public run reads | Internet-facing |
+| Orchestrator Worker (`apps/orchestrator-worker`) | Manifest/OpenAPI analysis, risk plan, procurement authorization, protected-delivery execution, evidence assembly, on-chain attestation | No public ingress; holds procurement + attestation signer key sources |
+| Payment Worker (`apps/payment-worker`) | Payment reconciliation against on-chain and settlement state | No public ingress; no signer key |
+| PostgreSQL | State, receipts, evidence metadata, accounting, and durable leased job queues | Private data boundary |
+| Web Dashboard (`apps/web-dashboard`) | Release-run UI, redacted evidence and economic metadata; public API client only | Public, no secrets |
+| x402 Demo Target (`apps/x402-demo-target`) | Reference x402-protected tool endpoint (vulnerable/protected modes) used to exercise the pipeline in scenarios | Non-production, demo/test only |
 | ShipyardRunRegistry | Immutable version/policy/expiry attestation | GOAT mainnet |
 
 ## Component boundaries
@@ -52,7 +51,7 @@ payment worker
        -> ViemGoatReceiptReader (read-only RPC)
        -> PostgresPaymentReconciliationStore (atomic receipt + run event + outbox)
 
-execution worker
+orchestrator worker
   -> ProtectedDeliveryReplayRunner
        -> restricted target client (allowlisted origin only)
        -> hash-only replay evidence (no raw receipt or protected payload)
@@ -64,6 +63,6 @@ Dependencies point inward toward ports and deterministic domain packages. Fronte
 
 ## Deployment topology
 
-The MVP starts as a modular monolith plus separate worker and signer processes. API and workers use separate service identities. PostgreSQL and Redis are private. Public ingress reaches only the API and public viewer. Egress from runners is restricted to the target, allowlisted providers, GOAT Flow, approved RPCs, and evidence storage.
+The MVP is a modular monolith split into an internet-facing API and separate backend worker processes; workers hold their own signer key sources rather than delegating to a standalone signer service. API and workers use separate service identities. PostgreSQL is private. Public ingress reaches only the API and the web dashboard. Egress from workers is restricted to the target, allowlisted providers, GOAT Flow, approved RPCs, and evidence storage.
 
-Production API/payment-worker boot requires durable PostgreSQL and reviewed mainnet merchant capability records. Payer/attestor KMS integration, procurement/orchestrator workers, and real merchant credentials remain launch blockers. The merchant adapter, order-context store, payment reconciler, read-only chain receipt implementation, and replay runner are present but have not been exercised with a real paid customer flow.
+Production API/orchestrator-worker/payment-worker boot requires durable PostgreSQL and reviewed mainnet merchant capability records. Payer/attestor KMS integration and real merchant credentials remain launch blockers. The merchant adapter, order-context store, payment reconciler, read-only chain receipt implementation, and replay runner are present but have not been exercised with a real paid customer flow.

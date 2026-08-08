@@ -2,6 +2,8 @@
   "name": "@shipyard402/payment-worker",
   "version": "0.1.0",
   "private": true,
+  "description": "Long-running worker that reconciles GOAT x402 payments against on-chain confirmations.",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

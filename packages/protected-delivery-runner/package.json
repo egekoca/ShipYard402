@@ -2,6 +2,8 @@
   "name": "@shipyard402/protected-delivery-runner",
   "version": "0.1.0",
   "private": true,
+  "description": "Scenario runners (replay, invalid-credential, provider-signature) and a fetch client for probing protected delivery endpoints.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

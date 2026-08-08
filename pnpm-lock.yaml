@@ -479,15 +479,9 @@ importers:
       '@shipyard402/goat-network-config':
         specifier: workspace:*
         version: link:../goat-network-config
-      '@shipyard402/run-domain':
-        specifier: workspace:*
-        version: link:../run-domain
       ethers:
         specifier: 6.17.0
         version: 6.17.0
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: 24.3.0

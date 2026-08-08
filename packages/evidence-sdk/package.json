@@ -2,6 +2,8 @@
   "name": "@shipyard402/evidence-sdk",
   "version": "0.1.0",
   "private": true,
+  "description": "Signed tool-receipt helpers shared by the orchestrator worker and the demo target.",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {
