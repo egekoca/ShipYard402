@@ -1,5 +1,9 @@
 # Architecture Decision Records
 
+Numbers are assigned when a decision is drafted, not renumbered afterward -- 0004, 0005, 0007,
+0008, 0010, 0011, and 0013 were drafted and then abandoned or folded into a neighboring ADR before
+being written up on their own, so those numbers are retired rather than reused.
+
 - [ADR-0001](0001-product-scope.md): product scope and claim boundary
 - [ADR-0002](0002-goat-flow-direct.md): public GOAT Flow payment mode
 - [ADR-0003](0003-agentkit-example-boundary.md): AgentKit mock example boundary
