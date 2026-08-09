@@ -1954,6 +1954,10 @@ footer {
   cursor: pointer;
   font-family: inherit;
 }
+.panel-toggle,
+.panel-summary {
+  min-width: 0;
+}
 .panel-summary {
   display: flex;
   flex: 1;
@@ -1965,6 +1969,13 @@ footer {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-align: right;
+  min-width: 0;
+}
+.panel-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .run-detail-panel[data-state="ready"] .panel-summary {
   color: var(--ink);
