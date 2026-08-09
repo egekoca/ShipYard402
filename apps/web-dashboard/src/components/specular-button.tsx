@@ -181,7 +181,14 @@ export function SpecularButton({
     if (!btn || !fx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const renderer = new Renderer({ alpha: true, premultipliedAlpha: true, antialias: true, dpr });
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer({ alpha: true, premultipliedAlpha: true, antialias: true, dpr });
+    } catch {
+      // The button remains fully usable when WebGL is unavailable (for example in
+      // hardened browsers, battery-saving modes, or visual-test environments).
+      return;
+    }
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
     gl.enable(gl.BLEND);
@@ -297,7 +304,11 @@ export function SpecularButton({
       program.uniforms['uShineSize'].value = (p.shineSize * Math.PI) / 180;
       program.uniforms['uShineFade'].value = (p.shineFade * Math.PI) / 180;
       program.uniforms['uThickness'].value = p.thickness * dpr;
-      renderer.render({ scene: mesh });
+      try {
+        renderer.render({ scene: mesh });
+      } catch {
+        cancelAnimationFrame(raf);
+      }
     };
     raf = requestAnimationFrame(update);
 
