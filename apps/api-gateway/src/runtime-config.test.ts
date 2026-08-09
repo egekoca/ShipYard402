@@ -29,6 +29,26 @@ describe('API runtime configuration', () => {
     expect(config.host).toBe('127.0.0.1');
   });
 
+  it('accepts localhost and 127.0.0.1 aliases for the same development web origin port', () => {
+    const config = parseRuntimeConfig({
+      APP_ENV: 'development',
+      WEB_ORIGIN: 'http://127.0.0.1:3006',
+    });
+
+    expect(config.allowedWebOrigins).toEqual(['http://127.0.0.1:3006', 'http://localhost:3006']);
+  });
+
+  it('does not broaden the production web origin allowlist', () => {
+    const config = parseRuntimeConfig({
+      APP_ENV: 'production',
+      WEB_ORIGIN: 'http://127.0.0.1:3006',
+      DATABASE_URL: 'postgresql://database.example/shipyard',
+      ...completeMerchantEnvironment,
+    });
+
+    expect(config.allowedWebOrigins).toEqual(['http://127.0.0.1:3006']);
+  });
+
   it('rejects partial merchant credentials instead of silently disabling payments', () => {
     expect(() =>
       parseRuntimeConfig({

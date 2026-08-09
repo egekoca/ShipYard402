@@ -119,11 +119,13 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
     );
   }
 
-  const origins = (values.WEB_ORIGIN ?? 'http://127.0.0.1:3000')
+  const configuredOrigins = (values.WEB_ORIGIN ?? 'http://127.0.0.1:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean)
     .map(validateWebOrigin);
+  const origins =
+    values.APP_ENV === 'production' ? configuredOrigins : expandLoopbackDevelopmentOrigins(configuredOrigins);
 
   return {
     environment: values.APP_ENV,
@@ -211,6 +213,23 @@ function validateWebOrigin(value: string): string {
   } catch {
     throw new RuntimeConfigurationError('WEB_ORIGIN contains an invalid HTTP origin', ['WEB_ORIGIN']);
   }
+}
+
+/** Browsers treat localhost and 127.0.0.1 as different origins even though both reach the same
+ * local service. Development servers are commonly opened through either spelling, so mirror only
+ * loopback HTTP origins on the exact same port. Production remains an explicit, unchanged
+ * allowlist and no non-loopback hostname is broadened. */
+function expandLoopbackDevelopmentOrigins(origins: readonly string[]): readonly string[] {
+  const expanded = new Set(origins);
+  for (const origin of origins) {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== 'http:') continue;
+    if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') continue;
+
+    parsed.hostname = parsed.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+    expanded.add(parsed.origin);
+  }
+  return [...expanded];
 }
 
 function assertReviewedApiUrl(value: string, environment: 'mainnet' | 'testnet3'): void {
