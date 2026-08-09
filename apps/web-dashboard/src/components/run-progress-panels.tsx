@@ -444,7 +444,7 @@ function Panel({
               ✕
             </span>
           )}
-          {summary}
+          <span className="panel-summary-text">{summary}</span>
         </span>
         {canExpand && (
           <span className="panel-toggle-chevron" aria-hidden="true">
