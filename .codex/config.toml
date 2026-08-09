@@ -1,0 +1,4 @@
+[mcp_servers.shadcn]
+command = "npx"
+args = ["shadcn@latest", "mcp"]
+cwd = "apps/web-dashboard"
