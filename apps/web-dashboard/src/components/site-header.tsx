@@ -1,3 +1,5 @@
+import { AppLinkButton } from './app-link-button';
+
 export function SiteHeader({
   homeHref,
   showTryApp = true,
@@ -20,11 +22,7 @@ export function SiteHeader({
           <div className="network-pill">
             <span /> GOAT TESTNET3
           </div>
-          {showTryApp && (
-            <a className="try-app-button" href="/app">
-              Try the app
-            </a>
-          )}
+          {showTryApp && <AppLinkButton>Try the app</AppLinkButton>}
         </div>
       </div>
     </header>

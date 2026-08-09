@@ -182,6 +182,9 @@ importers:
       next:
         specifier: 16.3.0
         version: 16.3.0(@types/node@24.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      ogl:
+        specifier: 1.0.11
+        version: 1.0.11
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -2038,6 +2041,9 @@ packages:
         optional: true
       sass:
         optional: true
+
+  ogl@1.0.11:
+    resolution: {integrity: sha512-kUpC154AFfxi16pmZUK4jk3J+8zxwTWGPo03EoYA8QPbzikHoaC82n6pNTbd+oEaJonaE8aPWBlX7ad9zrqLsA==}
 
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
@@ -3934,6 +3940,8 @@ snapshots:
       - '@babel/core'
       - '@types/node'
       - babel-plugin-macros
+
+  ogl@1.0.11: {}
 
   on-exit-leak-free@2.1.2: {}
 
