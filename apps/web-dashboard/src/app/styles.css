@@ -151,23 +151,82 @@ main {
   align-items: center;
   gap: 14px;
 }
-.try-app-button {
-  padding: 9px 20px;
-  border-radius: 99px;
-  background: var(--gold);
-  color: var(--gold-ink);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
+/* SpecularButton (components/specular-button.tsx) -- a WebGL rim-light sweep around a black pill,
+   used by links to the app. Defaults below are this app's own gold-on-black recolor of
+   the upstream component; per-instance colors/geometry are still set via props (CSS custom
+   properties), these are just the fallback if a caller omits one. */
+.specular-button {
+  --sb-radius: 999px;
+  --sb-tint: #000000;
+  --sb-tint-opacity: 0.6;
+  --sb-blur: 0px;
+  --sb-text-color: var(--gold);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  margin: 0;
+  font-family: inherit;
+  font-weight: 500;
+  letter-spacing: 0.025em;
+  line-height: 1;
+  color: var(--sb-text-color);
   text-decoration: none;
-  white-space: nowrap;
-  transition:
-    filter 0.2s ease,
-    transform 0.2s ease;
+  background: color-mix(in srgb, var(--sb-tint) calc(var(--sb-tint-opacity) * 100%), transparent);
+  border-radius: var(--sb-radius);
+  backdrop-filter: blur(var(--sb-blur));
+  -webkit-backdrop-filter: blur(var(--sb-blur));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  outline: none;
+  transition: transform 0.15s ease;
 }
-.try-app-button:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+.specular-button:active {
+  transform: scale(0.97);
+}
+.specular-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--sb-text-color) 60%, transparent);
+  outline-offset: 3px;
+}
+.specular-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.specular-button:disabled:active {
+  transform: none;
+}
+.specular-button--sm {
+  font-size: 12px;
+  padding: 9px 20px;
+}
+.specular-button--md {
+  font-size: 1rem;
+  padding: 14px 30px;
+}
+.specular-button--lg {
+  font-size: 1.15rem;
+  padding: 18px 40px;
+}
+/* Canvas extends past the button so the rim glow can bleed outside the edge */
+.specular-button__fx {
+  position: absolute;
+  inset: -20px;
+  pointer-events: none;
+  z-index: 1;
+}
+.specular-button__fx canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.specular-button__label {
+  position: relative;
+  z-index: 2;
+  white-space: nowrap;
 }
 
 .hero {
@@ -355,10 +414,6 @@ h1 em {
 }
 .hero-cta {
   margin-top: 34px;
-  text-decoration: none;
-}
-.closing-cta .primary-button {
-  text-decoration: none;
 }
 
 .workflow-section {
@@ -2197,6 +2252,7 @@ footer {
   .state-in,
   .replay-demo,
   .primary-button,
+  .specular-button,
   .pipeline-label,
   .pipeline-rail-fill,
   .threat-coverage,

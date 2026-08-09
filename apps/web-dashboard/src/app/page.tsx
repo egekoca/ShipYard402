@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 
+import { AppLinkButton } from '../components/app-link-button';
 import { AnimatedWorkflow } from '../components/animated-workflow';
 import { NetworkMark } from '../components/icons';
 import { HeroRadar } from '../components/logo';
@@ -60,9 +61,9 @@ export default function HomePage() {
           <strong>What a PASS means</strong>
           <span>Tested under a named policy at a recorded time. It is not a blanket security certificate.</span>
         </div>
-        <a className="primary-button hero-cta hero-in" style={delayStyle(560)} href="/app">
+        <AppLinkButton size="md" className="hero-cta hero-in" style={delayStyle(560)}>
           Run a live test →
-        </a>
+        </AppLinkButton>
       </section>
 
       <ProblemSolution />
@@ -86,9 +87,7 @@ export default function HomePage() {
             interface.
           </p>
         </div>
-        <a className="primary-button" href="/app">
-          Try the app →
-        </a>
+        <AppLinkButton size="md">Try the app →</AppLinkButton>
       </section>
 
       <footer>
