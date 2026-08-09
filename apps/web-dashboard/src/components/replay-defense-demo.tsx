@@ -34,15 +34,9 @@ export function ReplayDefenseDemo() {
     <section className={`replay-demo${visible ? ' is-visible' : ''}`} ref={ref} aria-label="Payment-proof replay check">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">
-            <i>[04]</i> DETERMINISTIC CHECK
-          </span>
+          <span className="eyebrow">DETERMINISTIC CHECK</span>
           <h2>One receipt. One delivery.</h2>
         </div>
-        <p>
-          The same replay probe the release runner performs against a live paid endpoint: present a spent payment
-          receipt a second time and see whether the service notices.
-        </p>
       </div>
 
       <div className="replay-lanes">

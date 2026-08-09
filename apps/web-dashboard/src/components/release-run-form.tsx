@@ -20,9 +20,12 @@ import {
   GOAT_TESTNET3_CHAIN_ID,
 } from '../lib/goat-wallet';
 import { ensureSession, getStoredSessionToken } from '../lib/session';
+import GlassSurface from './GlassSurface';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
 import { ServiceOnboarding } from './service-onboarding';
+import SpotlightCard from './SpotlightCard';
+import { VerifiedText } from './verified-text';
 
 type FormState = Readonly<{
   organizationId: string;
@@ -214,187 +217,212 @@ export function ReleaseRunForm() {
     <div className="run-request">
       {form.requesterAddress && <RunHistory requesterAddress={form.requesterAddress as `0x${string}`} />}
       <div className="run-grid">
-        <form className="release-form glow-card" onSubmit={requestQuote}>
-          <div className="form-header">
-            <span className="form-header-label">Requester</span>
-            {form.requesterAddress ? (
-              <div className="wallet-connected">
-                <span className="live-pulse" aria-hidden="true" />
-                <span className="mono">
-                  {form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}
-                </span>
-              </div>
-            ) : (
-              <button className="wallet-button" type="button" disabled={busy} onClick={handleConnectWallet}>
-                {busy && <span className="spinner" aria-hidden="true" />}
-                Connect wallet
-              </button>
-            )}
-          </div>
-          <div className="form-body">
-            <div className="target-summary">
-              <p>
-                {form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
-                  <>
-                    Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on
-                    GOAT Testnet3.
-                  </>
-                ) : (
-                  <>
-                    Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding
-                    below.
-                  </>
-                )}{' '}
-                Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
-              </p>
-              <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
-                {showTechnical ? 'Hide' : 'Show'} technical identifiers
-              </button>
-              {form.requesterAddress && (
-                <ServiceOnboarding
-                  requesterAddress={form.requesterAddress as `0x${string}`}
-                  onOnboarded={handleOnboarded}
-                />
-              )}
-            </div>
-            {showTechnical && (
-              <div className="technical-fields">
-                <Field
-                  label="Organization ID"
-                  value={form.organizationId}
-                  onChange={(value) => update('organizationId', value)}
-                  placeholder="UUID from onboarding"
-                />
-                <Field
-                  label="Target agent ID"
-                  value={form.targetAgentId}
-                  onChange={(value) => update('targetAgentId', value)}
-                  placeholder="ERC-8004 ID or external identity"
-                />
-                <Field
-                  label="Target service ID"
-                  value={form.targetServiceId}
-                  onChange={(value) => update('targetServiceId', value)}
-                  placeholder="Registered service ID"
-                />
-                <Field
-                  label="Version hash"
-                  value={form.targetVersionHash}
-                  onChange={(value) => update('targetVersionHash', value)}
-                  placeholder="0x + 32 bytes"
-                />
-                <Field
-                  label="Policy hash"
-                  value={form.policyHash}
-                  onChange={(value) => update('policyHash', value)}
-                  placeholder="0x + 32 bytes"
-                />
-                <Field
-                  label="Paid x402 endpoint"
-                  value={form.x402Endpoint}
-                  onChange={(value) => update('x402Endpoint', value)}
-                  placeholder="https://service.example/paid"
-                  type="url"
-                />
-                <Field
-                  label="OpenAPI document"
-                  value={form.openApiUrl}
-                  onChange={(value) => update('openApiUrl', value)}
-                  placeholder="https://service.example/openapi.json"
-                  type="url"
-                />
-                <Field
-                  label="Maximum budget (atomic units)"
-                  value={form.maximumCustomerBudgetAtomic}
-                  onChange={(value) => update('maximumCustomerBudgetAtomic', value)}
-                  placeholder="Token-specific atomic amount"
-                  inputMode="numeric"
-                />
-              </div>
-            )}
-          </div>
-          <div className="form-footer">
-            <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
-              {busy && <span className="spinner" aria-hidden="true" />}
-              {!form.requesterAddress
-                ? 'Connect a wallet first'
-                : busy
-                  ? 'Checking capability…'
-                  : 'Request transparent quote'}
-            </button>
-          </div>
-        </form>
-
-        <aside className="quote-panel glow-card" aria-live="polite">
-          <span className="panel-label">ECONOMIC COMMITMENT</span>
-          {!quote && !error && (
-            <div className="empty-state state-in">
-              <div className="radar">
-                <span className="radar-sweep" />
-              </div>
-              <h3>No fabricated quote</h3>
-              <p>
-                A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address
-                capability.
-              </p>
-            </div>
-          )}
-          {error && (
-            <div className="error-card state-in" key={error}>
-              <strong>Request blocked</strong>
-              <p>{error}</p>
-            </div>
-          )}
-          {quote && (
-            <div className="quote-result state-in" key={quote.id}>
-              <div className="quote-status">
-                <span>HYPOTHESIS</span>
-                {!run && quoteExpiresInMs !== null && (
-                  <small
-                    className={quoteExpiresInMs <= 60_000 ? 'quote-countdown quote-countdown--low' : 'quote-countdown'}
-                  >
-                    {quoteExpired ? 'expired' : `expires in ${formatCountdown(quoteExpiresInMs)}`}
-                  </small>
-                )}
-              </div>
-              <p className="amount">
-                {formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)}{' '}
-                <small>{quote.capabilitySnapshot.tokenSymbol}</small>
-              </p>
-              <dl>
-                <div>
-                  <dt>Network</dt>
-                  <dd>GOAT / {quote.capabilitySnapshot.chainId}</dd>
-                </div>
-                <div>
-                  <dt>Mode</dt>
-                  <dd>{quote.capabilitySnapshot.mode}</dd>
-                </div>
-                <div>
-                  <dt>Refundable tool budget</dt>
-                  <dd>{quote.refundableToolBudgetAtomic}</dd>
-                </div>
-                <div>
-                  <dt>Commitment</dt>
-                  <dd className="mono">{shortHash(quote.quoteCommitment)}</dd>
-                </div>
-              </dl>
-              {quoteExpired && !run ? (
-                <div className="quote-expired-notice">
-                  <p>This quote expired before a run was created. Request a fresh one to continue.</p>
-                  <button className="primary-button" type="button" onClick={() => setQuote(null)}>
-                    Request a new quote
-                  </button>
+        <SpotlightCard className="app-card-spotlight app-form-spotlight" spotlightColor="rgba(240, 196, 25, 0.12)">
+          <form className="release-form" onSubmit={requestQuote}>
+            <div className="form-header">
+              <span className="form-header-label">Requester</span>
+              {form.requesterAddress ? (
+                <div className="wallet-connected">
+                  <span className="live-pulse" aria-hidden="true" />
+                  <span className="mono">
+                    {form.requesterAddress.slice(0, 6)}…{form.requesterAddress.slice(-4)}
+                  </span>
                 </div>
               ) : (
-                <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
+                <button className="wallet-button" type="button" disabled={busy} onClick={handleConnectWallet}>
                   {busy && <span className="spinner" aria-hidden="true" />}
-                  {run ? `Run ${progress.run?.run.status ?? run.run.status}` : 'Create idempotent run'}
+                  Connect wallet
                 </button>
               )}
             </div>
-          )}
-        </aside>
+            <div className="form-body">
+              <div className="target-summary">
+                <p>
+                  {form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
+                    <>
+                      Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on
+                      GOAT Testnet3.
+                    </>
+                  ) : (
+                    <>
+                      Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding
+                      below.
+                    </>
+                  )}{' '}
+                  Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
+                </p>
+                <button type="button" className="link-toggle" onClick={() => setShowTechnical((current) => !current)}>
+                  {showTechnical ? 'Hide' : 'Show'} technical identifiers
+                </button>
+                {form.requesterAddress && (
+                  <ServiceOnboarding
+                    requesterAddress={form.requesterAddress as `0x${string}`}
+                    onOnboarded={handleOnboarded}
+                  />
+                )}
+              </div>
+              {showTechnical && (
+                <div className="technical-fields">
+                  <Field
+                    label="Organization ID"
+                    value={form.organizationId}
+                    onChange={(value) => update('organizationId', value)}
+                    placeholder="UUID from onboarding"
+                  />
+                  <Field
+                    label="Target agent ID"
+                    value={form.targetAgentId}
+                    onChange={(value) => update('targetAgentId', value)}
+                    placeholder="ERC-8004 ID or external identity"
+                  />
+                  <Field
+                    label="Target service ID"
+                    value={form.targetServiceId}
+                    onChange={(value) => update('targetServiceId', value)}
+                    placeholder="Registered service ID"
+                  />
+                  <Field
+                    label="Version hash"
+                    value={form.targetVersionHash}
+                    onChange={(value) => update('targetVersionHash', value)}
+                    placeholder="0x + 32 bytes"
+                  />
+                  <Field
+                    label="Policy hash"
+                    value={form.policyHash}
+                    onChange={(value) => update('policyHash', value)}
+                    placeholder="0x + 32 bytes"
+                  />
+                  <Field
+                    label="Paid x402 endpoint"
+                    value={form.x402Endpoint}
+                    onChange={(value) => update('x402Endpoint', value)}
+                    placeholder="https://service.example/paid"
+                    type="url"
+                  />
+                  <Field
+                    label="OpenAPI document"
+                    value={form.openApiUrl}
+                    onChange={(value) => update('openApiUrl', value)}
+                    placeholder="https://service.example/openapi.json"
+                    type="url"
+                  />
+                  <Field
+                    label="Maximum budget (atomic units)"
+                    value={form.maximumCustomerBudgetAtomic}
+                    onChange={(value) => update('maximumCustomerBudgetAtomic', value)}
+                    placeholder="Token-specific atomic amount"
+                    inputMode="numeric"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="form-footer">
+              <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
+                {busy && <span className="spinner" aria-hidden="true" />}
+                {!form.requesterAddress
+                  ? 'Connect a wallet first'
+                  : busy
+                    ? 'Checking capability…'
+                    : 'Request transparent quote'}
+              </button>
+            </div>
+          </form>
+        </SpotlightCard>
+
+        <SpotlightCard className="app-card-spotlight app-quote-spotlight" spotlightColor="rgba(240, 196, 25, 0.15)">
+          <aside className="quote-panel" aria-live="polite">
+            <span className="panel-label">ECONOMIC COMMITMENT</span>
+            {!quote && !error && (
+              <div className="empty-state state-in">
+                <div className="radar">
+                  <span className="radar-sweep" />
+                </div>
+                <h3>No fabricated quote</h3>
+                <p>
+                  A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address
+                  capability.
+                </p>
+              </div>
+            )}
+            {error && (
+              <div className="error-card state-in" key={error}>
+                <strong>Request blocked</strong>
+                <p>{error}</p>
+              </div>
+            )}
+            {quote && (
+              <div className="quote-result state-in" key={quote.id}>
+                <GlassSurface
+                  width="100%"
+                  height={42}
+                  borderRadius={10}
+                  borderWidth={0.045}
+                  brightness={16}
+                  opacity={0.78}
+                  blur={7}
+                  displace={0.15}
+                  backgroundOpacity={0.06}
+                  saturation={1.12}
+                  distortionScale={-55}
+                  redOffset={0}
+                  greenOffset={0}
+                  blueOffset={0}
+                  mixBlendMode="normal"
+                  className="quote-status quote-status-glass"
+                >
+                  <span>HYPOTHESIS</span>
+                  {!run && quoteExpiresInMs !== null && (
+                    <small
+                      className={
+                        quoteExpiresInMs <= 60_000 ? 'quote-countdown quote-countdown--low' : 'quote-countdown'
+                      }
+                    >
+                      {quoteExpired ? 'expired' : `expires in ${formatCountdown(quoteExpiresInMs)}`}
+                    </small>
+                  )}
+                </GlassSurface>
+                <p className="amount">
+                  {formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)}{' '}
+                  <small>{quote.capabilitySnapshot.tokenSymbol}</small>
+                </p>
+                <dl>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>GOAT / {quote.capabilitySnapshot.chainId}</dd>
+                  </div>
+                  <div>
+                    <dt>Mode</dt>
+                    <dd>{quote.capabilitySnapshot.mode}</dd>
+                  </div>
+                  <div>
+                    <dt>Refundable tool budget</dt>
+                    <dd>{quote.refundableToolBudgetAtomic}</dd>
+                  </div>
+                  <div>
+                    <dt>Commitment</dt>
+                    <dd className="mono">
+                      <VerifiedText text={shortHash(quote.quoteCommitment)} />
+                    </dd>
+                  </div>
+                </dl>
+                {quoteExpired && !run ? (
+                  <div className="quote-expired-notice">
+                    <p>This quote expired before a run was created. Request a fresh one to continue.</p>
+                    <button className="primary-button" type="button" onClick={() => setQuote(null)}>
+                      Request a new quote
+                    </button>
+                  </div>
+                ) : (
+                  <button className="primary-button" type="button" disabled={busy || Boolean(run)} onClick={createRun}>
+                    {busy && <span className="spinner" aria-hidden="true" />}
+                    {run ? `Run ${progress.run?.run.status ?? run.run.status}` : 'Create idempotent run'}
+                  </button>
+                )}
+              </div>
+            )}
+          </aside>
+        </SpotlightCard>
       </div>
 
       {run && (

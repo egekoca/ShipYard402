@@ -1,8 +1,9 @@
 import type { CSSProperties } from 'react';
 
+import AnimatedContent from '../components/AnimatedContent';
+import LightRays from '../components/LightRays';
 import { AppLinkButton } from '../components/app-link-button';
 import { AnimatedWorkflow } from '../components/animated-workflow';
-import { NetworkMark } from '../components/icons';
 import { HeroRadar } from '../components/logo';
 import { ProblemSolution } from '../components/problem-solution';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
@@ -37,31 +38,19 @@ export default function HomePage() {
 
       <section className="hero" id="top">
         <HeroRadar className="hero-radar" />
-        <div className="hero-network-badge hero-in" style={delayStyle(0)}>
-          <NetworkMark className="hero-network-icon" />
-          GOAT TESTNET3
-        </div>
-        <div className="eyebrow hero-in" style={delayStyle(40)}>
-          <i>[00]</i> AUTONOMOUS RELEASE ASSURANCE
-        </div>
         <h1>
-          <span className="hero-in" style={delayStyle(80)}>
+          <span className="hero-in" style={delayStyle(40)}>
             <ShimmerText>Prove the paid path.</ShimmerText>
           </span>
           <br />
-          <em className="hero-in" style={delayStyle(200)}>
+          <em className="hero-in" style={delayStyle(80)}>
             <ShimmerText>Before users find the drift.</ShimmerText>
           </em>
         </h1>
-        <p className="hero-copy hero-in" style={delayStyle(340)}>
-          Real x402 purchases, deterministic settlement checks, signed evidence, and expiry-bound attestations for one
-          exact service version.
+        <p className="hero-copy hero-in" style={delayStyle(200)}>
+          Real x402 purchases. Signed evidence. One exact service version.
         </p>
-        <div className="scope-note hero-in" style={delayStyle(460)}>
-          <strong>What a PASS means</strong>
-          <span>Tested under a named policy at a recorded time. It is not a blanket security certificate.</span>
-        </div>
-        <AppLinkButton size="md" className="hero-cta hero-in" style={delayStyle(560)}>
+        <AppLinkButton size="md" className="hero-cta hero-in" style={delayStyle(300)}>
           Run a live test →
         </AppLinkButton>
       </section>
@@ -75,24 +64,39 @@ export default function HomePage() {
       <ReplayDefenseDemo />
 
       <section className="run-section closing-cta">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">
-              <i>[05]</i> RELEASE GATE
-            </span>
-            <h2>Request a funded run</h2>
+        <LightRays
+          raysOrigin="top-right"
+          raysColor="#f0c419"
+          raysSpeed={0.16}
+          lightSpread={0.72}
+          rayLength={1.5}
+          fadeDistance={0.82}
+          saturation={0.78}
+          followMouse
+          mouseInfluence={0.035}
+          noiseAmount={0.025}
+          distortion={0.035}
+          className="closing-light-rays"
+        />
+        <AnimatedContent
+          distance={22}
+          duration={0.72}
+          threshold={0.18}
+          animateOpacity={false}
+          className="closing-cta-content"
+        >
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">RELEASE GATE</span>
+              <h2>Request a funded run</h2>
+            </div>
           </div>
-          <p>
-            The quote is created from a verified merchant capability. No token or recipient is assumed by this
-            interface.
-          </p>
-        </div>
-        <AppLinkButton size="md">Try the app →</AppLinkButton>
+          <AppLinkButton size="md">Try the app →</AppLinkButton>
+        </AnimatedContent>
       </section>
 
       <footer>
         <span>SHIPYARD402 / execution evidence, not assurance theater</span>
-        <span>Frontend contains no merchant credentials or signer access.</span>
       </footer>
     </main>
   );

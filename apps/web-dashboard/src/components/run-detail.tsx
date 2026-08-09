@@ -8,6 +8,7 @@ import { connectWallet, formatWalletError, getAuthorizedAccount } from '../lib/g
 import { ensureSession } from '../lib/session';
 import { RunProgressPanels } from './run-progress-panels';
 import { SiteHeader } from './site-header';
+import { VerifiedText } from './verified-text';
 
 export function RunDetail({ runId }: Readonly<{ runId: string }>) {
   const { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal } = useRunProgress(runId);
@@ -62,7 +63,9 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
         <span className="eyebrow">
           <i>[RUN]</i> RELEASE RUN{!isTerminal && run ? <span className="live-pulse" aria-hidden="true" /> : null}
         </span>
-        <h1 className="mono run-detail-id">{runId}</h1>
+        <h1 className="mono run-detail-id">
+          <VerifiedText text={runId} />
+        </h1>
         {lastPolledAt && (
           <p className="run-detail-polled">
             Last updated {lastPolledAt.toLocaleTimeString()}
@@ -112,7 +115,6 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
 
       <footer>
         <span>SHIPYARD402 / execution evidence, not assurance theater</span>
-        <span>Frontend contains no merchant credentials or signer access.</span>
       </footer>
     </main>
   );
