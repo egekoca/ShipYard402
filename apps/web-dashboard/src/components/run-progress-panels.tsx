@@ -13,6 +13,7 @@ import {
 import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
+import { VerifiedText } from './verified-text';
 import { WalletPayPanel } from './wallet-pay-panel';
 
 const STEPS = [
@@ -103,7 +104,9 @@ export function RunProgressPanels({
 
       {isTerminal && (
         <div className={`run-verdict run-verdict--${run.run.status.toLowerCase()} state-in`}>
-          <span className="run-verdict-label">{run.run.status.replace('DELIVERED_', '')}</span>
+          <span className="run-verdict-label">
+            <VerifiedText text={run.run.status.replace('DELIVERED_', '')} />
+          </span>
           <p>
             Run {runId} reached a terminal state. {manifest ? `Scenarios: ${manifest.scenarios.join(', ')}.` : ''}
           </p>
@@ -112,7 +115,6 @@ export function RunProgressPanels({
 
       <div className="run-detail-grid">
         <Panel
-          index="01"
           label="PAYMENT"
           state={paymentState}
           expanded={Boolean(expanded.payment)}
@@ -165,7 +167,6 @@ export function RunProgressPanels({
         </Panel>
 
         <Panel
-          index="02"
           label="AI RISK PLAN"
           state={planState}
           expanded={Boolean(expanded.plan)}
@@ -231,7 +232,6 @@ export function RunProgressPanels({
         </Panel>
 
         <Panel
-          index="03"
           label="EVIDENCE"
           state={evidenceState}
           expanded={Boolean(expanded.evidence)}
@@ -277,7 +277,9 @@ export function RunProgressPanels({
                 </div>
                 <div>
                   <dt>Evidence root</dt>
-                  <dd className="mono">{shortHash(evidence.evidenceRoot)}</dd>
+                  <dd className="mono">
+                    <VerifiedText text={shortHash(evidence.evidenceRoot)} />
+                  </dd>
                 </div>
                 <div>
                   <dt>Evidence pack</dt>
@@ -335,7 +337,6 @@ export function RunProgressPanels({
         </Panel>
 
         <Panel
-          index="04"
           label="ON-CHAIN ATTESTATION"
           state={attestationState}
           expanded={Boolean(expanded.attestation)}
@@ -365,7 +366,9 @@ export function RunProgressPanels({
             <dl>
               <div>
                 <dt>Registry</dt>
-                <dd className="mono">{shortHash(attestation.registryAddress)}</dd>
+                <dd className="mono">
+                  <VerifiedText text={shortHash(attestation.registryAddress)} />
+                </dd>
               </div>
               <div>
                 <dt>Transaction</dt>
@@ -376,7 +379,7 @@ export function RunProgressPanels({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {shortHash(attestation.transactionHash)} ↗
+                    <VerifiedText text={shortHash(attestation.transactionHash)} /> ↗
                   </a>
                 </dd>
               </div>
@@ -393,7 +396,6 @@ export function RunProgressPanels({
 }
 
 function Panel({
-  index,
   label,
   state,
   summary,
@@ -402,7 +404,6 @@ function Panel({
   onToggle,
   children,
 }: Readonly<{
-  index: string;
   label: string;
   state: PanelState;
   summary: string;
@@ -430,9 +431,7 @@ function Panel({
         aria-expanded={canExpand && expanded}
         disabled={!canExpand}
       >
-        <span className="panel-label">
-          <i>[{index}]</i> {label}
-        </span>
+        <span className="panel-label">{label}</span>
         <span className="panel-summary">
           {state === 'active' && <RadarMark className="panel-status-icon" />}
           {state === 'ready' && (
