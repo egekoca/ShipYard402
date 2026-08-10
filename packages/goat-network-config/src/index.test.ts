@@ -9,6 +9,7 @@ import {
   flowRuntimeCapabilitySchema,
   parseBoundedInt,
   parseMerchantCapability,
+  resolveGoatMerchantProfile,
   resolveNetwork,
   resolveRpcUrl,
 } from './index.js';
@@ -142,6 +143,78 @@ describe('resolveRpcUrl', () => {
     expect(() => resolveRpcUrl('mainnet', { mainnetRpcUrl: 'https://attacker.example' }, throwTestError)).toThrow(
       TestConfigurationError,
     );
+  });
+});
+
+describe('resolveGoatMerchantProfile', () => {
+  const merchantFields = {
+    API_KEY: 'key',
+    API_SECRET: 'secret',
+    TOKEN_ADDRESS: '0x1000000000000000000000000000000000000001',
+    TOKEN_SYMBOL: 'USDC.e',
+    TOKEN_DECIMALS: '6',
+    RECEIVING_ADDRESS: '0x2000000000000000000000000000000000000002',
+    MINIMUM_ATOMIC_AMOUNT: '1',
+    MAXIMUM_ATOMIC_AMOUNT: '1000000',
+  } as const;
+
+  function profile(prefix: string, merchantId: string, apiUrl: string): Record<string, string> {
+    return {
+      [`${prefix}_API_URL`]: apiUrl,
+      [`${prefix}_MERCHANT_ID`]: merchantId,
+      ...Object.fromEntries(Object.entries(merchantFields).map(([suffix, value]) => [`${prefix}_${suffix}`, value])),
+    };
+  }
+
+  it('keeps Testnet3 and mainnet profiles together but selects only the active network', () => {
+    const environment = {
+      ...profile('GOATX402_TESTNET3', 'testnet-merchant', GOAT_TESTNET3.flowApiUrl),
+      ...profile('GOATX402_MAINNET', 'mainnet-merchant', GOAT_MAINNET.flowApiUrl),
+    };
+
+    expect(resolveGoatMerchantProfile('testnet3', environment, throwTestError).merchant?.merchantId).toBe(
+      'testnet-merchant',
+    );
+    expect(resolveGoatMerchantProfile('mainnet', environment, throwTestError).merchant?.merchantId).toBe(
+      'mainnet-merchant',
+    );
+  });
+
+  it('retains the legacy single-profile group as a backwards-compatible fallback', () => {
+    const resolved = resolveGoatMerchantProfile(
+      'testnet3',
+      profile('GOATX402', 'legacy-testnet-merchant', GOAT_TESTNET3.flowApiUrl),
+      throwTestError,
+    );
+
+    expect(resolved.merchant?.merchantId).toBe('legacy-testnet-merchant');
+    expect(resolved.apiUrlField).toBe('GOATX402_API_URL');
+  });
+
+  it('rejects an incomplete scoped profile instead of mixing it with a complete legacy profile', () => {
+    const environment = {
+      ...profile('GOATX402', 'legacy-mainnet-merchant', GOAT_MAINNET.flowApiUrl),
+      GOATX402_MAINNET_API_URL: GOAT_MAINNET.flowApiUrl,
+      GOATX402_MAINNET_MERCHANT_ID: 'partial-mainnet-merchant',
+    };
+
+    expect(() => resolveGoatMerchantProfile('mainnet', environment, throwTestError)).toThrow(TestConfigurationError);
+    try {
+      resolveGoatMerchantProfile('mainnet', environment, throwTestError);
+    } catch (error) {
+      expect((error as TestConfigurationError).fields).toContain('GOATX402_MAINNET_API_KEY');
+    }
+  });
+
+  it('ignores a configured profile for the unselected network', () => {
+    const resolved = resolveGoatMerchantProfile(
+      'testnet3',
+      profile('GOATX402_MAINNET', 'mainnet-merchant', GOAT_MAINNET.flowApiUrl),
+      throwTestError,
+    );
+
+    expect(resolved.merchant).toBeUndefined();
+    expect(resolved.expectedMerchantFields).toContain('GOATX402_TESTNET3_MERCHANT_ID');
   });
 });
 

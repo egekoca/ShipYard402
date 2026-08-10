@@ -79,6 +79,104 @@ export abstract class ConfigurationError extends Error {
 
 type ErrorFactory = (message: string, fields: readonly string[]) => Error;
 
+const goatMerchantProfileFields = [
+  ['MERCHANT_ID', 'merchantId'],
+  ['API_KEY', 'apiKey'],
+  ['API_SECRET', 'apiSecret'],
+  ['TOKEN_ADDRESS', 'tokenAddress'],
+  ['TOKEN_SYMBOL', 'tokenSymbol'],
+  ['TOKEN_DECIMALS', 'tokenDecimals'],
+  ['RECEIVING_ADDRESS', 'receivingAddress'],
+  ['MINIMUM_ATOMIC_AMOUNT', 'minimumAtomicAmount'],
+  ['MAXIMUM_ATOMIC_AMOUNT', 'maximumAtomicAmount'],
+] as const;
+
+export const GOAT_X402_LEGACY_ENV_NAMES = Object.freeze([
+  'GOATX402_API_URL',
+  ...goatMerchantProfileFields.map(([suffix]) => `GOATX402_${suffix}`),
+]);
+
+export const GOAT_X402_TESTNET3_ENV_NAMES = Object.freeze([
+  'GOATX402_TESTNET3_API_URL',
+  ...goatMerchantProfileFields.map(([suffix]) => `GOATX402_TESTNET3_${suffix}`),
+]);
+
+export const GOAT_X402_MAINNET_ENV_NAMES = Object.freeze([
+  'GOATX402_MAINNET_API_URL',
+  ...goatMerchantProfileFields.map(([suffix]) => `GOATX402_MAINNET_${suffix}`),
+]);
+
+export const GOAT_X402_ALL_ENV_NAMES = Object.freeze([
+  ...GOAT_X402_LEGACY_ENV_NAMES,
+  ...GOAT_X402_TESTNET3_ENV_NAMES,
+  ...GOAT_X402_MAINNET_ENV_NAMES,
+]);
+
+export type GoatMerchantProfile = Readonly<{
+  merchantId: string;
+  apiKey: string;
+  apiSecret: string;
+  tokenAddress: string;
+  tokenSymbol: string;
+  tokenDecimals: string;
+  receivingAddress: string;
+  minimumAtomicAmount: string;
+  maximumAtomicAmount: string;
+}>;
+
+export type ResolvedGoatMerchantProfile = Readonly<{
+  apiUrl: string;
+  apiUrlField: string;
+  expectedMerchantFields: readonly string[];
+  merchant?: GoatMerchantProfile;
+}>;
+
+/**
+ * Selects one complete GOAT Flow merchant profile for the active network. Environment-scoped
+ * fields win over the legacy GOATX402_* group, while an incomplete scoped group is rejected
+ * instead of being silently combined with legacy values from another network.
+ */
+export function resolveGoatMerchantProfile(
+  environment: 'mainnet' | 'testnet3',
+  source: Readonly<Record<string, string | undefined>>,
+  createError: ErrorFactory,
+): ResolvedGoatMerchantProfile {
+  const network = resolveNetwork(environment);
+  const isProvided = (field: string): boolean => {
+    const value = source[field];
+    return value !== undefined && value.length > 0;
+  };
+  const scopedPrefix = environment === 'mainnet' ? 'GOATX402_MAINNET' : 'GOATX402_TESTNET3';
+  const scopedApiUrlField = `${scopedPrefix}_API_URL`;
+  const scopedMerchantFields = goatMerchantProfileFields.map(([suffix]) => `${scopedPrefix}_${suffix}`);
+  const scopedProvided = [scopedApiUrlField, ...scopedMerchantFields].some(isProvided);
+  const legacyProvided = GOAT_X402_LEGACY_ENV_NAMES.some(isProvided);
+  const prefix = scopedProvided || !legacyProvided ? scopedPrefix : 'GOATX402';
+  const apiUrlField = `${prefix}_API_URL`;
+  const merchantFields = goatMerchantProfileFields.map(([suffix]) => `${prefix}_${suffix}`);
+  const apiUrl = source[apiUrlField] ?? network.flowApiUrl;
+
+  assertExactUrl(apiUrl, network.flowApiUrl, apiUrlField, createError);
+
+  const providedMerchantFields = merchantFields.filter(isProvided);
+  if (providedMerchantFields.length === 0) {
+    return { apiUrl, apiUrlField, expectedMerchantFields: merchantFields };
+  }
+  if (providedMerchantFields.length !== merchantFields.length) {
+    const missing = merchantFields.filter((field) => !isProvided(field));
+    throw createError(
+      `${environment} GOAT x402 merchant configuration must be provided as one complete group`,
+      missing,
+    );
+  }
+
+  const merchant = Object.fromEntries(
+    goatMerchantProfileFields.map(([suffix, property]) => [property, source[`${prefix}_${suffix}`] as string]),
+  ) as GoatMerchantProfile;
+
+  return { apiUrl, apiUrlField, expectedMerchantFields: merchantFields, merchant };
+}
+
 export function assertPostgresUrl(value: string, createError: ErrorFactory): void {
   let valid: boolean;
   try {
