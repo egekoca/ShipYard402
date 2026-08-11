@@ -1,3 +1,4 @@
+import type { BotChainRuntimeCapability } from '@shipyard402/bot-chain-network-config';
 import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 
 export type GoatFlowOrderStatus =
@@ -8,11 +9,17 @@ export type GoatFlowOrderStatus =
   | 'EXPIRED'
   | 'CANCELLED';
 
+// A merchant capability describes one reviewed way to accept payment for a run: which chain,
+// which token, which receiving address. GOAT Flow capabilities are discovered from GOAT's own
+// merchant API; BOT Chain has no such API, so its capability is declared directly from static
+// config (see @shipyard402/bot-chain-network-config) and verified purely on-chain instead.
+export type MerchantCapability = FlowRuntimeCapability | BotChainRuntimeCapability;
+
 export type CreateMerchantOrder = Readonly<{
   dappOrderId: string;
   payerAddress: `0x${string}`;
   atomicAmount: string;
-  capability: FlowRuntimeCapability;
+  capability: MerchantCapability;
 }>;
 
 export type X402PaymentRequiredChallenge = Readonly<{
@@ -59,7 +66,7 @@ export type MerchantPaymentProof = Readonly<{
 }>;
 
 export interface X402MerchantAdapter {
-  discoverRuntimeCapabilities(): Promise<readonly FlowRuntimeCapability[]>;
+  discoverRuntimeCapabilities(): Promise<readonly MerchantCapability[]>;
   createOrder(input: CreateMerchantOrder, signal?: AbortSignal): Promise<MerchantOrder>;
   getOrderStatus(orderId: string, signal?: AbortSignal): Promise<MerchantOrder>;
   getOrderProof(orderId: string, signal?: AbortSignal): Promise<MerchantPaymentProof>;
