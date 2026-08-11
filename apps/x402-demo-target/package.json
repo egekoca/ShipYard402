@@ -13,8 +13,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/rate-limit": "11.2.0",
+    "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/protected-delivery-runner": "workspace:*",
+    "@shipyard402/x402-payments": "workspace:*",
     "fastify": "5.11.2",
     "viem": "2.55.10",
     "zod": "3.25.76"

@@ -1,0 +1,8 @@
+# Vercel resolves this relative to the project root directory, and this project's root is
+# apps/x402-demo-target with "include files outside root" on -- so the repo-root ignore file does
+# not cover it. Without these lines the repo's live .env files (real keys) would be uploaded into
+# a third-party build environment.
+.env
+.env.*
+.local
+evidence-private

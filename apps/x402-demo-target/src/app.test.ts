@@ -1,460 +1,203 @@
-import { verifyResponseSignature } from '@shipyard402/protected-delivery-runner';
-import { createHash } from 'node:crypto';
-import { privateKeyToAccount } from 'viem/accounts';
+import {
+  buildExactEvmRequirements,
+  eip155Network,
+  encodePaymentHeader,
+  signExactEvmAuthorization,
+  X402_VERSION,
+  type ExactEvmPayload,
+  type ExactEvmRequirements,
+} from '@shipyard402/x402-payments';
 import { afterEach, describe, expect, it } from 'vitest';
+import { privateKeyToAccount } from 'viem/accounts';
 
-import { createDemoTargetApp, PAID_RESOURCE_ROUTE } from './app.js';
-import type { ConfirmedNativeTransfer, NativeTransferReader } from './native-payment-verifier.js';
-import { purchaseClaimMessage } from './purchase-claim.js';
-import { issueDemoReceipt, verifyDemoReceipt } from './receipt.js';
+import { createDemoTargetApp, PAID_RESOURCE_ROUTE, PAYMENT_RESPONSE_HEADER, type DemoTargetMode } from './app.js';
+import { SettlementError, type X402Settler } from './settler.js';
 
-const SECRET = 'a'.repeat(32);
-const NOW = new Date('2026-08-05T00:00:00.000Z');
-const RECEIVING_ADDRESS = '0x3000000000000000000000000000000000000003' as const;
-const TX_HASH = `0x${'bb'.repeat(32)}` as const;
-// A syntactically valid (but never-recovering) signature, for tests whose rejection happens
-// before signature verification is ever reached.
-const DUMMY_SIGNATURE = `0x${'11'.repeat(65)}` as const;
+const CHAIN_ID = 48816;
+const ASSET = '0x1111111111111111111111111111111111111111' as const;
+const PAY_TO = '0x2222222222222222222222222222222222222222' as const;
+const AMOUNT = '1000';
+const TOKEN_NAME = 'Shipyard Testnet Token';
+const TOKEN_VERSION = '1';
+const payer = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d');
 
-const PAYER_KEY = `0x${'22'.repeat(32)}` as const;
-const PAYER_ADDRESS = privateKeyToAccount(PAYER_KEY).address;
+/** Stands in for the EIP-3009 token at settlement: succeeds once per (from, nonce), then reverts as
+ * ALREADY_SETTLED -- exactly the on-chain replay guard the Foundry test proves the real token has. */
+class FakeSettler implements X402Settler {
+  readonly used = new Set<string>();
+  unavailable = false;
 
-async function signPurchaseClaim(transactionHash: string, key: `0x${string}` = PAYER_KEY): Promise<`0x${string}`> {
-  return privateKeyToAccount(key).signMessage({ message: purchaseClaimMessage(transactionHash) });
+  async settle(payload: ExactEvmPayload): Promise<Readonly<{ transactionHash: `0x${string}` }>> {
+    if (this.unavailable) throw new SettlementError('SETTLEMENT_UNAVAILABLE', 'settler down');
+    const key = `${payload.authorization.from}:${payload.authorization.nonce}`.toLowerCase();
+    if (this.used.has(key)) throw new SettlementError('ALREADY_SETTLED', 'authorization already used');
+    this.used.add(key);
+    return { transactionHash: `0x${'ab'.repeat(32)}` };
+  }
 }
 
-function fakeTransferReader(transfer: ConfirmedNativeTransfer | null): NativeTransferReader {
-  return { getConfirmedTransfer: async () => transfer };
-}
+const requirements: ExactEvmRequirements = buildExactEvmRequirements({
+  chainId: CHAIN_ID,
+  amountAtomic: AMOUNT,
+  resource: 'http://localhost/paid/resource',
+  payTo: PAY_TO,
+  asset: ASSET,
+  tokenName: TOKEN_NAME,
+  tokenVersion: TOKEN_VERSION,
+});
 
-function confirmedTransfer(overrides: Partial<ConfirmedNativeTransfer> = {}): ConfirmedNativeTransfer {
-  return {
-    transactionHash: TX_HASH,
-    status: 'success',
-    from: PAYER_ADDRESS,
-    to: RECEIVING_ADDRESS,
-    valueWei: 1_000_000_000_000n,
-    confirmations: 3n,
-    ...overrides,
-  };
-}
-
-describe('x402 demo target app', () => {
-  let app: ReturnType<typeof createDemoTargetApp> | undefined;
-
-  afterEach(async () => {
-    await app?.close();
-    app = undefined;
+async function paymentHeader(
+  overrides: Partial<{ nonce: `0x${string}`; tamperValue: string; validAfterSec: number; validBeforeSec: number }> = {},
+): Promise<string> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payload = await signExactEvmAuthorization({
+    requirements,
+    from: payer.address,
+    nonce: overrides.nonce ?? `0x${randomNonce()}`,
+    validAfterSec: overrides.validAfterSec ?? nowSec - 60,
+    validBeforeSec: overrides.validBeforeSec ?? nowSec + 600,
+    signTypedData: (args) => payer.signTypedData(args),
   });
+  const finalPayload: ExactEvmPayload = overrides.tamperValue
+    ? { ...payload, authorization: { ...payload.authorization, value: overrides.tamperValue } }
+    : payload;
+  return encodePaymentHeader({
+    x402Version: X402_VERSION,
+    scheme: 'exact',
+    network: eip155Network(CHAIN_ID),
+    payload: finalPayload,
+  });
+}
 
-  it('rejects a request with no payment receipt', async () => {
-    app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW });
+function randomNonce(): string {
+  let out = '';
+  for (let i = 0; i < 64; i += 1) out += Math.floor(Math.random() * 16).toString(16);
+  return out;
+}
+
+function makeApp(mode: DemoTargetMode, settler: X402Settler) {
+  return createDemoTargetApp({
+    mode,
+    payment: {
+      chainId: CHAIN_ID,
+      asset: ASSET,
+      payTo: PAY_TO,
+      amountAtomic: AMOUNT,
+      tokenName: TOKEN_NAME,
+      tokenVersion: TOKEN_VERSION,
+      settler,
+    },
+  });
+}
+
+let app: ReturnType<typeof createDemoTargetApp> | undefined;
+afterEach(async () => {
+  await app?.close();
+  app = undefined;
+});
+
+describe('x402 demo target — the 402 challenge', () => {
+  it('answers an unpaid request with a 402 carrying real payment requirements', async () => {
+    app = makeApp('V2_PROTECTED', new FakeSettler());
     const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
     expect(response.statusCode).toBe(402);
+    const body = response.json();
+    expect(body.error).toBe('PAYMENT_REQUIRED');
+    expect(body.accepts[0]).toMatchObject({ scheme: 'exact', network: 'eip155:48816', maxAmountRequired: AMOUNT });
+    expect(body.accepts[0].payTo.toLowerCase()).toBe(PAY_TO);
   });
 
-  it('rejects an invalid payment receipt', async () => {
-    app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW });
+  it('rejects a malformed X-PAYMENT header without touching settlement', async () => {
+    const settler = new FakeSettler();
+    app = makeApp('V2_PROTECTED', settler);
     const response = await app.inject({
       method: 'GET',
       url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': 'garbage' },
+      headers: { 'x-payment': 'not-a-valid-header' },
     });
     expect(response.statusCode).toBe(402);
+    expect(response.json().error).toBe('MALFORMED_PAYMENT_HEADER');
+    expect(settler.used.size).toBe(0);
   });
 
-  it('V1_VULNERABLE: delivers the resource on the first presentation and again on replay', async () => {
-    app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW });
-    const token = issueDemoReceipt(
-      { orderId: 'v1-order', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
-      SECRET,
-      NOW,
-    );
-
-    const first = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': token },
-    });
-    expect(first.statusCode).toBe(200);
-    expect(first.json()).toMatchObject({ deliveryConfirmed: true });
-
-    const replay = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': token },
-    });
-    expect(replay.statusCode).toBe(200);
-    expect(replay.json()).toMatchObject({ deliveryConfirmed: true });
-  });
-
-  it('V2_PROTECTED: delivers the resource once, then rejects the same receipt as already redeemed', async () => {
-    app = createDemoTargetApp({ mode: 'V2_PROTECTED', receiptSecret: SECRET, now: () => NOW });
-    const token = issueDemoReceipt(
-      { orderId: 'v2-order', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
-      SECRET,
-      NOW,
-    );
-
-    const first = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': token },
-    });
-    expect(first.statusCode).toBe(200);
-
-    const replay = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': token },
-    });
-    expect(replay.statusCode).toBe(409);
-    expect(replay.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_ALREADY_REDEEMED' });
-  });
-
-  it('V2_PROTECTED: two different orders each redeem successfully once', async () => {
-    app = createDemoTargetApp({ mode: 'V2_PROTECTED', receiptSecret: SECRET, now: () => NOW });
-    const tokenA = issueDemoReceipt(
-      { orderId: 'order-a', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
-      SECRET,
-      NOW,
-    );
-    const tokenB = issueDemoReceipt(
-      { orderId: 'order-b', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
-      SECRET,
-      NOW,
-    );
-
-    const responseA = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': tokenA },
-    });
-    const responseB = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': tokenB },
-    });
-    expect(responseA.statusCode).toBe(200);
-    expect(responseB.statusCode).toBe(200);
-  });
-
-  it('rejects a receipt issued for a different resource', async () => {
-    app = createDemoTargetApp({ mode: 'V2_PROTECTED', receiptSecret: SECRET, now: () => NOW });
-    const token = issueDemoReceipt(
-      { orderId: 'wrong-resource-order', atomicAmount: '1000', resource: '/paid/other', validForSeconds: 60 },
-      SECRET,
-      NOW,
-    );
-    const response = await app.inject({
-      method: 'GET',
-      url: PAID_RESOURCE_ROUTE,
-      headers: { 'x-payment-receipt': token },
-    });
-    expect(response.statusCode).toBe(402);
-    expect(response.json()).toMatchObject({ error: 'PAYMENT_RECEIPT_WRONG_RESOURCE' });
-  });
-
-  describe('provider response signing', () => {
-    const providerKey = `0x${'33'.repeat(32)}` as const;
-    const providerAddress = privateKeyToAccount(providerKey).address;
-
-    it('carries no signature header when no provider signer is configured', async () => {
-      app = createDemoTargetApp({ mode: 'V1_VULNERABLE', receiptSecret: SECRET, now: () => NOW });
-      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
-      expect(response.headers['x-provider-signature']).toBeUndefined();
-    });
-
-    it('signs a successful delivery response with the configured provider key', async () => {
-      app = createDemoTargetApp({
-        mode: 'V1_VULNERABLE',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        providerSignerPrivateKey: providerKey,
-      });
-      const token = issueDemoReceipt(
-        { orderId: 'signed-order', atomicAmount: '1000', resource: PAID_RESOURCE_ROUTE, validForSeconds: 60 },
-        SECRET,
-        NOW,
-      );
+  it('rejects a forged payment (amount raised after signing) in both modes', async () => {
+    for (const mode of ['V1_VULNERABLE', 'V2_PROTECTED'] as const) {
+      const settler = new FakeSettler();
+      app = makeApp(mode, settler);
+      const header = await paymentHeader({ tamperValue: '999999' });
       const response = await app.inject({
         method: 'GET',
         url: PAID_RESOURCE_ROUTE,
-        headers: { 'x-payment-receipt': token },
+        headers: { 'x-payment': header },
       });
-      expect(response.statusCode).toBe(200);
-      const signature = response.headers['x-provider-signature'] as `0x${string}`;
-      expect(signature).toBeDefined();
-
-      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
-      expect(verifyResponseSignature(bodyHash, signature, providerAddress as `0x${string}`)).toBe(true);
-    });
-
-    it('signs a rejection response too, not only successful deliveries', async () => {
-      app = createDemoTargetApp({
-        mode: 'V1_VULNERABLE',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        providerSignerPrivateKey: providerKey,
-      });
-      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
       expect(response.statusCode).toBe(402);
-      const signature = response.headers['x-provider-signature'] as `0x${string}`;
-      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
-      expect(verifyResponseSignature(bodyHash, signature, providerAddress as `0x${string}`)).toBe(true);
-    });
+      expect(response.json().error).toBe('INVALID_PAYMENT');
+      expect(settler.used.size).toBe(0);
+      await app.close();
+    }
+  });
+});
 
-    it('does not verify against a signer address other than the one actually configured', async () => {
-      app = createDemoTargetApp({
-        mode: 'V1_VULNERABLE',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        providerSignerPrivateKey: providerKey,
-      });
-      const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE });
-      const signature = response.headers['x-provider-signature'] as `0x${string}`;
-      const bodyHash = `0x${createHash('sha256').update(response.rawPayload).digest('hex')}` as `0x${string}`;
-      const someoneElse = '0x9999999999999999999999999999999999999a' as const;
-      expect(verifyResponseSignature(bodyHash, signature, someoneElse)).toBe(false);
-    });
+describe('x402 demo target — settlement and delivery', () => {
+  it('V2 settles a valid payment on-chain and delivers with a settlement receipt header', async () => {
+    const settler = new FakeSettler();
+    app = makeApp('V2_PROTECTED', settler);
+    const header = await paymentHeader();
+    const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().deliveryConfirmed).toBe(true);
+    expect(response.headers[PAYMENT_RESPONSE_HEADER]).toBeDefined();
+    expect(settler.used.size).toBe(1);
   });
 
-  describe('POST /purchase', () => {
-    it('returns 503 when purchase is not configured', async () => {
-      app = createDemoTargetApp({ mode: 'V2_PROTECTED', receiptSecret: SECRET, now: () => NOW });
-      const response = await app.inject({ method: 'POST', url: '/purchase', payload: { transactionHash: TX_HASH } });
-      expect(response.statusCode).toBe(503);
-    });
+  it('V2 rejects a replayed payment as already settled and does not deliver twice', async () => {
+    const settler = new FakeSettler();
+    app = makeApp('V2_PROTECTED', settler);
+    const header = await paymentHeader({ nonce: `0x${'cd'.repeat(32)}` });
 
-    it('issues a spendable receipt for a confirmed, correctly addressed, sufficiently funded transfer', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer()),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1_000_000_000_000n,
-          minimumConfirmations: 1,
-        },
-      });
+    const first = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(first.statusCode).toBe(200);
 
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
-      });
-      expect(response.statusCode).toBe(200);
-      const { receipt } = response.json() as { receipt: string };
-      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({
-        orderId: TX_HASH,
-        resource: PAID_RESOURCE_ROUTE,
-      });
-    });
+    const replay = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json().error).toBe('PAYMENT_ALREADY_SETTLED');
+  });
 
-    it('rejects a transaction that cannot be found on-chain', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(null),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
-      });
-      expect(response.statusCode).toBe(402);
-      expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_NOT_FOUND' });
-    });
+  it('V2 does not deliver when settlement is unavailable', async () => {
+    const settler = new FakeSettler();
+    settler.unavailable = true;
+    app = makeApp('V2_PROTECTED', settler);
+    const header = await paymentHeader();
+    const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(response.statusCode).toBe(402);
+    expect(response.json().error).toBe('SETTLEMENT_FAILED');
+  });
+});
 
-    it('rejects a reverted transaction', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer({ status: 'reverted' })),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
-      });
-      expect(response.json()).toMatchObject({ error: 'PAYMENT_TRANSACTION_REVERTED' });
-    });
+describe('x402 demo target — the V1 vulnerability', () => {
+  it('V1 delivers a replayed payment a second time even though its settlement reverts', async () => {
+    const settler = new FakeSettler();
+    app = makeApp('V1_VULNERABLE', settler);
+    const header = await paymentHeader({ nonce: `0x${'ef'.repeat(32)}` });
 
-    it('rejects an underconfirmed transaction', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer({ confirmations: 0n })),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 2,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
-      });
-      expect(response.json()).toMatchObject({ error: 'PAYMENT_NOT_YET_CONFIRMED' });
-    });
+    const first = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().deliveryConfirmed).toBe(true);
 
-    it('rejects a transfer paid to the wrong address', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer({ to: '0x9999999999999999999999999999999999999a' })),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
-      });
-      expect(response.json()).toMatchObject({ error: 'PAYMENT_WRONG_RECIPIENT' });
-    });
+    // The bug: the same X-PAYMENT is honored again, because V1 delivers on a valid signature without
+    // requiring the settlement (which now reverts as already-used) to succeed.
+    const replay = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().deliveryConfirmed).toBe(true);
+  });
 
-    it('rejects an underpaid transfer', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer({ valueWei: 1n })),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1_000_000_000_000n,
-          minimumConfirmations: 1,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: DUMMY_SIGNATURE },
-      });
-      expect(response.json()).toMatchObject({ error: 'PAYMENT_INSUFFICIENT_AMOUNT' });
-    });
-
-    it('rejects a claim whose signature does not recover to the transaction sender', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer()),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      // An observer who read the (public) transaction hash off-chain but does not hold the
-      // payer's private key cannot produce a signature that recovers to transfer.from.
-      const impostorKey = `0x${'99'.repeat(32)}` as const;
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
-      });
-      expect(response.statusCode).toBe(401);
-      expect(response.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_DOES_NOT_MATCH_PAYER' });
-    });
-
-    it('rejects a malformed signature without ever reaching the ledger', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer()),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const response = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: `0x${'ab'.repeat(65)}` },
-      });
-      expect(response.statusCode).toBe(401);
-      expect(response.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_INVALID' });
-    });
-
-    it('re-issues a fresh receipt when the same verified payer retries a claim, instead of erroring', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer()),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const signature = await signPurchaseClaim(TX_HASH);
-      const first = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature },
-      });
-      expect(first.statusCode).toBe(200);
-      // This is exactly what an orchestrator retry after a checkpoint-write failure looks like:
-      // the same signer re-submitting the same already-earned transaction hash.
-      const second = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature },
-      });
-      expect(second.statusCode).toBe(200);
-      const { receipt } = second.json() as { receipt: string };
-      expect(verifyDemoReceipt(receipt, SECRET, NOW)).toMatchObject({ orderId: TX_HASH });
-    });
-
-    it('an observer racing the real payer to claim their receipt cannot, even after the real payer has already claimed it', async () => {
-      app = createDemoTargetApp({
-        mode: 'V2_PROTECTED',
-        receiptSecret: SECRET,
-        now: () => NOW,
-        purchase: {
-          transferReader: fakeTransferReader(confirmedTransfer()),
-          receivingAddress: RECEIVING_ADDRESS,
-          minimumValueWei: 1n,
-          minimumConfirmations: 1,
-        },
-      });
-      const first = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH) },
-      });
-      expect(first.statusCode).toBe(200);
-      const impostorKey = `0x${'44'.repeat(32)}` as const;
-      const second = await app.inject({
-        method: 'POST',
-        url: '/purchase',
-        payload: { transactionHash: TX_HASH, signature: await signPurchaseClaim(TX_HASH, impostorKey) },
-      });
-      expect(second.statusCode).toBe(401);
-      expect(second.json()).toMatchObject({ error: 'PURCHASE_SIGNATURE_DOES_NOT_MATCH_PAYER' });
-    });
+  it('V1 delivers even when settlement is entirely unavailable (trusts the header)', async () => {
+    const settler = new FakeSettler();
+    settler.unavailable = true;
+    app = makeApp('V1_VULNERABLE', settler);
+    const header = await paymentHeader();
+    const response = await app.inject({ method: 'GET', url: PAID_RESOURCE_ROUTE, headers: { 'x-payment': header } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().deliveryConfirmed).toBe(true);
   });
 });
