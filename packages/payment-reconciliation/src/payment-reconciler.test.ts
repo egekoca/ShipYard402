@@ -4,9 +4,12 @@ import { encodeTransferLog, type MerchantOrder, type X402MerchantAdapter } from 
 import { describe, expect, it } from 'vitest';
 
 import {
+  PaymentNotReadyError,
+  PaymentOrderExpiredError,
   PaymentReconciler,
   ReceiptNotYetAvailableError,
   SettlementRejectedError,
+  type ExpirableRun,
   type FundableRun,
   type PaymentReconciliationStore,
   type VerifiedCustomerPayment,
@@ -106,6 +109,18 @@ class MemoryStore implements PaymentReconciliationStore {
 
   async loadFundableRun(): Promise<FundableRun> {
     return this.context;
+  }
+  expired?: Parameters<PaymentReconciliationStore['commitExpiredRun']>[0];
+  pastDeadline: readonly ExpirableRun[] = [];
+
+  async findRunsPastPaymentDeadline(): Promise<readonly ExpirableRun[]> {
+    return this.pastDeadline;
+  }
+
+  async commitExpiredRun(input: Parameters<PaymentReconciliationStore['commitExpiredRun']>[0]): Promise<void> {
+    if (input.previousRevision !== this.context.run.revision) throw new Error('revision conflict');
+    this.expired = input;
+    this.context = { ...this.context, run: input.run };
   }
   async commitFundedRun(input: Parameters<PaymentReconciliationStore['commitFundedRun']>[0]): Promise<void> {
     if (input.previousRevision !== this.context.run.revision) throw new Error('revision conflict');
@@ -236,5 +251,133 @@ describe('payment reconciler', () => {
     });
     await expect(reconciler.reconcile('run-1')).rejects.toBeInstanceOf(ReceiptNotYetAvailableError);
     await expect(reconciler.reconcile('run-1')).rejects.not.toBeInstanceOf(SettlementRejectedError);
+  });
+
+  it('reports an unpaid order past its own deadline as expired, not as "not ready yet"', async () => {
+    // Reporting this as not-ready is what stranded runs: the job kept polling on a dead order,
+    // burned its whole retry budget, dead-lettered, and left the run in PAYMENT_REQUIRED forever.
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: {
+        ...merchantAdapter(),
+        async getOrderStatus() {
+          return { ...initialOrder, status: 'CHECKOUT_VERIFIED' };
+        },
+      },
+      store: new MemoryStore(),
+      now: () => new Date('2026-08-04T10:15:00.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return null;
+        },
+      },
+    });
+
+    await expect(reconciler.reconcile('run-1')).rejects.toBeInstanceOf(PaymentOrderExpiredError);
+  });
+
+  it('still waits on an unpaid order that has time left, so a customer mid-checkout is not cut off', async () => {
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: {
+        ...merchantAdapter(),
+        async getOrderStatus() {
+          return { ...initialOrder, status: 'CHECKOUT_VERIFIED' };
+        },
+      },
+      store: new MemoryStore(),
+      now: () => new Date('2026-08-04T10:14:59.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return null;
+        },
+      },
+    });
+
+    await expect(reconciler.reconcile('run-1')).rejects.toBeInstanceOf(PaymentNotReadyError);
+  });
+
+  it('expires an unpaid run to the terminal EXPIRED state', async () => {
+    const store = new MemoryStore();
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: merchantAdapter(),
+      store,
+      now: () => new Date('2026-08-04T10:16:00.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return null;
+        },
+      },
+    });
+
+    await expect(reconciler.expireRun('run-1')).resolves.toBe(true);
+    expect(store.context.run.status).toBe('EXPIRED');
+    expect(store.expired?.event.actor).toBe('SYSTEM');
+  });
+
+  it('refuses to expire a run that has already been funded', async () => {
+    // A payment landing between the expiry decision and this call must win; expiring a funded run
+    // would strand money that was actually received.
+    const store = new MemoryStore();
+    const funded = new PaymentReconciler({
+      merchantAdapter: merchantAdapter(),
+      store,
+      now: () => new Date('2026-08-04T10:01:00.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return {
+            chainId: 2345,
+            transactionHash: txHash,
+            status: 1 as const,
+            logs: [encodeTransferLog(token, payer, recipient, '600', 4)],
+          };
+        },
+      },
+    });
+    await funded.reconcile('run-1');
+
+    await expect(funded.expireRun('run-1')).resolves.toBe(false);
+    expect(store.context.run.status).toBe('FUNDED');
+  });
+
+  it('sweeps a run abandoned at QUOTED, which never gets a reconciliation job to close it out', async () => {
+    const store = new MemoryStore();
+    const quotedRun = transitionRun(createDraftRun('run-2', '2026-08-04T10:00:00.000Z'), {
+      actor: 'QUOTE_ENGINE',
+      expectedRevision: 0,
+      idempotencyKey: 'quoted-0002',
+      occurredAt: '2026-08-04T10:00:00.000Z',
+      to: 'QUOTED',
+    }).run;
+    store.context = { ...store.context, run: quotedRun };
+    store.pastDeadline = [{ run: quotedRun, deadline: '2026-08-04T10:15:00.000Z', reason: 'QUOTE_EXPIRED' }];
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: merchantAdapter(),
+      store,
+      now: () => new Date('2026-08-04T11:00:00.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return null;
+        },
+      },
+    });
+
+    await expect(reconciler.sweepExpiredRuns()).resolves.toEqual(['run-2']);
+    expect(store.expired?.run.status).toBe('EXPIRED');
+  });
+
+  it('sweeps nothing when no run has passed its deadline', async () => {
+    const store = new MemoryStore();
+    const reconciler = new PaymentReconciler({
+      merchantAdapter: merchantAdapter(),
+      store,
+      now: () => new Date('2026-08-04T10:05:00.000Z'),
+      receiptReader: {
+        async getTransactionReceipt() {
+          return null;
+        },
+      },
+    });
+
+    await expect(reconciler.sweepExpiredRuns()).resolves.toEqual([]);
+    expect(store.expired).toBeUndefined();
   });
 });

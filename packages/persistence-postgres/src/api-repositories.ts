@@ -10,7 +10,7 @@ import {
 import type { MerchantOrder } from '@shipyard402/x402-payments';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
-import { PostgresFlowOrderContextStore } from './flow-order-context-store.js';
+import { parseMerchantOrderSnapshot } from './merchant-order-snapshot.js';
 
 export type RunSummary = Readonly<{
   id: string;
@@ -51,6 +51,7 @@ type QuoteRow = QueryResultRow & {
   created_at: Date | string;
   expires_at: Date | string;
   quote_commitment: Buffer;
+  target_chain_id?: string | number | null;
 };
 
 type RunSummaryRow = QueryResultRow & {
@@ -106,11 +107,11 @@ export class PostgresQuoteRepository {
           id, organization_id, service_id, release_id, policy_id, requester,
           request_snapshot, capability_snapshot, line_items, payment_chain_id,
           payment_token, total_atomic_amount, refundable_tool_budget_atomic,
-          pricing_status, quote_commitment, created_at, expires_at
+          pricing_status, quote_commitment, created_at, expires_at, target_chain_id
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7::jsonb, $8::jsonb, $9::jsonb, $10,
-          $11, $12, $13, $14, $15, $16, $17
+          $11, $12, $13, $14, $15, $16, $17, $18
         )`,
         [
           validated.id,
@@ -130,6 +131,7 @@ export class PostgresQuoteRepository {
           hexToBuffer(validated.quoteCommitment),
           validated.createdAt,
           validated.expiresAt,
+          binding.chainId,
         ],
       );
       await client.query('COMMIT');
@@ -146,7 +148,7 @@ export class PostgresQuoteRepository {
       `SELECT
         id, request_snapshot, capability_snapshot, pricing_status, line_items,
         total_atomic_amount::text, refundable_tool_budget_atomic::text,
-        created_at, expires_at, quote_commitment
+        created_at, expires_at, quote_commitment, target_chain_id
       FROM quotes WHERE id = $1`,
       [id],
     );
@@ -157,11 +159,19 @@ export class PostgresQuoteRepository {
 
 export class PostgresRunRepository {
   readonly #pool: Pool;
-  readonly #orderStore: PostgresFlowOrderContextStore;
 
   constructor(pool: Pool) {
     this.#pool = pool;
-    this.#orderStore = new PostgresFlowOrderContextStore(pool);
+  }
+
+  /** Reads just the merchant order behind a run, whichever adapter wrote it. */
+  async #findPaymentOrder(orderId: string): Promise<MerchantOrder | null> {
+    const result = await this.#pool.query<{ order_snapshot: unknown }>(
+      `SELECT order_snapshot FROM payment_orders WHERE order_id = $1`,
+      [orderId],
+    );
+    const row = result.rows[0];
+    return row ? parseMerchantOrderSnapshot(row.order_snapshot) : null;
   }
 
   async save(record: ApiRunRecord, expectedPersistedRevision?: number): Promise<void> {
@@ -254,12 +264,12 @@ export class PostgresRunRepository {
     );
     const row = result.rows[0];
     if (!row) return null;
-    const paymentContext = row.order_id ? await this.#orderStore.get(row.order_id) : null;
+    const paymentOrder = row.order_id ? await this.#findPaymentOrder(row.order_id) : null;
     return {
       aggregate: parseRunRow(row),
       quoteId: row.quote_id,
       requestIdempotencyKey: row.request_idempotency_key,
-      ...(paymentContext ? { paymentOrder: paymentContext.order } : {}),
+      ...(paymentOrder ? { paymentOrder } : {}),
       ...(row.customer_payment_proof_hash
         ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) }
         : {}),
@@ -275,9 +285,14 @@ export class PostgresRunRepository {
 async function resolveCatalogBinding(
   client: PoolClient,
   quote: Quote,
-): Promise<{ serviceId: string; releaseId: string; policyId: string }> {
-  const result = await client.query<{ service_id: string; release_id: string; policy_id: string }>(
-    `SELECT s.id AS service_id, r.id AS release_id, p.id AS policy_id
+): Promise<{ serviceId: string; releaseId: string; policyId: string; chainId: number }> {
+  const result = await client.query<{
+    service_id: string;
+    release_id: string;
+    policy_id: string;
+    chain_id: string | number;
+  }>(
+    `SELECT s.id AS service_id, r.id AS release_id, p.id AS policy_id, s.chain_id
      FROM services s
      JOIN releases r ON r.service_id = s.id AND r.version_hash = $5
      JOIN policies p ON p.policy_hash = $6
@@ -299,7 +314,12 @@ async function resolveCatalogBinding(
   if (!row) {
     throw new QuoteTargetNotOnboardedError();
   }
-  return { serviceId: row.service_id, releaseId: row.release_id, policyId: row.policy_id };
+  return {
+    serviceId: row.service_id,
+    releaseId: row.release_id,
+    policyId: row.policy_id,
+    chainId: Number(row.chain_id),
+  };
 }
 
 async function insertRun(client: PoolClient, record: ApiRunRecord): Promise<void> {
@@ -374,6 +394,10 @@ function parseQuoteRow(row: QuoteRow): Quote {
     createdAt: toIso(row.created_at),
     expiresAt: toIso(row.expires_at),
     quoteCommitment: bufferToHex(row.quote_commitment),
+    // Absent only on quotes written before 0014; those all targeted the funding chain.
+    ...(row.target_chain_id === null || row.target_chain_id === undefined
+      ? {}
+      : { targetChainId: Number(row.target_chain_id) }),
   });
 }
 

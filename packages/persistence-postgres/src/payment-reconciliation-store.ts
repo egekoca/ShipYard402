@@ -1,4 +1,5 @@
 import type {
+  ExpirableRun,
   FundableRun,
   PaymentReconciliationStore,
   VerifiedCustomerPayment,
@@ -9,7 +10,7 @@ import type { MerchantOrder, MerchantPaymentProof, NormalizedTransactionReceipt 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { z } from 'zod';
 
-import { PostgresFlowOrderContextStore } from './flow-order-context-store.js';
+import { parseMerchantOrderSnapshot } from './merchant-order-snapshot.js';
 
 type FundableRow = QueryResultRow & {
   run_id: string;
@@ -82,11 +83,9 @@ const persistedPaymentPayloadSchema = z
 
 export class PostgresPaymentReconciliationStore implements PaymentReconciliationStore {
   readonly #pool: Pool;
-  readonly #orderStore: PostgresFlowOrderContextStore;
 
   constructor(pool: Pool) {
     this.#pool = pool;
-    this.#orderStore = new PostgresFlowOrderContextStore(pool);
   }
 
   async loadFundableRun(runId: string): Promise<FundableRun | null> {
@@ -114,19 +113,94 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
     );
     const row = result.rows[0];
     if (!row) return null;
-    const context = await this.#orderStore.getByDappOrderId(row.run_id);
-    if (!context) throw new Error('Payment order context disappeared during reconciliation load');
+    if (!row.order_snapshot) throw new Error('Payment order context disappeared during reconciliation load');
+    // Parsed shape-tolerantly: the snapshot was written by whichever merchant adapter created the
+    // order, and reconciliation only needs the order itself.
+    const paymentOrder = parseMerchantOrderSnapshot(row.order_snapshot);
 
-    const customerPayment = parseCustomerPayment(row, context.order);
+    const customerPayment = parseCustomerPayment(row, paymentOrder);
     return {
       run: parseRun(row),
       quote: parseQuote(row),
-      paymentOrder: context.order,
+      paymentOrder,
       ...(row.customer_payment_proof_hash
         ? { customerPaymentProofHash: bufferToHex(row.customer_payment_proof_hash) }
         : {}),
       ...(customerPayment ? { customerPayment } : {}),
     };
+  }
+
+  async findRunsPastPaymentDeadline(now: Date, limit: number): Promise<readonly ExpirableRun[]> {
+    const result = await this.#pool.query<
+      FundableRow & { deadline: Date | string; expiry_reason: 'QUOTE_EXPIRED' | 'ORDER_EXPIRED' }
+    >(
+      // The order's deadline wins when one exists, because creating an order is what replaces the
+      // quote's window with the merchant's. A run that never got an order still has its quote's.
+      `SELECT r.id AS run_id, r.status, r.result, r.revision::text, r.created_at, r.updated_at,
+              ARRAY(SELECT e.idempotency_key FROM run_events e WHERE e.run_id = r.id ORDER BY e.revision)
+                AS applied_keys,
+              COALESCE(
+                (COALESCE(po.order_snapshot->'order'->>'expiresAt', po.order_snapshot->>'expiresAt'))::timestamptz,
+                q.expires_at
+              ) AS deadline,
+              CASE WHEN po.run_id IS NULL THEN 'QUOTE_EXPIRED' ELSE 'ORDER_EXPIRED' END AS expiry_reason
+         FROM runs r
+         JOIN quotes q ON q.id = r.quote_id
+         LEFT JOIN payment_orders po ON po.run_id = r.id
+        WHERE r.status IN ('DRAFT', 'QUOTED', 'PAYMENT_REQUIRED')
+          AND COALESCE(
+                (COALESCE(po.order_snapshot->'order'->>'expiresAt', po.order_snapshot->>'expiresAt'))::timestamptz,
+                q.expires_at
+              ) < $1
+        ORDER BY r.created_at
+        LIMIT $2`,
+      [now.toISOString(), limit],
+    );
+    return result.rows.map((row) => ({
+      run: parseRun(row),
+      deadline: toIso(row.deadline),
+      reason: row.expiry_reason,
+    }));
+  }
+
+  async commitExpiredRun(input: Parameters<PaymentReconciliationStore['commitExpiredRun']>[0]): Promise<void> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Guarded on PAYMENT_REQUIRED and the expected revision: a payment that landed between the
+      // expiry decision and this write wins, and the update simply affects no rows.
+      const updated = await client.query(
+        `UPDATE runs SET status = 'EXPIRED', revision = $2, updated_at = $3
+         WHERE id = $1 AND revision = $4 AND status IN ('DRAFT', 'QUOTED', 'PAYMENT_REQUIRED')`,
+        [input.run.id, input.run.revision, input.run.updatedAt, input.previousRevision],
+      );
+      if (updated.rowCount !== 1) throw new Error('Run revision conflict while expiring an unpaid run');
+
+      await client.query(
+        `INSERT INTO run_events (run_id, revision, event_type, actor, idempotency_key, payload, occurred_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+        [
+          input.event.runId,
+          input.event.revision,
+          input.event.type,
+          input.event.actor,
+          input.event.idempotencyKey,
+          JSON.stringify(input.event),
+          input.event.occurredAt,
+        ],
+      );
+      await client.query(
+        `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+         VALUES ('RUN', $1, $2, $3::jsonb)`,
+        [input.run.id, input.event.type, JSON.stringify(input.event)],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async commitFundedRun(input: Parameters<PaymentReconciliationStore['commitFundedRun']>[0]): Promise<void> {
@@ -150,8 +224,18 @@ export class PostgresPaymentReconciliationStore implements PaymentReconciliation
       );
       if (updated.rowCount !== 1) throw new Error('Run revision conflict while committing customer payment');
 
+      // Write the order back in whatever shape its adapter stored it: the BOT Chain adapter wraps
+      // the order under an `order` key (alongside the transaction hash and proof it must keep), so
+      // replacing the whole document here would both change the shape and drop those fields.
       await client.query(
-        `UPDATE payment_orders SET status = $2, order_snapshot = $3::jsonb, updated_at = $4 WHERE run_id = $1`,
+        `UPDATE payment_orders SET
+          status = $2,
+          order_snapshot = CASE
+            WHEN order_snapshot ? 'order' THEN jsonb_set(order_snapshot, '{order}', $3::jsonb)
+            ELSE $3::jsonb
+          END,
+          updated_at = $4
+        WHERE run_id = $1`,
         [input.run.id, input.payment.order.status, JSON.stringify(input.payment.order), input.payment.verifiedAt],
       );
       await client.query(

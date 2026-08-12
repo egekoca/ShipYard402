@@ -123,7 +123,12 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
     );
 
     await quoteRepository.save(quote);
-    await expect(new PostgresQuoteRepository(pool).findById(quote.id)).resolves.toEqual(quote);
+    // The stored quote gains the target's chain, resolved from the services catalog at insert --
+    // the in-memory quote the engine produced never knew it, and must not be trusted for it.
+    await expect(new PostgresQuoteRepository(pool).findById(quote.id)).resolves.toEqual({
+      ...quote,
+      targetChainId: 48816,
+    });
 
     const draft = createDraftRun(runId, now.toISOString());
     const transition = transitionRun(draft, {
@@ -176,12 +181,19 @@ describe.skipIf(!databaseUrl)('PostgreSQL API persistence integration', () => {
         leaseDurationSeconds: 30,
       }),
     ).resolves.toBeNull();
-    await queue.markRetry(firstClaim!, 0, 'PAYMENT_NOT_READY');
+    await queue.markWaiting(firstClaim!, 0, 'PAYMENT_NOT_READY');
+    const waitClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
+    expect(waitClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 24 });
+    await queue.markRetry(waitClaim!, 0, 'TRANSIENT_DEPENDENCY_FAILURE');
     const retryClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
     expect(retryClaim).toMatchObject({ runId, attempt: 2, maximumAttempts: 24 });
-    await queue.markCompleted(retryClaim!);
+    await queue.markDeadLetter(retryClaim!, 'UNCLASSIFIED_RECONCILIATION_FAILURE');
+    await queue.rearm(runId);
+    const rearmedClaim = await queue.claimNext({ workerId: 'integration-worker', leaseDurationSeconds: 30 });
+    expect(rearmedClaim).toMatchObject({ runId, attempt: 1, maximumAttempts: 24 });
+    await queue.markCompleted(rearmedClaim!);
     const completedJob = await queue.findByRunId(runId);
-    expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
+    expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 1 });
     expect(completedJob).not.toHaveProperty('lastErrorCode');
     await expect(
       pool.query(

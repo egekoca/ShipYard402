@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/run-domain": "workspace:*",
     "zod": "3.25.76"

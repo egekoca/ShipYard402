@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
+import { listMarketplaceServices } from './catalog-listing.js';
 import { onboardService } from './catalog-onboarding.js';
 import { createShipyardPool } from './pool.js';
 
@@ -71,6 +72,76 @@ describe.skipIf(!databaseUrl)('catalog onboarding integration', () => {
       [hexBuffer(requesterAddress)],
     );
     expect(rows.rows[0]?.count).toBe('1');
+  }, 30_000);
+
+  it('publishes only the services that opted in, with everything a quote needs to bind', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const suffix = randomUUID();
+    const listedId = `service:listed:${suffix}`;
+    const privateId = `service:private:${suffix}`;
+
+    const listed = await onboardService(pool, {
+      organizationName: `Directory listing ${suffix}`,
+      requesterAddress,
+      externalServiceId: listedId,
+      serviceName: 'Listed API',
+      x402Endpoint: 'https://api.example.com/paid/listed',
+      openApiUrl: OPENAPI_URL,
+      version: '3.2.1',
+      marketplaceListed: true,
+      description: 'A paid API that agreed to be discoverable.',
+    });
+    await onboardService(pool, {
+      organizationName: `Directory listing ${suffix}`,
+      requesterAddress,
+      externalServiceId: privateId,
+      serviceName: 'Private API',
+      x402Endpoint: 'https://api.example.com/paid/private',
+      openApiUrl: OPENAPI_URL,
+      version: '1.0.0',
+    });
+
+    const services = await listMarketplaceServices(pool, 200);
+    const ids = services.map((service) => service.targetServiceId);
+    expect(ids).toContain(listedId);
+    // Opting out is the default, and the directory has to honour it -- a private registration
+    // leaking a customer's paid endpoint to every visitor is the failure this guards against.
+    expect(ids).not.toContain(privateId);
+
+    // A listing is only useful if it can be quoted straight from the card, so the identifiers it
+    // carries must be the same ones onboarding produced -- not a lossy rendering of them.
+    expect(services.find((service) => service.targetServiceId === listedId)).toMatchObject({
+      organizationId: listed.organizationId,
+      targetAgentId: listed.targetAgentId,
+      targetVersionHash: listed.targetVersionHash,
+      policyHash: listed.policyHash,
+      x402Endpoint: listed.x402Endpoint,
+      openApiUrl: listed.openApiUrl,
+      name: 'Listed API',
+      description: 'A paid API that agreed to be discoverable.',
+      version: '3.2.1',
+    });
+  }, 30_000);
+
+  it('lets a re-onboarding call pull its own service back out of the directory', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const suffix = randomUUID();
+    const externalServiceId = `service:delisted:${suffix}`;
+    const base = {
+      organizationName: `Delisting ${suffix}`,
+      requesterAddress,
+      externalServiceId,
+      serviceName: 'Delisted API',
+      x402Endpoint: 'https://api.example.com/paid/delisted',
+      openApiUrl: OPENAPI_URL,
+      version: '1.0.0',
+    };
+
+    await onboardService(pool, { ...base, marketplaceListed: true });
+    expect((await listMarketplaceServices(pool, 200)).map((s) => s.targetServiceId)).toContain(externalServiceId);
+
+    await onboardService(pool, { ...base, marketplaceListed: false });
+    expect((await listMarketplaceServices(pool, 200)).map((s) => s.targetServiceId)).not.toContain(externalServiceId);
   }, 30_000);
 });
 

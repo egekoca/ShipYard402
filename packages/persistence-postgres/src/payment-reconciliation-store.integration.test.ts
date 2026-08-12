@@ -94,6 +94,104 @@ describe.skipIf(!databaseUrl)('PostgreSQL duplicate-charge and idempotency enfor
     ).resolves.toMatchObject({ rows: [{ status: 'PENDING' }] });
   });
 
+  it('finds a run past its order deadline, and stops finding it once it is expired', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresPaymentReconciliationStore(pool);
+    const run = await createPaymentRequiredRun(pool, 'deadline-sweep');
+    const wellPastEveryDeadline = new Date(Date.parse(run.order.expiresAt) + 3_600_000);
+
+    const found = await store.findRunsPastPaymentDeadline(wellPastEveryDeadline, 100);
+    const match = found.find((candidate) => candidate.run.id === run.run.id);
+    expect(match).toMatchObject({ reason: 'ORDER_EXPIRED' });
+
+    const transitioned = transitionRun(run.run, {
+      actor: 'SYSTEM',
+      expectedRevision: run.run.revision,
+      idempotencyKey: `payment-deadline-passed:${run.order.expiresAt}`,
+      occurredAt: new Date(Date.parse(run.run.updatedAt) + 1_000).toISOString(),
+      to: 'EXPIRED',
+    });
+    await store.commitExpiredRun({
+      previousRevision: run.run.revision,
+      run: transitioned.run,
+      event: transitioned.event!,
+    });
+
+    // A terminal run must never come back around on a later sweep.
+    const after = await store.findRunsPastPaymentDeadline(wellPastEveryDeadline, 100);
+    expect(after.some((candidate) => candidate.run.id === run.run.id)).toBe(false);
+  });
+
+  it('never sweeps a run whose deadline is still ahead of it', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresPaymentReconciliationStore(pool);
+    const run = await createPaymentRequiredRun(pool, 'deadline-future');
+    const beforeEveryDeadline = new Date(Date.parse(run.order.expiresAt) - 60_000);
+
+    const found = await store.findRunsPastPaymentDeadline(beforeEveryDeadline, 100);
+
+    expect(found.some((candidate) => candidate.run.id === run.run.id)).toBe(false);
+  });
+
+  it('expires an unpaid run to EXPIRED, with an event, and never enqueues orchestration for it', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresPaymentReconciliationStore(pool);
+    const run = await createPaymentRequiredRun(pool, 'expiry');
+    const transitioned = transitionRun(run.run, {
+      actor: 'SYSTEM',
+      expectedRevision: run.run.revision,
+      idempotencyKey: `payment-order-expired:${run.run.id}`,
+      occurredAt: new Date(Date.parse(run.run.updatedAt) + 1_000).toISOString(),
+      to: 'EXPIRED',
+    });
+
+    await store.commitExpiredRun({
+      previousRevision: run.run.revision,
+      run: transitioned.run,
+      event: transitioned.event!,
+    });
+
+    await expect(
+      pool.query<{ status: string }>(`SELECT status FROM runs WHERE id = $1`, [run.run.id]),
+    ).resolves.toMatchObject({ rows: [{ status: 'EXPIRED' }] });
+    // An expired run was never funded, so nothing should be queued to spend against it.
+    await expect(pool.query(`SELECT 1 FROM orchestrator_jobs WHERE run_id = $1`, [run.run.id])).resolves.toMatchObject({
+      rowCount: 0,
+    });
+    await expect(
+      pool.query<{ actor: string }>(`SELECT actor FROM run_events WHERE run_id = $1 ORDER BY revision DESC LIMIT 1`, [
+        run.run.id,
+      ]),
+    ).resolves.toMatchObject({ rows: [{ actor: 'SYSTEM' }] });
+  });
+
+  it('refuses to expire a run whose payment landed first, so a real payment always wins the race', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const store = new PostgresPaymentReconciliationStore(pool);
+    const run = await createPaymentRequiredRun(pool, 'expiry-race');
+    // The expiry decision is made against this revision, then a payment funds the run first.
+    const staleRevision = run.run.revision;
+    const staleTransition = transitionRun(run.run, {
+      actor: 'SYSTEM',
+      expectedRevision: staleRevision,
+      idempotencyKey: `payment-order-expired:${run.run.id}`,
+      occurredAt: new Date(Date.parse(run.run.updatedAt) + 1_000).toISOString(),
+      to: 'EXPIRED',
+    });
+    await store.commitFundedRun(fundingInput(run, `0x${'e1'.repeat(32)}`, `0x${'e2'.repeat(32)}`, 0));
+
+    await expect(
+      store.commitExpiredRun({
+        previousRevision: staleRevision,
+        run: staleTransition.run,
+        event: staleTransition.event!,
+      }),
+    ).rejects.toThrow(/revision conflict/i);
+    await expect(
+      pool.query<{ status: string }>(`SELECT status FROM runs WHERE id = $1`, [run.run.id]),
+    ).resolves.toMatchObject({ rows: [{ status: 'FUNDED' }] });
+  });
+
   it('rejects funding a second run with a payment proof hash already used by another run', async () => {
     if (!pool) throw new Error('TEST_DATABASE_URL is required');
     const store = new PostgresPaymentReconciliationStore(pool);

@@ -26,8 +26,29 @@ export type VerifiedCustomerPayment = Readonly<{
   verifiedAt: string;
 }>;
 
+/** A pre-funding run whose payment window has closed, and which deadline closed it. */
+export type ExpirableRun = Readonly<{
+  run: RunAggregate;
+  deadline: string;
+  reason: 'QUOTE_EXPIRED' | 'ORDER_EXPIRED';
+}>;
+
 export interface PaymentReconciliationStore {
   loadFundableRun(runId: string): Promise<FundableRun | null>;
+  /**
+   * Runs still awaiting payment whose deadline has passed -- the merchant order's when one exists,
+   * otherwise the quote's. A run abandoned at QUOTED never reaches the reconciliation queue at all,
+   * so a sweep is the only thing that can ever close it out.
+   */
+  findRunsPastPaymentDeadline(now: Date, limit: number): Promise<readonly ExpirableRun[]>;
+  /**
+   * Persists a PAYMENT_REQUIRED -> EXPIRED transition for an order whose deadline passed without
+   * funding. Separate from commitFundedRun because nothing is received here: no receipt row, no
+   * payment amount, and no orchestrator job to enqueue.
+   */
+  commitExpiredRun(
+    input: Readonly<{ previousRevision: number; run: RunAggregate; event: RunTransitionedEvent }>,
+  ): Promise<void>;
   commitFundedRun(
     input: Readonly<{
       previousRevision: number;
@@ -57,6 +78,22 @@ export class ReceiptNotYetAvailableError extends Error {
   constructor(transactionHash: string) {
     super(`Transaction receipt not yet available from the chain reader: ${transactionHash}`);
     this.name = 'ReceiptNotYetAvailableError';
+  }
+}
+
+/**
+ * The merchant order's own deadline passed while it was still unpaid, so no amount of further
+ * polling can change the outcome. Distinct from PaymentNotReadyError, which means "not yet".
+ */
+export class PaymentOrderExpiredError extends Error {
+  readonly orderId: string;
+  readonly expiresAt: string;
+
+  constructor(orderId: string, expiresAt: string) {
+    super(`Customer payment order ${orderId} expired unpaid at ${expiresAt}`);
+    this.name = 'PaymentOrderExpiredError';
+    this.orderId = orderId;
+    this.expiresAt = expiresAt;
   }
 }
 
@@ -105,6 +142,12 @@ export class PaymentReconciler {
 
     const order = await this.#merchantAdapter.getOrderStatus(context.paymentOrder.orderId, signal);
     if (order.status !== 'PAYMENT_CONFIRMED' && order.status !== 'INVOICED') {
+      // An order that outlived its own deadline is a settled question, not a slow one. Reporting
+      // it as "not ready" would keep the run polling until its retry budget ran out and then leave
+      // it in PAYMENT_REQUIRED forever, which is how unpaid runs used to get stranded.
+      if (this.#now().getTime() >= Date.parse(order.expiresAt)) {
+        throw new PaymentOrderExpiredError(order.orderId, order.expiresAt);
+      }
       throw new PaymentNotReadyError(order.status);
     }
     const proof = await this.#merchantAdapter.getOrderProof(order.orderId, signal);
@@ -149,5 +192,53 @@ export class PaymentReconciler {
       payment,
     });
     return payment;
+  }
+
+  /**
+   * Moves a run whose payment order expired unpaid to the terminal EXPIRED state. Idempotent and
+   * safe to call on a run that has since been funded or already expired: it only acts while the
+   * run is still PAYMENT_REQUIRED, and reports whether it did anything.
+   */
+  async expireRun(runId: string): Promise<boolean> {
+    const context = await this.#store.loadFundableRun(runId);
+    if (context?.run.status !== 'PAYMENT_REQUIRED') return false;
+    return this.#expire(context.run, `payment-order-expired:${context.paymentOrder.orderId}`);
+  }
+
+  /**
+   * Closes out every run whose payment window has passed. Runs abandoned at QUOTED never get a
+   * reconciliation job, so without this sweep they accumulate in a non-terminal state forever.
+   * Returns the run IDs it actually expired; a run funded since the query is skipped, not forced.
+   */
+  async sweepExpiredRuns(limit = 100): Promise<readonly string[]> {
+    const candidates = await this.#store.findRunsPastPaymentDeadline(this.#now(), limit);
+    const expired: string[] = [];
+    for (const candidate of candidates) {
+      if (await this.#expire(candidate.run, `payment-deadline-passed:${candidate.deadline}`)) {
+        expired.push(candidate.run.id);
+      }
+    }
+    return expired;
+  }
+
+  async #expire(run: RunAggregate, idempotencyKey: string): Promise<boolean> {
+    // Timestamps never move backwards in a run's event log, so a deadline that passed before the
+    // run's own last event still records at that event's time rather than being rejected.
+    const occurredAt = new Date(Math.max(this.#now().getTime(), Date.parse(run.updatedAt) + 1_000)).toISOString();
+    const transitioned = transitionRun(run, {
+      actor: 'SYSTEM',
+      expectedRevision: run.revision,
+      idempotencyKey,
+      occurredAt,
+      to: 'EXPIRED',
+    });
+    if (!transitioned.event) return false;
+
+    await this.#store.commitExpiredRun({
+      previousRevision: run.revision,
+      run: transitioned.run,
+      event: transitioned.event,
+    });
+    return true;
   }
 }

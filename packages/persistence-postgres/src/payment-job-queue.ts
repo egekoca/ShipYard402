@@ -135,6 +135,37 @@ export class PostgresPaymentReconciliationJobQueue {
     );
   }
 
+  /** Reschedules an ordinary payment/receipt wait without consuming the failure retry budget. */
+  async markWaiting(job: ClaimedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void> {
+    validateErrorCode(reason);
+    if (!Number.isInteger(delayMilliseconds) || delayMilliseconds < 0 || delayMilliseconds > 3_600_000) {
+      throw new Error('Payment job wait delay must be between zero and one hour');
+    }
+    await this.#finishLease(
+      job,
+      `UPDATE payment_reconciliation_jobs SET
+         status = 'RETRY_SCHEDULED', attempts = GREATEST(attempts - 1, 0),
+         locked_at = NULL, locked_by = NULL,
+         available_at = now() + ($4::double precision * interval '1 millisecond'),
+         last_error_code = $5, failure_codes = NULL, updated_at = now()
+       WHERE run_id = $1 AND status = 'PROCESSING' AND locked_by = $2 AND attempts = $3`,
+      [delayMilliseconds, reason],
+    );
+  }
+
+  /** Reopens an exhausted job after a customer submits or replaces its payment transaction. */
+  async rearm(runId: string): Promise<void> {
+    const result = await this.#pool.query(
+      `UPDATE payment_reconciliation_jobs SET
+         status = 'PENDING', attempts = 0, available_at = now(),
+         locked_at = NULL, locked_by = NULL, last_error_code = NULL,
+         failure_codes = NULL, completed_at = NULL, updated_at = now()
+       WHERE run_id = $1 AND status = 'DEAD_LETTER'`,
+      [runId],
+    );
+    if (result.rowCount !== 0 && result.rowCount !== 1) throw new Error('Unexpected payment job rearm result');
+  }
+
   async markDeadLetter(
     job: ClaimedPaymentReconciliationJob,
     reason: string,

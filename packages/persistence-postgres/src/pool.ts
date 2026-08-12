@@ -4,7 +4,7 @@ import { Pool, type PoolConfig } from 'pg';
 // that this exact version has been applied, so leaving it behind lets a partially-migrated
 // database (e.g. a staged rollout that stopped early) pass the readiness check the moment code
 // that depends on a later migration ships, exactly the kind of drift this guard exists to catch.
-export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0009_organizations_unique_billing_wallet.sql';
+export const SHIPYARD_REQUIRED_SCHEMA_VERSION = '0014_quote_target_chain.sql';
 
 export type ShipyardPoolOptions = Readonly<{
   connectionString: string;

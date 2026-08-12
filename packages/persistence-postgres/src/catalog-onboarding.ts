@@ -40,11 +40,27 @@ export type OnboardServiceInput = Readonly<{
   x402Endpoint: string;
   openApiUrl: string;
   version: string;
+  /**
+   * Opt-in public discovery. Left off, a service is quotable only by whoever already knows its
+   * catalog identifiers -- which is the right default, since onboarding an endpoint to test it is
+   * not consent to publish that endpoint to everyone browsing the marketplace.
+   */
+  marketplaceListed?: boolean;
+  description?: string;
+  /** The chain this service settles on; the marketplace filters the directory by it. Defaults to
+   * GOAT Testnet3 (48816) -- the one chain onboarding targeted before cross-chain listings. */
+  chainId?: number;
 }>;
 
 export type OnboardServiceResult = Readonly<{
   organizationId: string;
   targetServiceId: string;
+  /**
+   * Returned rather than left to the caller: this string is hashed into the on-chain attestation
+   * as the target's identity, and a frontend that just kept whatever was in the form would attest
+   * a freshly onboarded service under the self-test target's agent id.
+   */
+  targetAgentId: string;
   targetVersionHash: `0x${string}`;
   policyHash: `0x${string}`;
   x402Endpoint: string;
@@ -129,13 +145,39 @@ export async function onboardService(pool: Pool, input: OnboardServiceInput): Pr
       )
     ).rows[0]!.id;
 
+    // marketplace_listed and description are re-onboarding-controlled on purpose: the same wallet
+    // calling again is how a service gets listed after the fact, or pulled back out of the
+    // marketplace, without needing a second endpoint for it.
     const service = await client.query<{ id: string }>(
-      `INSERT INTO services (organization_id, external_service_id, name, x402_endpoint, openapi_url)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO services (
+         organization_id, external_service_id, name, x402_endpoint, openapi_url,
+         marketplace_listed, description, target_agent_id, marketplace_policy_hash, chain_id
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (organization_id, external_service_id)
-       DO UPDATE SET name = EXCLUDED.name, x402_endpoint = EXCLUDED.x402_endpoint, openapi_url = EXCLUDED.openapi_url
+       DO UPDATE SET name = EXCLUDED.name,
+                     x402_endpoint = EXCLUDED.x402_endpoint,
+                     openapi_url = EXCLUDED.openapi_url,
+                     marketplace_listed = EXCLUDED.marketplace_listed,
+                     description = EXCLUDED.description,
+                     chain_id = EXCLUDED.chain_id
        RETURNING id`,
-      [organizationId, input.externalServiceId, input.serviceName, input.x402Endpoint, input.openApiUrl],
+      [
+        organizationId,
+        input.externalServiceId,
+        input.serviceName,
+        input.x402Endpoint,
+        input.openApiUrl,
+        input.marketplaceListed ?? false,
+        input.description ?? null,
+        `agent:${input.externalServiceId}`,
+        // The policy this service is offered under in the directory -- the same one the returned
+        // OnboardServiceResult tells the caller to quote with, so a listing can never advertise a
+        // policy the owner's own quote flow doesn't use.
+        standardPolicyHash,
+        // The chain this service settles on; defaults to GOAT Testnet3.
+        input.chainId ?? 48816,
+      ],
     );
     const serviceId = service.rows[0]!.id;
 
@@ -150,6 +192,7 @@ export async function onboardService(pool: Pool, input: OnboardServiceInput): Pr
     return {
       organizationId,
       targetServiceId: input.externalServiceId,
+      targetAgentId: `agent:${input.externalServiceId}`,
       targetVersionHash: bufferToHex(versionHash),
       policyHash: bufferToHex(standardPolicyHash),
       x402Endpoint: input.x402Endpoint,

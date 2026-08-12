@@ -1,8 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { botChainRuntimeCapabilitySchema, type BotChainRuntimeCapability } from '@shipyard402/bot-chain-network-config';
 import { flowRuntimeCapabilitySchema, type FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import { parseAtomicAmount } from '@shipyard402/run-domain';
 import { z } from 'zod';
+
+// A quote's capability snapshot may come from either payment rail this codebase supports -- GOAT
+// Flow (discovered from GOAT's merchant API) or BOT Chain (declared from static config, verified
+// on-chain instead of via a remote order-tracking API). See @shipyard402/x402-payments's
+// `MerchantCapability` for the same union used by the merchant-adapter ports.
+export type MerchantCapability = FlowRuntimeCapability | BotChainRuntimeCapability;
 
 const bytes32Schema = z.string().regex(/^0x[a-fA-F0-9]{64}$/);
 const atomicAmountSchema = z.string().regex(/^(0|[1-9]\d*)$/);
@@ -48,7 +55,13 @@ export const quoteSchema = z
   .object({
     id: z.string().min(8).max(200),
     request: quoteRequestSchema,
-    capabilitySnapshot: flowRuntimeCapabilitySchema,
+    capabilitySnapshot: z.union([flowRuntimeCapabilitySchema, botChainRuntimeCapabilitySchema]),
+    /**
+     * The chain the run's target settles on, resolved from the services catalog when the quote is
+     * persisted -- never from the request, which is client-supplied and could name any chain.
+     * Absent on quotes written before this existed; those all targeted the funding chain.
+     */
+    targetChainId: z.number().int().positive().optional(),
     pricingStatus: z.literal('HYPOTHESIS'),
     lineItems: z
       .object({
@@ -86,7 +99,7 @@ export class QuoteEngine {
     this.#idFactory = idFactory;
   }
 
-  createQuote(input: QuoteRequest, capability: FlowRuntimeCapability, now: Date): Quote {
+  createQuote(input: QuoteRequest, capability: MerchantCapability, now: Date): Quote {
     const request = quoteRequestSchema.parse(input);
     const passThroughCosts = {
       mandatoryToolBudgetAtomic: this.#pricing.mandatoryToolBudgetAtomic,
