@@ -12,6 +12,8 @@ export type ProtectedDeliveryAttempt = Readonly<{
    * driven by whether the caller configured an expected signer address.
    */
   providerSignature?: `0x${string}`;
+  /** Present when the paid response exposes an on-chain x402 settlement receipt. */
+  settlementTransactionHash?: `0x${string}`;
 }>;
 
 export interface ProtectedDeliveryClient {
@@ -21,6 +23,7 @@ export interface ProtectedDeliveryClient {
       route: string;
       requestBody?: JsonValue;
       paymentReceipt: string;
+      paymentHeaderName?: 'x-payment' | 'payment-signature';
       idempotencyKey: string;
       signal?: AbortSignal;
     }>,
@@ -36,6 +39,7 @@ export type ReplayScenario = Readonly<{
   route: string;
   requestBody?: JsonValue;
   paymentReceipt: string;
+  paymentHeaderName?: 'x-payment' | 'payment-signature';
   paymentProofHash: `0x${string}`;
   acceptedReplayRejectionStatuses?: readonly number[];
 }>;
@@ -64,6 +68,7 @@ export type ReplayEvidence = Readonly<{
     statusCode?: number;
     deliveryConfirmed?: boolean;
     providerSignature?: `0x${string}`;
+    settlementTransactionHash?: `0x${string}`;
   }>[];
 }>;
 
@@ -130,6 +135,7 @@ export class ProtectedDeliveryReplayRunner {
         route: scenario.route,
         ...(scenario.requestBody === undefined ? {} : { requestBody: scenario.requestBody }),
         paymentReceipt: scenario.paymentReceipt,
+        ...(scenario.paymentHeaderName ? { paymentHeaderName: scenario.paymentHeaderName } : {}),
         idempotencyKey,
         ...(signal ? { signal } : {}),
       });
@@ -143,6 +149,9 @@ export class ProtectedDeliveryReplayRunner {
           statusCode: response.statusCode,
           deliveryConfirmed: response.deliveryConfirmed,
           ...(response.providerSignature ? { providerSignature: response.providerSignature } : {}),
+          ...(response.settlementTransactionHash
+            ? { settlementTransactionHash: response.settlementTransactionHash }
+            : {}),
         },
       };
     } catch {

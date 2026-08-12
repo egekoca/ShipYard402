@@ -11,6 +11,7 @@ export type InvalidCredentialScenario = Readonly<{
   requestBody?: JsonValue;
   /** What to present instead of a real receipt. Empty string ('') means no receipt at all. */
   presentedReceipt?: string;
+  paymentHeaderName?: 'x-payment' | 'payment-signature';
 }>;
 
 /**
@@ -45,6 +46,7 @@ export class InvalidCredentialRejectionRunner {
         route: scenario.route,
         ...(scenario.requestBody === undefined ? {} : { requestBody: scenario.requestBody }),
         paymentReceipt: presentedReceipt,
+        ...(scenario.paymentHeaderName ? { paymentHeaderName: scenario.paymentHeaderName } : {}),
         idempotencyKey,
         ...(signal ? { signal } : {}),
       });

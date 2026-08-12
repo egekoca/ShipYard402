@@ -3,6 +3,7 @@ import {
   concat,
   getAddress,
   keccak256,
+  toUtf8Bytes,
   verifyTypedData,
   type TypedDataDomain,
   type TypedDataField,
@@ -143,6 +144,15 @@ export function verifyToolReceipt(receiptInput: unknown, expected: ReceiptExpect
     receiptHash: hashToolReceipt(receipt),
   };
 }
+
+/**
+ * The tool-receipt root of a run that produced no receipts at all. A Merkle root over an empty set
+ * is undefined, and `0x00…00` would be indistinguishable from an unset field, so this is a
+ * domain-separated constant instead: it states "there were no receipts" rather than "unknown".
+ * Only an INCONCLUSIVE evidence pack may carry it -- a PASS or FAIL is a claim about what the
+ * target did, and that claim needs at least one receipt behind it.
+ */
+export const EMPTY_TOOL_RECEIPT_ROOT = keccak256(toUtf8Bytes('shipyard402:tool-receipt-root:empty')) as `0x${string}`;
 
 export function buildToolReceiptRoot(receiptHashes: readonly `0x${string}`[]): `0x${string}` {
   if (receiptHashes.length === 0) throw new Error('At least one tool receipt hash is required');
