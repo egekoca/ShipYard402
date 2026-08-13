@@ -1,5 +1,6 @@
 export * from './api-repositories.js';
 export * from './attestation-store.js';
+export * from './bot-chain-order-context-store.js';
 export * from './catalog-listing.js';
 export * from './catalog-onboarding.js';
 export * from './evidence-pack-store.js';

@@ -1,0 +1,31 @@
+{
+  "name": "@shipyard402/bot-chain-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Direct on-chain merchant adapter for BOT Chain -- no merchant/order API exists there, so orders are self-issued and settlement is verified purely from a customer-submitted transaction hash.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@shipyard402/bot-chain-network-config": "workspace:*",
+    "@shipyard402/goat-chain-reader": "workspace:*",
+    "@shipyard402/x402-payments": "workspace:*",
+    "ethers": "6.17.0",
+    "viem": "2.55.10"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

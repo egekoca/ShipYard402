@@ -19,6 +19,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@shipyard402/bot-chain-adapter": "workspace:*",
+    "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-flow-adapter": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/payment-reconciliation": "workspace:*",
