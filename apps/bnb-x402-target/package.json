@@ -1,0 +1,29 @@
+{
+  "name": "@shipyard402/bnb-x402-target",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Controlled x402 v2 Permit2 target and self-hosted BNB facilitator for the cross-chain PoC.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@x402/core": "2.22.0",
+    "@x402/evm": "2.22.0",
+    "@x402/fastify": "2.22.0",
+    "fastify": "5.11.2",
+    "viem": "2.55.10",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
