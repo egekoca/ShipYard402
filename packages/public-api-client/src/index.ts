@@ -43,15 +43,43 @@ export type ServiceOnboardingRequest = Readonly<{
   x402Endpoint: string;
   openApiUrl: string;
   version: string;
+  /** Opt in to the public marketplace directory. Omitted or false keeps the service private. */
+  marketplaceListed?: boolean;
+  description?: string;
+  /** The chain this service settles on (e.g. 48816 GOAT Testnet3, 56 BNB, 968 BOT Chain). */
+  chainId?: number;
 }>;
 
 export type ServiceOnboardingResponse = Readonly<{
   organizationId: string;
   targetServiceId: string;
+  targetAgentId: string;
   targetVersionHash: `0x${string}`;
   policyHash: `0x${string}`;
   x402Endpoint: string;
   openApiUrl: string;
+}>;
+
+/**
+ * A publicly listed x402 service, carrying both what a card needs to render and every identifier
+ * a QuoteRequest needs -- so picking one from the directory is a complete substitute for typing
+ * catalog identifiers by hand.
+ */
+export type MarketplaceService = Readonly<{
+  organizationId: string;
+  targetServiceId: string;
+  targetAgentId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  x402Endpoint: string;
+  openApiUrl: string;
+  name: string;
+  description: string | null;
+  logoUrl: string | null;
+  version: string;
+  /** The chain this service settles on — the app filters the directory by it. */
+  chainId: number;
+  listedAt: string;
 }>;
 
 export type QuoteRequest = Readonly<{
@@ -120,6 +148,26 @@ export type RunResponse = Readonly<{
       extensions?: Readonly<Record<string, unknown>>;
     }>;
   }>;
+  /**
+   * The run's money movement, step by step and in order. Absent for a run that bought nothing
+   * across chains; a bridged run has a BRIDGE leg then a TARGET_PAYMENT leg, a prefunded run has
+   * only the payment.
+   */
+  settlementLegs?: readonly SettlementLeg[];
+}>;
+
+export type SettlementLeg = Readonly<{
+  legIndex: number;
+  kind: 'BRIDGE' | 'TARGET_PAYMENT';
+  /** CAIP-2 network id, e.g. `eip155:56`. */
+  network: string;
+  assetSymbol: string;
+  assetDecimals: number;
+  status: 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+  transactionHash?: `0x${string}`;
+  amountAtomic?: string;
+  provider?: string;
+  detail?: Readonly<Record<string, unknown>>;
 }>;
 
 export type ToolReceipt = Readonly<{
@@ -284,6 +332,20 @@ export class ShipyardApiClient {
     );
   }
 
+  /**
+   * Public directory of testable x402 services -- unauthenticated, since browsing it is what
+   * happens before a wallet is ever connected.
+   */
+  async listMarketplaceServices(signal?: AbortSignal): Promise<readonly MarketplaceService[]> {
+    const response = await this.#request<{ services: readonly MarketplaceService[] }>(
+      '/v1/catalog/services',
+      { ...(signal === undefined ? {} : { signal }) },
+      new Set(),
+      { skipAuth: true },
+    );
+    return response.services;
+  }
+
   async onboardService(input: ServiceOnboardingRequest, signal?: AbortSignal): Promise<ServiceOnboardingResponse> {
     return this.#request<ServiceOnboardingResponse>('/v1/services/onboard', {
       method: 'POST',
@@ -317,6 +379,21 @@ export class ShipyardApiClient {
       },
       new Set([402]),
     );
+  }
+
+  /**
+   * Only meaningful on a BOT-Chain-configured deployment, which has no merchant/order API to
+   * discover the customer's payment on its own (see @shipyard402/bot-chain-adapter) -- the wallet
+   * already has the transaction hash the moment it pays, so this hands it over directly. A GOAT
+   * Flow deployment doesn't need this at all and responds 503; callers should treat that as a
+   * no-op, not an error, rather than branching on which adapter is active.
+   */
+  async submitPaymentTransaction(runId: string, transactionHash: `0x${string}`, signal?: AbortSignal): Promise<void> {
+    await this.#request<{ accepted: boolean }>(`/v1/runs/${encodeURIComponent(runId)}/payment-tx`, {
+      method: 'POST',
+      body: JSON.stringify({ transactionHash }),
+      ...(signal === undefined ? {} : { signal }),
+    });
   }
 
   async getRun(runId: string, signal?: AbortSignal): Promise<RunResponse> {

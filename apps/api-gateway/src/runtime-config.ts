@@ -1,13 +1,23 @@
+import { parseBotChainMerchantCapability, type BotChainRuntimeCapability } from '@shipyard402/bot-chain-network-config';
 import {
   ConfigurationError,
+  GOAT_X402_ALL_ENV_NAMES,
   assertPostgresUrl,
   parseMerchantCapability,
-  resolveNetwork,
+  resolveGoatMerchantProfile,
+  type ResolvedGoatMerchantProfile,
   type FlowRuntimeCapability,
 } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
 
 const LOCAL_DATABASE_URL = 'postgresql://shipyard:shipyard@127.0.0.1:5432/shipyard';
+
+const goatMerchantEnvironmentShape = Object.fromEntries(
+  GOAT_X402_ALL_ENV_NAMES.map((name) => [
+    name,
+    name.endsWith('_API_URL') ? z.string().url().optional() : z.string().optional(),
+  ]),
+) as Record<(typeof GOAT_X402_ALL_ENV_NAMES)[number], z.ZodOptional<z.ZodString>>;
 
 const selectedEnvironmentSchema = z
   .object({
@@ -18,33 +28,37 @@ const selectedEnvironmentSchema = z
     DATABASE_URL: z.string().optional(),
     DATABASE_TLS: z.enum(['true', 'false']).optional(),
     GOAT_NETWORK_ENVIRONMENT: z.enum(['mainnet', 'testnet3']).default('mainnet'),
-    GOATX402_API_URL: z.string().url().optional(),
-    GOATX402_MERCHANT_ID: z.string().min(1).optional(),
-    GOATX402_API_KEY: z.string().min(1).optional(),
-    GOATX402_API_SECRET: z.string().min(1).optional(),
-    GOATX402_TOKEN_ADDRESS: z.string().optional(),
-    GOATX402_TOKEN_SYMBOL: z.string().optional(),
-    GOATX402_TOKEN_DECIMALS: z.string().optional(),
-    GOATX402_RECEIVING_ADDRESS: z.string().optional(),
-    GOATX402_MINIMUM_ATOMIC_AMOUNT: z.string().optional(),
-    GOATX402_MAXIMUM_ATOMIC_AMOUNT: z.string().optional(),
+    ...goatMerchantEnvironmentShape,
+    // Selects which merchant adapter this process runs -- 'goat-flow' (default, unchanged
+    // behavior) talks to GOAT's own order/checkout API; 'bot-chain-direct' verifies payments
+    // purely on-chain, for BOT Chain, which has no such API. One process runs exactly one
+    // adapter, the same way one process already runs exactly one GOAT_NETWORK_ENVIRONMENT.
+    MERCHANT_ADAPTER: z.enum(['goat-flow', 'bot-chain-direct']).default('goat-flow'),
+    // Locked to testnet only for now -- BOT Chain mainnet is a deliberate later step, not
+    // something an env var typo should be able to reach.
+    BOT_NETWORK_ENVIRONMENT: z.literal('botChainTestnet').default('botChainTestnet'),
+    BOTX402_MERCHANT_ID: z.string().min(1).optional(),
+    BOTX402_TOKEN_ADDRESS: z.string().optional(),
+    BOTX402_TOKEN_SYMBOL: z.string().optional(),
+    BOTX402_TOKEN_DECIMALS: z.string().optional(),
+    BOTX402_RECEIVING_ADDRESS: z.string().optional(),
+    BOTX402_MINIMUM_ATOMIC_AMOUNT: z.string().optional(),
+    BOTX402_MAXIMUM_ATOMIC_AMOUNT: z.string().optional(),
     SESSION_SIGNING_SECRET: z.string().min(32).optional(),
   })
   .strict();
 
-const merchantFieldNames = [
-  'GOATX402_MERCHANT_ID',
-  'GOATX402_API_KEY',
-  'GOATX402_API_SECRET',
-  'GOATX402_TOKEN_ADDRESS',
-  'GOATX402_TOKEN_SYMBOL',
-  'GOATX402_TOKEN_DECIMALS',
-  'GOATX402_RECEIVING_ADDRESS',
-  'GOATX402_MINIMUM_ATOMIC_AMOUNT',
-  'GOATX402_MAXIMUM_ATOMIC_AMOUNT',
+const botMerchantFieldNames = [
+  'BOTX402_MERCHANT_ID',
+  'BOTX402_TOKEN_ADDRESS',
+  'BOTX402_TOKEN_SYMBOL',
+  'BOTX402_TOKEN_DECIMALS',
+  'BOTX402_RECEIVING_ADDRESS',
+  'BOTX402_MINIMUM_ATOMIC_AMOUNT',
+  'BOTX402_MAXIMUM_ATOMIC_AMOUNT',
 ] as const;
 
-type MerchantFieldName = (typeof merchantFieldNames)[number];
+type BotMerchantFieldName = (typeof botMerchantFieldNames)[number];
 type SelectedEnvironment = z.infer<typeof selectedEnvironmentSchema>;
 
 export type MerchantRuntimeConfig = Readonly<{
@@ -52,6 +66,13 @@ export type MerchantRuntimeConfig = Readonly<{
   apiKey: string;
   apiSecret: string;
   capability: FlowRuntimeCapability;
+}>;
+
+// No apiKey/apiSecret -- BOT Chain has no merchant API to authenticate against, so there is
+// nothing to hold credentials for beyond the capability declaration itself.
+export type BotChainMerchantRuntimeConfig = Readonly<{
+  merchantId: string;
+  capability: BotChainRuntimeCapability;
 }>;
 
 export type ApiRuntimeConfig = Readonly<{
@@ -64,7 +85,9 @@ export type ApiRuntimeConfig = Readonly<{
     connectionString: string;
     useTls: boolean;
   }>;
+  merchantAdapter: 'goat-flow' | 'bot-chain-direct';
   merchant?: MerchantRuntimeConfig;
+  botChainMerchant?: BotChainMerchantRuntimeConfig;
   sessionSigningSecret?: string;
 }>;
 
@@ -104,12 +127,21 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
   if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
     throw new RuntimeConfigurationError('Production API must use GOAT mainnet', ['GOAT_NETWORK_ENVIRONMENT']);
   }
-  if (values.GOATX402_API_URL) assertReviewedApiUrl(values.GOATX402_API_URL, values.GOAT_NETWORK_ENVIRONMENT);
-
-  const merchant = parseMerchantConfig(values);
-  if (values.APP_ENV === 'production' && !merchant) {
+  const goatProfile = resolveGoatMerchantProfile(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    selected,
+    throwRuntimeConfigurationError,
+  );
+  const merchant = parseMerchantConfig(values.GOAT_NETWORK_ENVIRONMENT, goatProfile.merchant);
+  if (values.APP_ENV === 'production' && values.MERCHANT_ADAPTER === 'goat-flow' && !merchant) {
     throw new RuntimeConfigurationError('Production requires complete reviewed GOAT x402 merchant configuration', [
-      ...merchantFieldNames,
+      ...goatProfile.expectedMerchantFields,
+    ]);
+  }
+  const botChainMerchant = parseBotChainMerchantConfig(values);
+  if (values.APP_ENV === 'production' && values.MERCHANT_ADAPTER === 'bot-chain-direct' && !botChainMerchant) {
+    throw new RuntimeConfigurationError('Production requires complete reviewed BOT Chain x402 merchant configuration', [
+      ...botMerchantFieldNames,
     ]);
   }
   if (values.APP_ENV === 'production' && !values.SESSION_SIGNING_SECRET) {
@@ -137,7 +169,9 @@ export function parseRuntimeConfig(environment: NodeJS.ProcessEnv): ApiRuntimeCo
       connectionString,
       useTls: values.DATABASE_TLS ? values.DATABASE_TLS === 'true' : values.APP_ENV === 'production',
     },
+    merchantAdapter: values.MERCHANT_ADAPTER,
     ...(merchant ? { merchant } : {}),
+    ...(botChainMerchant ? { botChainMerchant } : {}),
     ...(values.SESSION_SIGNING_SECRET ? { sessionSigningSecret: values.SESSION_SIGNING_SECRET } : {}),
   };
 }
@@ -151,41 +185,34 @@ function selectEnvironment(environment: NodeJS.ProcessEnv): Record<string, strin
     DATABASE_URL: environment['DATABASE_URL'],
     DATABASE_TLS: environment['DATABASE_TLS'],
     GOAT_NETWORK_ENVIRONMENT: environment['GOAT_NETWORK_ENVIRONMENT'],
-    GOATX402_API_URL: environment['GOATX402_API_URL'],
-    GOATX402_MERCHANT_ID: environment['GOATX402_MERCHANT_ID'],
-    GOATX402_API_KEY: environment['GOATX402_API_KEY'],
-    GOATX402_API_SECRET: environment['GOATX402_API_SECRET'],
-    GOATX402_TOKEN_ADDRESS: environment['GOATX402_TOKEN_ADDRESS'],
-    GOATX402_TOKEN_SYMBOL: environment['GOATX402_TOKEN_SYMBOL'],
-    GOATX402_TOKEN_DECIMALS: environment['GOATX402_TOKEN_DECIMALS'],
-    GOATX402_RECEIVING_ADDRESS: environment['GOATX402_RECEIVING_ADDRESS'],
-    GOATX402_MINIMUM_ATOMIC_AMOUNT: environment['GOATX402_MINIMUM_ATOMIC_AMOUNT'],
-    GOATX402_MAXIMUM_ATOMIC_AMOUNT: environment['GOATX402_MAXIMUM_ATOMIC_AMOUNT'],
+    ...Object.fromEntries(GOAT_X402_ALL_ENV_NAMES.map((name) => [name, environment[name]])),
+    MERCHANT_ADAPTER: environment['MERCHANT_ADAPTER'],
+    BOT_NETWORK_ENVIRONMENT: environment['BOT_NETWORK_ENVIRONMENT'],
+    BOTX402_MERCHANT_ID: environment['BOTX402_MERCHANT_ID'],
+    BOTX402_TOKEN_ADDRESS: environment['BOTX402_TOKEN_ADDRESS'],
+    BOTX402_TOKEN_SYMBOL: environment['BOTX402_TOKEN_SYMBOL'],
+    BOTX402_TOKEN_DECIMALS: environment['BOTX402_TOKEN_DECIMALS'],
+    BOTX402_RECEIVING_ADDRESS: environment['BOTX402_RECEIVING_ADDRESS'],
+    BOTX402_MINIMUM_ATOMIC_AMOUNT: environment['BOTX402_MINIMUM_ATOMIC_AMOUNT'],
+    BOTX402_MAXIMUM_ATOMIC_AMOUNT: environment['BOTX402_MAXIMUM_ATOMIC_AMOUNT'],
     SESSION_SIGNING_SECRET: environment['SESSION_SIGNING_SECRET'],
   };
 }
 
-function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig | undefined {
-  const provided = merchantFieldNames.filter((field) => values[field] !== undefined);
-  if (provided.length === 0) return undefined;
-  if (provided.length !== merchantFieldNames.length) {
-    const missing = merchantFieldNames.filter((field) => values[field] === undefined);
-    throw new RuntimeConfigurationError(
-      'GOAT x402 merchant configuration must be provided as one complete group',
-      missing,
-    );
-  }
-
-  const required = values as SelectedEnvironment & Record<MerchantFieldName, string>;
+function parseMerchantConfig(
+  environment: 'mainnet' | 'testnet3',
+  required: ResolvedGoatMerchantProfile['merchant'],
+): MerchantRuntimeConfig | undefined {
+  if (!required) return undefined;
   const candidate = parseMerchantCapability({
-    environment: values.GOAT_NETWORK_ENVIRONMENT,
-    merchantId: required.GOATX402_MERCHANT_ID,
-    tokenAddress: required.GOATX402_TOKEN_ADDRESS,
-    tokenSymbol: required.GOATX402_TOKEN_SYMBOL,
-    tokenDecimals: Number(required.GOATX402_TOKEN_DECIMALS),
-    receivingAddress: required.GOATX402_RECEIVING_ADDRESS,
-    minimumAtomicAmount: required.GOATX402_MINIMUM_ATOMIC_AMOUNT,
-    maximumAtomicAmount: required.GOATX402_MAXIMUM_ATOMIC_AMOUNT,
+    environment,
+    merchantId: required.merchantId,
+    tokenAddress: required.tokenAddress,
+    tokenSymbol: required.tokenSymbol,
+    tokenDecimals: Number(required.tokenDecimals),
+    receivingAddress: required.receivingAddress,
+    minimumAtomicAmount: required.minimumAtomicAmount,
+    maximumAtomicAmount: required.maximumAtomicAmount,
     source: 'PORTAL_REVIEW',
   });
   if (!candidate.success) {
@@ -196,9 +223,44 @@ function parseMerchantConfig(values: SelectedEnvironment): MerchantRuntimeConfig
   }
 
   return {
-    merchantId: required.GOATX402_MERCHANT_ID,
-    apiKey: required.GOATX402_API_KEY,
-    apiSecret: required.GOATX402_API_SECRET,
+    merchantId: required.merchantId,
+    apiKey: required.apiKey,
+    apiSecret: required.apiSecret,
+    capability: candidate.data,
+  };
+}
+
+function parseBotChainMerchantConfig(values: SelectedEnvironment): BotChainMerchantRuntimeConfig | undefined {
+  const provided = botMerchantFieldNames.filter((field) => values[field] !== undefined);
+  if (provided.length === 0) return undefined;
+  if (provided.length !== botMerchantFieldNames.length) {
+    const missing = botMerchantFieldNames.filter((field) => values[field] === undefined);
+    throw new RuntimeConfigurationError(
+      'BOT Chain x402 merchant configuration must be provided as one complete group',
+      missing,
+    );
+  }
+
+  const required = values as SelectedEnvironment & Record<BotMerchantFieldName, string>;
+  const candidate = parseBotChainMerchantCapability({
+    environment: values.BOT_NETWORK_ENVIRONMENT,
+    merchantId: required.BOTX402_MERCHANT_ID,
+    tokenAddress: required.BOTX402_TOKEN_ADDRESS,
+    tokenSymbol: required.BOTX402_TOKEN_SYMBOL,
+    tokenDecimals: Number(required.BOTX402_TOKEN_DECIMALS),
+    receivingAddress: required.BOTX402_RECEIVING_ADDRESS,
+    minimumAtomicAmount: required.BOTX402_MINIMUM_ATOMIC_AMOUNT,
+    maximumAtomicAmount: required.BOTX402_MAXIMUM_ATOMIC_AMOUNT,
+  });
+  if (!candidate.success) {
+    throw new RuntimeConfigurationError(
+      'Reviewed BOT Chain x402 merchant capability is invalid',
+      candidate.error.issues.map((issue) => issue.path.join('.')).filter(Boolean),
+    );
+  }
+
+  return {
+    merchantId: required.BOTX402_MERCHANT_ID,
     capability: candidate.data,
   };
 }
@@ -230,21 +292,4 @@ function expandLoopbackDevelopmentOrigins(origins: readonly string[]): readonly 
     expanded.add(parsed.origin);
   }
   return [...expanded];
-}
-
-function assertReviewedApiUrl(value: string, environment: 'mainnet' | 'testnet3'): void {
-  const parsed = new URL(value);
-  const expected = resolveNetwork(environment).flowApiUrl;
-  if (
-    parsed.origin !== expected ||
-    parsed.username ||
-    parsed.password ||
-    !['', '/'].includes(parsed.pathname) ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new RuntimeConfigurationError(`GOAT x402 API origin must match the reviewed ${environment} origin`, [
-      'GOATX402_API_URL',
-    ]);
-  }
 }

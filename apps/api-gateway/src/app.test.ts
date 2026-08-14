@@ -3,7 +3,15 @@ import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
 import { afterEach, describe, expect, it } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import { createApp, type AttestationProvider, type EvidencePackProvider } from './app.js';
+import {
+  createApp,
+  type AttestationProvider,
+  type CatalogListingProvider,
+  type EvidencePackProvider,
+  type MarketplaceService,
+  type PaymentTransactionSubmitter,
+  type ProcurementProgressProvider,
+} from './app.js';
 import { InMemoryQuoteRepository, InMemoryRunRepository, type RunRepository } from './repositories.js';
 import { issueSessionToken, loginMessage } from './session-auth.js';
 
@@ -96,6 +104,9 @@ function testApp(
     evidencePackProvider?: EvidencePackProvider;
     attestationProvider?: AttestationProvider;
     sessionSecret?: string;
+    paymentTransactionSubmitter?: PaymentTransactionSubmitter;
+    catalogListingProvider?: CatalogListingProvider;
+    procurementProgressProvider?: ProcurementProgressProvider;
   }> = {},
 ): ReturnType<typeof createApp> {
   const app = createApp({
@@ -104,6 +115,9 @@ function testApp(
         return withCapability ? capability : null;
       },
     },
+    ...(overrides.paymentTransactionSubmitter
+      ? { paymentTransactionSubmitter: overrides.paymentTransactionSubmitter }
+      : {}),
     quoteEngine: new QuoteEngine(
       {
         pricingStatus: 'HYPOTHESIS',
@@ -125,6 +139,10 @@ function testApp(
     sessionSecret: 'sessionSecret' in overrides ? overrides.sessionSecret : TEST_SESSION_SECRET,
     ...(overrides.evidencePackProvider ? { evidencePackProvider: overrides.evidencePackProvider } : {}),
     ...(overrides.attestationProvider ? { attestationProvider: overrides.attestationProvider } : {}),
+    ...(overrides.catalogListingProvider ? { catalogListingProvider: overrides.catalogListingProvider } : {}),
+    ...(overrides.procurementProgressProvider
+      ? { procurementProgressProvider: overrides.procurementProgressProvider }
+      : {}),
   });
   apps.push(app);
   return app;
@@ -359,6 +377,41 @@ describe('api gateway vertical slice', () => {
       expect(response.json()).toEqual({ code: 'RUN_NOT_FOUND' });
     });
 
+    it('serves the public directory without a session, since browsing precedes connecting a wallet', async () => {
+      const listing: MarketplaceService = {
+        organizationId: '11111111-2222-3333-4444-555555555555',
+        targetServiceId: 'service:acme-weather',
+        targetAgentId: 'agent:service:acme-weather',
+        targetVersionHash: `0x${'aa'.repeat(32)}`,
+        policyHash: `0x${'bb'.repeat(32)}`,
+        x402Endpoint: 'https://api.acme.com/paid/weather',
+        openApiUrl: 'https://api.acme.com/openapi.json',
+        name: 'Acme Weather',
+        description: null,
+        logoUrl: null,
+        version: '2.1.0',
+        chainId: 48816,
+        listedAt: '2026-08-13T00:00:00.000Z',
+      };
+      const catalogListingProvider: CatalogListingProvider = {
+        async listMarketplaceServices() {
+          return [listing];
+        },
+      };
+      const response = await testApp(true, { catalogListingProvider }).inject({
+        method: 'GET',
+        url: '/v1/catalog/services',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ services: [listing] });
+    });
+
+    it('reports an empty directory rather than an error when catalog storage is unconfigured', async () => {
+      const response = await testApp().inject({ method: 'GET', url: '/v1/catalog/services' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ services: [] });
+    });
+
     it('rejects an unauthenticated onboarding request', async () => {
       const app = testApp();
       const response = await app.inject({
@@ -445,6 +498,60 @@ describe('api gateway vertical slice', () => {
       run: { status: 'QUOTED', revision: 1 },
       payment: { status: 'NOT_CREATED' },
     });
+  });
+
+  it("surfaces a run's settlement legs, in order, on the owned run response", async () => {
+    const legs = [
+      {
+        legIndex: 0,
+        kind: 'BRIDGE' as const,
+        network: 'eip155:2345',
+        assetSymbol: 'USDT',
+        assetDecimals: 6,
+        status: 'CONFIRMED' as const,
+        transactionHash: `0x${'11'.repeat(32)}` as const,
+        amountAtomic: '250000',
+        provider: 'STARGATE_V2_LAYERZERO',
+        detail: { destinationNetwork: 'eip155:56' },
+      },
+      {
+        legIndex: 1,
+        kind: 'TARGET_PAYMENT' as const,
+        network: 'eip155:56',
+        assetSymbol: 'USDT',
+        assetDecimals: 18,
+        status: 'PENDING' as const,
+        provider: 'x402',
+      },
+    ];
+    const app = testApp(true, {
+      procurementProgressProvider: {
+        async getByRunId() {
+          return legs;
+        },
+      },
+    });
+    const runId = await createOwnedRun(app, 'settlement-legs-request-0001');
+
+    const response = await app.inject({ method: 'GET', url: `/v1/runs/${runId}`, headers: requesterAuth });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().settlementLegs).toEqual(legs);
+  });
+
+  it('omits settlement legs entirely for a run that moved no money across chains', async () => {
+    const app = testApp(true, {
+      procurementProgressProvider: {
+        async getByRunId() {
+          return [];
+        },
+      },
+    });
+    const runId = await createOwnedRun(app, 'settlement-legs-empty-0001');
+
+    const response = await app.inject({ method: 'GET', url: `/v1/runs/${runId}`, headers: requesterAuth });
+
+    expect(response.json()).not.toHaveProperty('settlementLegs');
   });
 
   it('rejects reusing the same idempotency key against a different quote instead of returning the wrong run', async () => {
@@ -535,6 +642,7 @@ describe('api gateway vertical slice', () => {
         status: 'CHECKOUT_VERIFIED',
         orderId: 'flow-order-fixed',
         nextAction: 'PAY_X402_CHALLENGE',
+        chainId: 2345,
         paymentRequired: { accepts: [{ network: 'eip155:2345' }] },
       },
     });
@@ -570,6 +678,72 @@ describe('api gateway vertical slice', () => {
       run: { status: 'PAYMENT_REQUIRED', revision: 2 },
       payment: { orderId: 'flow-order-fixed', nextAction: 'PAY_X402_CHALLENGE' },
     });
+  });
+
+  it('reports payment-tx submission as unavailable when no submitter is configured (e.g. GOAT Flow runs)', async () => {
+    const app = testApp();
+    const runId = await createOwnedRun(app, 'payment-tx-unavailable-0001');
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-tx`,
+      payload: { transactionHash: `0x${'ab'.repeat(32)}` },
+      headers: requesterAuth,
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'PAYMENT_TRANSACTION_SUBMISSION_UNAVAILABLE' });
+  });
+
+  it('forwards a submitted payment transaction hash for an owned, challenged run', async () => {
+    const received: Array<{ runId: string; orderId: string; transactionHash: string }> = [];
+    const submitter: PaymentTransactionSubmitter = {
+      async submitPaymentTransaction(runId, orderId, transactionHash) {
+        received.push({ runId, orderId, transactionHash });
+      },
+    };
+    const app = testApp(true, { paymentTransactionSubmitter: submitter });
+    const runId = await createOwnedRun(app, 'payment-tx-forwarded-0001');
+    await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge`, headers: requesterAuth });
+
+    const txHash = `0x${'cd'.repeat(32)}`;
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-tx`,
+      payload: { transactionHash: txHash },
+      headers: requesterAuth,
+    });
+    expect(response.statusCode).toBe(202);
+    expect(received).toEqual([{ runId, orderId: 'flow-order-fixed', transactionHash: txHash }]);
+  });
+
+  it('rejects a payment-tx submission with a malformed transaction hash', async () => {
+    const submitter: PaymentTransactionSubmitter = { async submitPaymentTransaction() {} };
+    const app = testApp(true, { paymentTransactionSubmitter: submitter });
+    const runId = await createOwnedRun(app, 'payment-tx-malformed-0001');
+    await app.inject({ method: 'POST', url: `/v1/runs/${runId}/payment-challenge`, headers: requesterAuth });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-tx`,
+      payload: { transactionHash: 'not-a-hash' },
+      headers: requesterAuth,
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ code: 'INVALID_PAYMENT_TRANSACTION' });
+  });
+
+  it('refuses a payment-tx submission before a payment challenge has been issued', async () => {
+    const submitter: PaymentTransactionSubmitter = { async submitPaymentTransaction() {} };
+    const app = testApp(true, { paymentTransactionSubmitter: submitter });
+    const runId = await createOwnedRun(app, 'payment-tx-no-challenge-0001');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/runs/${runId}/payment-tx`,
+      payload: { transactionHash: `0x${'ab'.repeat(32)}` },
+      headers: requesterAuth,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ code: 'PAYMENT_CHALLENGE_NOT_ISSUED' });
   });
 
   it('never leaks a raw internal error message to the caller', async () => {

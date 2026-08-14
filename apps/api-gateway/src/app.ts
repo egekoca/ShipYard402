@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import type { FlowRuntimeCapability } from '@shipyard402/goat-network-config';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { QuoteBudgetExceededError, type QuoteEngine, quoteRequestSchema, type Quote } from '@shipyard402/quote-engine';
 import { createDraftRun, transitionRun } from '@shipyard402/run-domain';
-import type { X402MerchantAdapter } from '@shipyard402/x402-payments';
+import type { MerchantCapability, X402MerchantAdapter } from '@shipyard402/x402-payments';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -31,6 +30,8 @@ const createRunRequestSchema = z
 
 const runParamsSchema = z.object({ runId: z.string().min(8).max(200) }).strict();
 
+const paymentTransactionBodySchema = z.object({ transactionHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/) }).strict();
+
 const listRunsQuerySchema = z
   .object({
     requester: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
@@ -53,11 +54,14 @@ const onboardServiceRequestSchema = z
     x402Endpoint: onboardingHttpsUrlSchema,
     openApiUrl: onboardingHttpsUrlSchema,
     version: z.string().min(1).max(100),
+    marketplaceListed: z.boolean().optional(),
+    description: z.string().max(600).optional(),
+    chainId: z.number().int().positive().optional(),
   })
   .strict();
 
 export interface RuntimeCapabilityProvider {
-  getShipyardMerchantCapability(): Promise<FlowRuntimeCapability | null>;
+  getShipyardMerchantCapability(): Promise<MerchantCapability | null>;
 }
 
 export type RuntimeStatus = Readonly<{
@@ -124,6 +128,29 @@ export interface PlanProvider {
   getByRunId(runId: string): Promise<PublicPlan | null>;
 }
 
+/**
+ * One step of a run's money movement, exactly as it was recorded. Self-describing on purpose: the
+ * dashboard renders whatever legs a run produced without needing to know whether it bridged first,
+ * paid from a prefunded wallet, or did something else entirely.
+ */
+export type PublicSettlementLeg = Readonly<{
+  legIndex: number;
+  kind: 'BRIDGE' | 'TARGET_PAYMENT';
+  /** CAIP-2, e.g. `eip155:56`. */
+  network: string;
+  assetSymbol: string;
+  assetDecimals: number;
+  status: 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+  transactionHash?: `0x${string}`;
+  amountAtomic?: string;
+  provider?: string;
+  detail?: Readonly<Record<string, unknown>>;
+}>;
+
+export interface ProcurementProgressProvider {
+  getByRunId(runId: string): Promise<readonly PublicSettlementLeg[]>;
+}
+
 export type PublicStepDurationStats = Readonly<{
   /** Number of completed runs the medians were computed from -- smallest bucket sample size. */
   sampleSize: number;
@@ -144,6 +171,7 @@ export interface StepDurationStatsProvider {
 export type OnboardedService = Readonly<{
   organizationId: string;
   targetServiceId: string;
+  targetAgentId: string;
   targetVersionHash: `0x${string}`;
   policyHash: `0x${string}`;
   x402Endpoint: string;
@@ -158,7 +186,35 @@ export type ServiceOnboardingInput = Readonly<{
   x402Endpoint: string;
   openApiUrl: string;
   version: string;
+  marketplaceListed?: boolean;
+  description?: string;
+  chainId?: number;
 }>;
+
+export type MarketplaceService = Readonly<{
+  organizationId: string;
+  targetServiceId: string;
+  targetAgentId: string;
+  targetVersionHash: `0x${string}`;
+  policyHash: `0x${string}`;
+  x402Endpoint: string;
+  openApiUrl: string;
+  name: string;
+  description: string | null;
+  logoUrl: string | null;
+  version: string;
+  chainId: number;
+  listedAt: string;
+}>;
+
+/**
+ * Backs the public directory of x402 services that can be picked and tested without knowing any
+ * catalog identifiers. Deliberately separate from ServiceOnboardingProvider: onboarding writes a
+ * caller's own service, this only ever reads the subset that opted into being discoverable.
+ */
+export interface CatalogListingProvider {
+  listMarketplaceServices(): Promise<readonly MarketplaceService[]>;
+}
 
 /**
  * Before this, the only quotable target was one hardcoded catalog row seeded outside the app --
@@ -169,18 +225,34 @@ export interface ServiceOnboardingProvider {
   onboard(input: ServiceOnboardingInput): Promise<OnboardedService>;
 }
 
+// Networks without a merchant/order-tracking API (BOT Chain) can't discover a customer's payment
+// on their own the way GOAT Flow does -- the wallet already has the transaction hash the moment
+// it pays, so this lets the frontend hand it over directly instead. GOAT Flow doesn't need this at
+// all, so it's a distinct, optional capability rather than part of X402MerchantAdapter itself.
+export interface PaymentTransactionSubmitter {
+  submitPaymentTransaction(
+    runId: string,
+    orderId: string,
+    transactionHash: `0x${string}`,
+    signal?: AbortSignal,
+  ): Promise<void>;
+}
+
 export type AppDependencies = Readonly<{
   quoteEngine: QuoteEngine;
   quoteRepository: QuoteRepository;
   runRepository: RunRepository;
   capabilityProvider: RuntimeCapabilityProvider;
   merchantAdapter?: X402MerchantAdapter;
+  paymentTransactionSubmitter?: PaymentTransactionSubmitter;
   runtimeStatusProvider?: RuntimeStatusProvider;
   evidencePackProvider?: EvidencePackProvider;
   attestationProvider?: AttestationProvider;
   planProvider?: PlanProvider;
+  procurementProgressProvider?: ProcurementProgressProvider;
   stepDurationStatsProvider?: StepDurationStatsProvider;
   serviceOnboardingProvider?: ServiceOnboardingProvider;
+  catalogListingProvider?: CatalogListingProvider;
   allowedWebOrigins?: readonly string[];
   now?: () => Date;
   idFactory?: () => string;
@@ -213,6 +285,7 @@ export function createApp(dependencies: AppDependencies): FastifyInstance {
   app.after(() => {
     registerHealthRoutes(app, dependencies);
     registerAuthRoutes(app, dependencies, now);
+    registerCatalogRoutes(app, dependencies);
     registerOnboardingRoutes(app, dependencies, now);
     registerQuoteRoutes(app, dependencies, now);
     registerRunRoutes(app, dependencies, now, idFactory);
@@ -394,6 +467,28 @@ async function loadOwnedRun(
   return record;
 }
 
+function registerCatalogRoutes(app: FastifyInstance, dependencies: AppDependencies): void {
+  /**
+   * Unauthenticated on purpose: browsing which services can be tested is the step *before* anyone
+   * connects a wallet, and gating it behind a signature would mean a visitor has to authorize a
+   * site to find out whether it has anything they want. Every field returned here is already
+   * public by the owner's own opt-in (services.marketplace_listed).
+   */
+  app.get(
+    '/v1/catalog/services',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (_request, reply) => {
+      if (!dependencies.catalogListingProvider) {
+        // A deployment without catalog storage has an empty directory, not a broken one -- the
+        // frontend falls back to its built-in self-test target either way.
+        return reply.code(200).send({ services: [] });
+      }
+      const services = await dependencies.catalogListingProvider.listMarketplaceServices();
+      return reply.code(200).send({ services });
+    },
+  );
+}
+
 function registerOnboardingRoutes(app: FastifyInstance, dependencies: AppDependencies, now: () => Date): void {
   app.post(
     '/v1/services/onboard',
@@ -423,6 +518,9 @@ function registerOnboardingRoutes(app: FastifyInstance, dependencies: AppDepende
           x402Endpoint: parsed.data.x402Endpoint,
           openApiUrl: parsed.data.openApiUrl,
           version: parsed.data.version,
+          ...(parsed.data.marketplaceListed === undefined ? {} : { marketplaceListed: parsed.data.marketplaceListed }),
+          ...(parsed.data.description === undefined ? {} : { description: parsed.data.description }),
+          ...(parsed.data.chainId === undefined ? {} : { chainId: parsed.data.chainId }),
         });
         return reply.code(201).send(onboarded);
       } catch (error) {
@@ -454,20 +552,20 @@ function registerQuoteRoutes(app: FastifyInstance, dependencies: AppDependencies
       return reply.code(403).send({ code: 'REQUESTER_ADDRESS_MISMATCH' });
     }
 
-    let capability: FlowRuntimeCapability | null;
+    let capability: MerchantCapability | null;
     try {
       capability = await dependencies.capabilityProvider.getShipyardMerchantCapability();
     } catch (error) {
-      request.log.error({ err: error }, 'GOAT x402 merchant capability discovery failed');
+      request.log.error({ err: error }, 'Merchant capability discovery failed');
       return reply.code(503).send({
         code: 'RUNTIME_PAYMENT_CAPABILITY_UNAVAILABLE',
-        message: 'The reviewed GOAT x402 merchant capability could not be verified.',
+        message: 'The reviewed merchant capability could not be verified.',
       });
     }
     if (!capability) {
       return reply.code(503).send({
         code: 'RUNTIME_PAYMENT_CAPABILITY_UNAVAILABLE',
-        message: 'A verified GOAT Flow ERC20_DIRECT merchant capability is required before quoting.',
+        message: 'A verified merchant capability is required before quoting.',
       });
     }
 
@@ -614,6 +712,44 @@ function registerRunRoutes(
     },
   );
 
+  app.post(
+    '/v1/runs/:runId/payment-tx',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const params = runParamsSchema.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ code: 'INVALID_RUN_ID' });
+      const session = requireSession(dependencies, now, request, reply);
+      if (!session) return;
+      if (!dependencies.paymentTransactionSubmitter) {
+        return reply.code(503).send({
+          code: 'PAYMENT_TRANSACTION_SUBMISSION_UNAVAILABLE',
+          message: 'This network discovers payments on its own; a transaction hash is not needed.',
+        });
+      }
+      const body = paymentTransactionBodySchema.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ code: 'INVALID_PAYMENT_TRANSACTION' });
+
+      const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
+      if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
+      if (!record.paymentOrder) return reply.code(409).send({ code: 'PAYMENT_CHALLENGE_NOT_ISSUED' });
+
+      try {
+        await dependencies.paymentTransactionSubmitter.submitPaymentTransaction(
+          record.aggregate.id,
+          record.paymentOrder.orderId,
+          body.data.transactionHash as `0x${string}`,
+        );
+      } catch (error) {
+        request.log.error({ err: error, runId: record.aggregate.id }, 'Payment transaction submission failed');
+        return reply.code(409).send({
+          code: 'PAYMENT_TRANSACTION_REJECTED',
+          message: error instanceof Error ? error.message : 'The transaction could not be recorded.',
+        });
+      }
+      return reply.code(202).send({ accepted: true });
+    },
+  );
+
   app.get('/v1/runs', async (request, reply) => {
     const query = listRunsQuerySchema.safeParse(request.query);
     if (!query.success) return reply.code(400).send({ code: 'INVALID_REQUESTER_ADDRESS' });
@@ -637,7 +773,10 @@ function registerRunRoutes(
     if (!session) return;
     const record = await loadOwnedRun(dependencies, params.data.runId, session.address);
     if (!record) return reply.code(404).send({ code: 'RUN_NOT_FOUND' });
-    return reply.code(200).send(toRunResponse(record));
+    const settlementLegs = dependencies.procurementProgressProvider
+      ? await dependencies.procurementProgressProvider.getByRunId(params.data.runId)
+      : [];
+    return reply.code(200).send(toRunResponse(record, settlementLegs));
   });
 }
 
@@ -743,10 +882,11 @@ function toQuoteResponse(quote: Quote): object {
   };
 }
 
-function toRunResponse(record: RunRecord): object {
+function toRunResponse(record: RunRecord, settlementLegs: readonly PublicSettlementLeg[] = []): object {
   const order = record.paymentOrder;
   return {
     run: record.aggregate,
+    ...(settlementLegs.length > 0 ? { settlementLegs } : {}),
     payment: order
       ? {
           status: order.status,
@@ -755,8 +895,8 @@ function toRunResponse(record: RunRecord): object {
           orderId: order.orderId,
           expiresAt: order.expiresAt,
           paymentRequired: order.paymentRequired,
+          chainId: order.chainId,
           ...(record.customerPaymentTransactionHash ? { transactionHash: record.customerPaymentTransactionHash } : {}),
-          ...(record.customerPaymentChainId ? { chainId: record.customerPaymentChainId } : {}),
         }
       : {
           status: 'NOT_CREATED',
