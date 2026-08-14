@@ -135,6 +135,24 @@ export class PostgresOrchestratorJobQueue {
     );
   }
 
+  /** Bridge polling is expected waiting, not a failed attempt; release the lease without consuming retry budget. */
+  async markWaiting(job: ClaimedOrchestratorJob, delayMilliseconds: number, reason: string): Promise<void> {
+    validateErrorCode(reason);
+    if (!Number.isInteger(delayMilliseconds) || delayMilliseconds < 0 || delayMilliseconds > 3_600_000) {
+      throw new Error('Orchestrator job wait delay must be between zero and one hour');
+    }
+    await this.#finishLease(
+      job,
+      `UPDATE orchestrator_jobs SET
+         status = 'RETRY_SCHEDULED', attempts = GREATEST(attempts - 1, 0),
+         locked_at = NULL, locked_by = NULL,
+         available_at = now() + ($4::double precision * interval '1 millisecond'),
+         last_error_code = $5, failure_codes = NULL, updated_at = now()
+       WHERE run_id = $1 AND status = 'PROCESSING' AND locked_by = $2 AND attempts = $3`,
+      [delayMilliseconds, reason],
+    );
+  }
+
   async markDeadLetter(
     job: ClaimedOrchestratorJob,
     reason: string,

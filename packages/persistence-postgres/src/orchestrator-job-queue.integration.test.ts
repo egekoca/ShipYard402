@@ -8,6 +8,7 @@ import { PostgresAttestationStore } from './attestation-store.js';
 import { PostgresEvidencePackStore } from './evidence-pack-store.js';
 import { PostgresOrchestratorCheckpointStore } from './orchestrator-checkpoint-store.js';
 import { PostgresOrchestratorJobQueue } from './orchestrator-job-queue.js';
+import { PostgresBnbPurchaseStore, PostgresBridgeSubmissionStore } from './cross-chain-stores.js';
 import { PostgresQuoteRepository, PostgresRunRepository } from './api-repositories.js';
 import { createShipyardPool } from './pool.js';
 
@@ -150,6 +151,8 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
 
   afterAll(async () => {
     if (!pool) return;
+    await pool.query(`DELETE FROM bridge_submissions WHERE run_id = $1`, [runId]);
+    await pool.query(`DELETE FROM bnb_x402_authorizations WHERE idempotency_key LIKE $1`, [`${runId}:%`]);
     await pool.query(`DELETE FROM orchestrator_run_checkpoints WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM attestations WHERE run_id = $1`, [runId]);
     await pool.query(`DELETE FROM evidence_packs WHERE run_id = $1`, [runId]);
@@ -188,6 +191,52 @@ describe.skipIf(!databaseUrl)('PostgreSQL orchestrator job queue and evidence/at
     const completedJob = await queue.findByRunId(runId);
     expect(completedJob).toMatchObject({ status: 'COMPLETED', attempts: 2 });
     expect(completedJob).not.toHaveProperty('lastErrorCode');
+  });
+
+  it('atomically claims and resumes bridge plus BNB x402 spend-once artifacts', async () => {
+    if (!pool) throw new Error('TEST_DATABASE_URL is required');
+    const bridge = new PostgresBridgeSubmissionStore(pool);
+    const bridgeClaim = {
+      status: 'CLAIMED' as const,
+      idempotencyKey: `${runId}:bridge`,
+      quoteId: 'quote:stargate',
+      runId,
+      destinationPayerAddress: '0x5000000000000000000000000000000000000005' as const,
+      minimumAmountOutAtomic: '200000000000000000',
+    };
+    const [first, competing] = await Promise.all([bridge.claim(bridgeClaim), bridge.claim(bridgeClaim)]);
+    expect([first.acquired, competing.acquired].sort()).toEqual([false, true]);
+    const sourceTransactionHash = `0x${'ab'.repeat(32)}` as const;
+    await bridge.markSubmitted(bridgeClaim.idempotencyKey, {
+      sourceTransactionHash,
+      transferId: sourceTransactionHash,
+    });
+    await expect(bridge.findByTransferId(sourceTransactionHash)).resolves.toMatchObject({
+      status: 'SUBMITTED',
+      sourceTransactionHash,
+    });
+
+    const purchase = new PostgresBnbPurchaseStore(pool);
+    const purchaseClaim = {
+      status: 'CLAIMED' as const,
+      idempotencyKey: `${runId}:bnb-x402`,
+      amountAtomic: '200000000000000000',
+    };
+    const [firstPurchase, competingPurchase] = await Promise.all([
+      purchase.claim(purchaseClaim),
+      purchase.claim(purchaseClaim),
+    ]);
+    expect([firstPurchase.acquired, competingPurchase.acquired].sort()).toEqual([false, true]);
+    const paymentProofHash = `0x${'cd'.repeat(32)}` as const;
+    await purchase.markAuthorized(purchaseClaim.idempotencyKey, {
+      paymentReceipt: 'persisted-payment-signature',
+      paymentProofHash,
+      amountAtomic: purchaseClaim.amountAtomic,
+    });
+    await expect(purchase.claim(purchaseClaim)).resolves.toMatchObject({
+      acquired: false,
+      record: { status: 'AUTHORIZED', paymentProofHash },
+    });
   });
 
   it('dead-letters a stale PROCESSING job whose attempts are already exhausted instead of reclaiming it forever', async () => {

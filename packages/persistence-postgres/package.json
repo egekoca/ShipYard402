@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@shipyard402/bnb-x402-client": "workspace:*",
     "@shipyard402/bot-chain-adapter": "workspace:*",
     "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-flow-adapter": "workspace:*",
@@ -27,6 +28,7 @@
     "@shipyard402/policy-engine": "workspace:*",
     "@shipyard402/quote-engine": "workspace:*",
     "@shipyard402/run-domain": "workspace:*",
+    "@shipyard402/stargate-bridge-adapter": "workspace:*",
     "@shipyard402/x402-payments": "workspace:*",
     "pg": "8.22.0",
     "zod": "3.25.76"
