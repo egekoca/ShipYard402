@@ -26,13 +26,18 @@ export const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecution
         targetVersionHash: ctx.targetVersionHash,
         policyHash: ctx.policyHash,
         method: 'GET',
-        route: PAID_RESOURCE_ROUTE,
+        route: ctx.route,
         paymentReceipt: ctx.paymentReceipt,
+        paymentHeaderName: ctx.paymentHeaderName,
         paymentProofHash: keccak256(toUtf8Bytes(ctx.paymentTransactionHash)) as `0x${string}`,
       };
+      const replayEvidence = await new ProtectedDeliveryReplayRunner(ctx.deliveryClient).run(scenario);
+      const settlementTransactionHash = replayEvidence.attempts.find(
+        (attempt) => attempt.settlementTransactionHash,
+      )?.settlementTransactionHash;
       return {
-        evidence: await new ProtectedDeliveryReplayRunner(ctx.deliveryClient).run(scenario),
-        chainTransactionHash: ctx.paymentTransactionHash,
+        evidence: replayEvidence,
+        chainTransactionHash: settlementTransactionHash ?? ctx.paymentTransactionHash,
       };
     },
     'unpaid-access-denial': async (ctx) => ({
@@ -42,7 +47,8 @@ export const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecution
         targetVersionHash: ctx.targetVersionHash,
         policyHash: ctx.policyHash,
         method: 'GET',
-        route: PAID_RESOURCE_ROUTE,
+        route: ctx.route,
+        paymentHeaderName: ctx.paymentHeaderName,
       }),
       // No payment happens in this scenario, so there is no real transaction to attach the receipt to.
       chainTransactionHash: ZERO_CHAIN_TRANSACTION_HASH,
@@ -54,7 +60,8 @@ export const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecution
         targetVersionHash: ctx.targetVersionHash,
         policyHash: ctx.policyHash,
         method: 'GET',
-        route: PAID_RESOURCE_ROUTE,
+        route: ctx.route,
+        paymentHeaderName: ctx.paymentHeaderName,
         // Deterministically corrupt the real earned receipt -- guaranteed to fail the target's
         // integrity check without needing to know its internal format.
         presentedReceipt: `${ctx.paymentReceipt}-tampered`,
@@ -64,7 +71,15 @@ export const SCENARIO_EXECUTORS: Readonly<Record<string, (ctx: ScenarioExecution
     }),
   };
 
+/**
+ * Reduces a run's scenario evidence to one verdict. A PASS is a positive claim -- "we attacked the
+ * payment logic and it held" -- so it is only ever returned when there is evidence to back it.
+ * An empty set is INCONCLUSIVE, never PASS: a run that produced no scenario at all (procurement
+ * exhausted its budget, the pipeline was finalized after a terminal failure) has demonstrated
+ * nothing about the target, and reporting that as PASS would sell a verdict nobody earned.
+ */
 export function aggregateScenarioResult(results: readonly ReplayEvidence[]): 'PASS' | 'FAIL' | 'INCONCLUSIVE' {
+  if (results.length === 0) return 'INCONCLUSIVE';
   if (results.some((result) => result.result === 'FAIL')) return 'FAIL';
   if (results.some((result) => result.result === 'INCONCLUSIVE')) return 'INCONCLUSIVE';
   return 'PASS';

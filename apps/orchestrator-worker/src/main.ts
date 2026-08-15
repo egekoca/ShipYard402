@@ -5,6 +5,7 @@ import {
   PostgresOrchestratorJobQueue,
   PostgresQuoteRepository,
   PostgresRunRepository,
+  PostgresRunSettlementLegStore,
   assertShipyardSchemaReady,
   createShipyardPool,
 } from '@shipyard402/persistence-postgres';
@@ -17,13 +18,13 @@ import { createEgressSafeFetch } from '@shipyard402/policy-engine';
 import { createFetchProtectedDeliveryClient } from '@shipyard402/protected-delivery-runner';
 import { OpenAiRiskClassifier } from '@shipyard402/risk-classifier';
 
+import { buildCrossChainProcurement } from './cross-chain-wiring.js';
 import {
   EthersErc20RefundSender,
-  EthersNativePaymentSender,
   EthersRegistryAttestor,
   EthersToolReceiptSigner,
+  EthersX402Payer,
 } from './ethers-adapters.js';
-import { createFetchPurchaseClient } from './fetch-purchase-client.js';
 import { createKuboEvidencePublisher } from './ipfs-publisher.js';
 import { parseOrchestratorWorkerRuntimeConfig } from './runtime-config.js';
 import { OrchestratorJobHandler, processNextOrchestratorJob } from './worker.js';
@@ -59,6 +60,10 @@ async function start(): Promise<void> {
       ),
     );
 
+    const crossChainPayers = config.crossChain
+      ? await buildCrossChainProcurement({ crossChain: config.crossChain, pool, signerWallet })
+      : undefined;
+
     const handler = new OrchestratorJobHandler({
       runRepository: new PostgresRunRepository(pool),
       quoteRepository: new PostgresQuoteRepository(pool),
@@ -70,23 +75,30 @@ async function start(): Promise<void> {
       mandatoryScenarios: config.mandatoryScenarios,
       shipyardAgentId: config.shipyardAgentId,
       demoTarget: { ...config.demoTarget, chainId: config.chainId },
-      deliveryClient: createFetchProtectedDeliveryClient(config.demoTarget.baseUrl, {
-        fetchImpl: egressSafeFetch,
-        captureProviderSignature: true,
-      }),
-      paymentSender: new EthersNativePaymentSender(
-        signerWallet,
-        provider,
-        BigInt(config.maximumProcurementSpendAtomic),
-      ),
+      deliveryClientFor: (endpoint) => {
+        const target = new URL(endpoint);
+        // Only our own controlled target is exempt from egress filtering and provider-signature
+        // capture; a service picked from the directory is third-party traffic and stays restricted.
+        const isControlledTarget =
+          config.crossChain?.targetEndpoint !== undefined &&
+          target.toString() === new URL(config.crossChain.targetEndpoint).toString();
+        return createFetchProtectedDeliveryClient(target.origin, {
+          fetchImpl: isControlledTarget ? fetch : egressSafeFetch,
+          captureProviderSignature: !isControlledTarget,
+        });
+      },
+      x402Payer: new EthersX402Payer(signerWallet, egressSafeFetch),
+      procurementAllowedAssets: config.procurementAllowedAssets,
+      homeChainId: config.chainId,
+      ...(crossChainPayers ? { crossChainPayers } : {}),
       ...(config.refundsEnabled ? { refundSender: new EthersErc20RefundSender(signerWallet, provider) } : {}),
-      purchaseClient: createFetchPurchaseClient(config.demoTarget.baseUrl, signerWallet),
       toolReceiptSigner: new EthersToolReceiptSigner(toolReceiptSignerWallet),
       evidencePackStore: new PostgresEvidencePackStore(pool),
       evidencePublisher: createKuboEvidencePublisher(config.ipfsApiUrl),
       attestor: new EthersRegistryAttestor(signerWallet, config.registryAddress, config.chainId, registryAbi),
       attestationStore: new PostgresAttestationStore(pool),
       checkpointStore: new PostgresOrchestratorCheckpointStore(pool),
+      settlementLegs: new PostgresRunSettlementLegStore(pool),
     });
     const queue = new PostgresOrchestratorJobQueue(pool);
     const controller = new AbortController();

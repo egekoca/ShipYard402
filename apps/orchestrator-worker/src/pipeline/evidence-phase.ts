@@ -18,6 +18,12 @@ export async function runEvidencePhase(
   startedAt: number,
   completedAt: number,
   now: () => Date,
+  /**
+   * Overrides the verdict derived from the scenario results. Used only by terminal-failure
+   * finalization: a run that stopped early may carry a handful of passing scenarios, and letting
+   * those aggregate to PASS would report full coverage the run never achieved.
+   */
+  forcedResult?: 'INCONCLUSIVE',
 ): Promise<
   Readonly<{
     evidencePack: ReturnType<typeof buildEvidencePack>;
@@ -42,7 +48,7 @@ export async function runEvidencePhase(
     const signature = await deps.toolReceiptSigner.sign(unsignedReceipt);
     toolReceipts.push({ ...unsignedReceipt, signature });
   }
-  const overallResult = aggregateScenarioResult(scenarioResults.map((result) => result.evidence));
+  const overallResult = forcedResult ?? aggregateScenarioResult(scenarioResults.map((result) => result.evidence));
 
   const evidencePack = buildEvidencePack({
     runId,

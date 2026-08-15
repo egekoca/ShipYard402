@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  BridgeDeliveryPendingError,
+  CrossChainSettlementAmbiguousError,
   PaymentSendAmbiguousError,
   ProcurementDeniedError,
   RunNotReadyForOrchestrationError,
@@ -11,12 +13,20 @@ import {
   processNextOrchestratorJob,
   type LeasedOrchestratorJob,
   type OrchestratorJobQueue,
+  type OrchestratorRunFinalizer,
 } from './worker.js';
 
-function handlerThatThrows(error: unknown): OrchestratorJobHandler {
-  return new OrchestratorJobHandler({} as never, async () => {
-    throw error;
-  });
+/** Stands in for finalizeRunAsInconclusive so these tests never touch a real run or the chain. */
+const noFinalization: OrchestratorRunFinalizer = async () => null;
+
+function handlerThatThrows(error: unknown, finalizeRun: OrchestratorRunFinalizer = noFinalization) {
+  return new OrchestratorJobHandler(
+    {} as never,
+    async () => {
+      throw error;
+    },
+    finalizeRun,
+  );
 }
 
 describe('orchestrator job handler', () => {
@@ -42,6 +52,76 @@ describe('orchestrator job handler', () => {
     await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
       action: 'DEAD_LETTER',
       reason: 'PAYMENT_SEND_AMBIGUOUS_NEEDS_MANUAL_RECONCILIATION',
+    });
+  });
+
+  it('finalizes a run as INCONCLUSIVE before dead-lettering it, so a paid run never stops at PROCURING forever', async () => {
+    const finalize = vi.fn<OrchestratorRunFinalizer>(async (runId) => ({
+      runId,
+      finalStatus: 'DELIVERED_INCONCLUSIVE',
+      attestationTransactionHash: `0x${'ab'.repeat(32)}`,
+    }));
+    const handler = handlerThatThrows(new OrchestratorPipelineError('boom', true), finalize);
+
+    await expect(handler.handle({ runId: 'run-1', attempt: 5, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER',
+      reason: 'PIPELINE_RETRIES_EXHAUSTED',
+    });
+    expect(finalize).toHaveBeenCalledWith('run-1', expect.anything(), 'PIPELINE_RETRIES_EXHAUSTED');
+  });
+
+  it('finalizes a denied procurement too, since the customer has already paid for that run', async () => {
+    const finalize = vi.fn<OrchestratorRunFinalizer>(async () => null);
+    const handler = handlerThatThrows(new ProcurementDeniedError(['HOST_NOT_ALLOWED']), finalize);
+
+    await handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 });
+
+    expect(finalize).toHaveBeenCalledWith('run-1', expect.anything(), 'PROCUREMENT_DENIED');
+  });
+
+  it('still dead-letters when finalization itself fails, rather than retrying forever', async () => {
+    const finalize = vi.fn<OrchestratorRunFinalizer>(async () => {
+      throw new Error('IPFS unreachable');
+    });
+    const handler = handlerThatThrows(new OrchestratorPipelineError('boom', true), finalize);
+
+    await expect(handler.handle({ runId: 'run-1', attempt: 5, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER',
+      reason: 'PIPELINE_RETRIES_EXHAUSTED',
+    });
+  });
+
+  it('never auto-finalizes an ambiguous settlement: the registry is append-only and the money state is unknown', async () => {
+    const finalize = vi.fn<OrchestratorRunFinalizer>(async () => null);
+
+    await handlerThatThrows(new PaymentSendAmbiguousError('run-1', 3, 'payment'), finalize).handle({
+      runId: 'run-1',
+      attempt: 1,
+      maximumAttempts: 5,
+    });
+    await handlerThatThrows(new CrossChainSettlementAmbiguousError('run-1'), finalize).handle({
+      runId: 'run-1',
+      attempt: 1,
+      maximumAttempts: 5,
+    });
+
+    expect(finalize).not.toHaveBeenCalled();
+  });
+
+  it('waits for bridge delivery without consuming a retry attempt', async () => {
+    const handler = handlerThatThrows(new BridgeDeliveryPendingError('run-1'));
+    await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'WAIT',
+      delayMilliseconds: 15_000,
+      reason: 'BRIDGE_DELIVERY_PENDING',
+    });
+  });
+
+  it('dead-letters an ambiguous BNB settlement for manual reconciliation', async () => {
+    const handler = handlerThatThrows(new CrossChainSettlementAmbiguousError('run-1'));
+    await expect(handler.handle({ runId: 'run-1', attempt: 1, maximumAttempts: 5 })).resolves.toEqual({
+      action: 'DEAD_LETTER',
+      reason: 'BNB_SETTLEMENT_AMBIGUOUS_NEEDS_MANUAL_RECONCILIATION',
     });
   });
 

@@ -32,6 +32,20 @@ export class PaymentSendAmbiguousError extends Error {
   }
 }
 
+export class BridgeDeliveryPendingError extends Error {
+  constructor(runId: string) {
+    super(`Run ${runId}: Stargate transfer is still awaiting BNB delivery`);
+    this.name = 'BridgeDeliveryPendingError';
+  }
+}
+
+export class CrossChainSettlementAmbiguousError extends Error {
+  constructor(runId: string) {
+    super(`Run ${runId}: BNB x402 request may have settled but no settlement transaction was observed`);
+    this.name = 'CrossChainSettlementAmbiguousError';
+  }
+}
+
 /**
  * Whether the run was mutated past FUNDED before failure. Kept for observability/logging — the
  * pipeline is checkpoint-resumable (see CheckpointStorePort), so the job handler no longer treats

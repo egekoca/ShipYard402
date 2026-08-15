@@ -1,5 +1,14 @@
 import { toolReceiptDomain, TOOL_RECEIPT_TYPES, type UnsignedToolReceipt } from '@shipyard402/evidence-sdk';
-import { Contract, type Wallet, getAddress, type InterfaceAbi, type JsonRpcProvider } from 'ethers';
+import { acquireExactEvmPayment } from '@shipyard402/x402-payments';
+import {
+  Contract,
+  type Wallet,
+  getAddress,
+  type InterfaceAbi,
+  type JsonRpcProvider,
+  type TypedDataDomain,
+  type TypedDataField,
+} from 'ethers';
 
 import {
   ATTESTATION_TYPED_DATA_TYPES,
@@ -7,60 +16,33 @@ import {
   registryDomain,
   RESULT_INDEX,
 } from './registry-eip712.js';
-import type {
-  ConfirmedPayment,
-  NativePaymentSender,
-  RefundSender,
-  RegistryAttestor,
-  RunAttestationInput,
-  ToolReceiptSigner,
-} from './ports.js';
+import type { RefundSender, RegistryAttestor, RunAttestationInput, ToolReceiptSigner, X402PayerPort } from './ports.js';
 
 const ERC20_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
-export class EthersNativePaymentSender implements NativePaymentSender {
+export class EthersX402Payer implements X402PayerPort {
+  readonly payerAddress: `0x${string}`;
   readonly #wallet: Wallet;
-  readonly #provider: JsonRpcProvider;
-  readonly #maximumValueWei: bigint;
+  readonly #fetchImpl: typeof fetch;
 
-  constructor(wallet: Wallet, provider: JsonRpcProvider, maximumValueWei: bigint) {
+  constructor(wallet: Wallet, fetchImpl: typeof fetch) {
     this.#wallet = wallet;
-    this.#provider = provider;
-    this.#maximumValueWei = maximumValueWei;
+    this.#fetchImpl = fetchImpl;
+    this.payerAddress = getAddress(wallet.address) as `0x${string}`;
   }
 
-  async reserveNonce(): Promise<number> {
-    return this.#wallet.getNonce('pending');
-  }
-
-  async isNonceConsumed(nonce: number): Promise<boolean> {
-    return (await this.#provider.getTransactionCount(this.#wallet.address, 'pending')) > nonce;
-  }
-
-  async sendPayment(
-    input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>,
-  ): Promise<`0x${string}`> {
-    if (input.valueWei <= 0n || input.valueWei > this.#maximumValueWei) {
-      throw new Error('Procurement payment amount is outside the configured safety bound');
-    }
-    const feeData = await this.#provider.getFeeData();
-    const transaction = await this.#wallet.sendTransaction({
-      to: input.toAddress,
-      value: input.valueWei,
-      nonce: input.nonce,
-      ...(feeData.maxFeePerGas ? { maxFeePerGas: feeData.maxFeePerGas } : {}),
-      ...(feeData.maxPriorityFeePerGas ? { maxPriorityFeePerGas: feeData.maxPriorityFeePerGas } : {}),
+  async acquire(input: Parameters<X402PayerPort['acquire']>[0]) {
+    return acquireExactEvmPayment({
+      ...input,
+      from: this.payerAddress,
+      fetchImpl: this.#fetchImpl,
+      signTypedData: async (args) =>
+        (await this.#wallet.signTypedData(
+          args.domain as TypedDataDomain,
+          args.types as unknown as Record<string, TypedDataField[]>,
+          args.message,
+        )) as `0x${string}`,
     });
-    return transaction.hash as `0x${string}`;
-  }
-
-  async waitForConfirmation(transactionHash: `0x${string}`, minimumConfirmations: number): Promise<ConfirmedPayment> {
-    const receipt = await this.#provider.waitForTransaction(transactionHash, minimumConfirmations, 180_000);
-    if (receipt?.status !== 1) {
-      throw new Error(`Procurement payment transaction did not confirm successfully: ${transactionHash}`);
-    }
-    const currentBlock = await this.#provider.getBlockNumber();
-    return { transactionHash, confirmations: currentBlock - receipt.blockNumber + 1 };
   }
 }
 
@@ -126,14 +108,15 @@ export class EthersRegistryAttestor implements RegistryAttestor {
   }
 
   async submit(attestation: RunAttestationInput): Promise<`0x${string}`> {
+    const submitted = await this.#withChainSafeCompletionTime(attestation);
     const signature = await this.#wallet.signTypedData(
       registryDomain(this.chainId, this.registryAddress),
       ATTESTATION_TYPED_DATA_TYPES,
-      attestationTypedDataValue(attestation),
+      attestationTypedDataValue(submitted),
     );
     // The contract's `result` field is a Solidity enum (uint8) — the on-chain call needs its
     // numeric index, unlike the EIP-712 signature above which hashes the outcome as a string.
-    const callData = { ...attestation, result: RESULT_INDEX[attestation.result] };
+    const callData = { ...submitted, result: RESULT_INDEX[submitted.result] };
     const tx = await this.#contract['recordRun']!(callData, signature);
     const receipt = await tx.wait(1);
     if (receipt?.status !== 1) {
@@ -141,4 +124,28 @@ export class EthersRegistryAttestor implements RegistryAttestor {
     }
     return receipt.hash as `0x${string}`;
   }
+
+  /**
+   * The registry rejects `completedAt > block.timestamp`. The run's completion time comes from the
+   * orchestrator's wall clock, which sits ahead of the newest block whenever a chain has not
+   * produced one in the last second or two -- on a slow block, a perfectly valid attestation
+   * reverts with InvalidCompletionTime and burns a retry. Clamping to the chain's own clock keeps
+   * the claim truthful (a completion can only be reported as already having happened) and makes
+   * the submission deterministic instead of dependent on block timing. `expiresAt` is left alone:
+   * lowering `completedAt` only widens the window the contract requires it to satisfy.
+   */
+  async #withChainSafeCompletionTime(attestation: RunAttestationInput): Promise<RunAttestationInput> {
+    const latestBlock = await this.#wallet.provider?.getBlock('latest');
+    if (!latestBlock) return attestation;
+    return chainSafeCompletionTime(attestation, Number(latestBlock.timestamp));
+  }
+}
+
+/** Pure half of the clamp above, kept separate so the rule itself is testable without a chain. */
+export function chainSafeCompletionTime(
+  attestation: RunAttestationInput,
+  chainNowSeconds: number,
+): RunAttestationInput {
+  if (attestation.completedAt <= chainNowSeconds) return attestation;
+  return { ...attestation, completedAt: chainNowSeconds };
 }

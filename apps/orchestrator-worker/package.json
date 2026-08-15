@@ -10,10 +10,13 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "maintenance:finalize-stuck-runs": "tsx --env-file-if-exists=../../.env src/finalize-stuck-runs.ts"
   },
   "dependencies": {
+    "@shipyard402/bnb-x402-client": "workspace:*",
     "@shipyard402/evidence-sdk": "workspace:*",
+    "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/persistence-postgres": "workspace:*",
     "@shipyard402/policy-engine": "workspace:*",
@@ -21,6 +24,8 @@
     "@shipyard402/quote-engine": "workspace:*",
     "@shipyard402/risk-classifier": "workspace:*",
     "@shipyard402/run-domain": "workspace:*",
+    "@shipyard402/stargate-bridge-adapter": "workspace:*",
+    "@shipyard402/x402-payments": "workspace:*",
     "ethers": "6.17.0",
     "openai": "7.4.0",
     "zod": "3.25.76"

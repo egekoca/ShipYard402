@@ -1,5 +1,6 @@
 import {
   buildToolReceiptRoot,
+  EMPTY_TOOL_RECEIPT_ROOT,
   hashToolReceipt,
   type ToolReceipt,
   type UnsignedToolReceipt,
@@ -19,6 +20,16 @@ export type ToolReceiptInput = Readonly<{
   completedAt: number;
   toolVersion: string;
 }>;
+
+/**
+ * Whether this scenario carries enough of a delivery to sign a receipt over. A run that stopped
+ * mid-execution can hold an attempt that was recorded before any response came back; that is a
+ * real, expected shape, not corruption, so terminal-failure finalization asks first and skips
+ * rather than aborting the whole finalization on it.
+ */
+export function canBuildToolReceipt(evidence: ReplayEvidence): boolean {
+  return evidence.attempts[0]?.responseHash !== undefined;
+}
 
 export function buildUnsignedToolReceipt(evidence: ReplayEvidence, input: ToolReceiptInput): UnsignedToolReceipt {
   const initialAttempt = evidence.attempts[0];
@@ -91,8 +102,17 @@ export type BuiltEvidencePack = Readonly<{
 }>;
 
 export function buildEvidencePack(content: EvidencePackContent): BuiltEvidencePack {
-  if (content.toolReceipts.length === 0) throw new Error('An evidence pack requires at least one tool receipt');
-  const toolReceiptRoot = buildToolReceiptRoot(content.toolReceipts.map((receipt) => hashToolReceipt(receipt)));
+  // A PASS or FAIL asserts something about the target, so it needs a paid exchange behind it.
+  // INCONCLUSIVE asserts the opposite -- that nothing could be determined -- and a run that was
+  // finalized before any scenario ran has exactly zero receipts to show. Rejecting that pack would
+  // leave a paid run with no verdict at all, which is the worse outcome for the customer.
+  if (content.toolReceipts.length === 0 && content.result !== 'INCONCLUSIVE') {
+    throw new Error('A PASS or FAIL evidence pack requires at least one tool receipt');
+  }
+  const toolReceiptRoot =
+    content.toolReceipts.length === 0
+      ? EMPTY_TOOL_RECEIPT_ROOT
+      : buildToolReceiptRoot(content.toolReceipts.map((receipt) => hashToolReceipt(receipt)));
   const evidenceRoot = keccak256(
     toUtf8Bytes(
       canonicalJson({

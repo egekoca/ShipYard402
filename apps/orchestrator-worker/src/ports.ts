@@ -1,6 +1,7 @@
 import type { Quote } from '@shipyard402/quote-engine';
 import type { RunAggregate, RunTransitionedEvent } from '@shipyard402/run-domain';
 import type { UnsignedToolReceipt } from '@shipyard402/evidence-sdk';
+import type { AcquiredPayment } from '@shipyard402/x402-payments';
 
 export type RunRecord = Readonly<{
   aggregate: RunAggregate;
@@ -27,22 +28,27 @@ export interface QuoteRepositoryPort {
   findById(id: string): Promise<Quote | null>;
 }
 
-export type ConfirmedPayment = Readonly<{
-  transactionHash: `0x${string}`;
-  confirmations: number;
-}>;
-
-export interface PurchaseClient {
-  purchase(transactionHash: `0x${string}`): Promise<Readonly<{ receipt: string }>>;
-}
-
-export interface NativePaymentSender {
-  /** Reserves the wallet's next nonce so it can be checkpointed before the send is broadcast. */
-  reserveNonce(): Promise<number>;
-  /** True if a transaction using this nonce has already landed on-chain (pending or mined). */
-  isNonceConsumed(nonce: number): Promise<boolean>;
-  sendPayment(input: Readonly<{ toAddress: `0x${string}`; valueWei: bigint; nonce: number }>): Promise<`0x${string}`>;
-  waitForConfirmation(transactionHash: `0x${string}`, minimumConfirmations: number): Promise<ConfirmedPayment>;
+/**
+ * The buyer side of x402 procurement: negotiate the run's target's 402 challenge and produce a
+ * signed `X-PAYMENT` for exactly what it asks. Replaces the old "send a native transfer, then claim
+ * a receipt" flow -- the signed authorization *is* the payment, and the target settles it on-chain
+ * (consuming the nonce) when it first delivers.
+ */
+export interface X402PayerPort {
+  readonly payerAddress: `0x${string}`;
+  acquire(
+    input: Readonly<{
+      endpoint: string;
+      /** 32-byte hex; owned by the caller so the payment is a checkpointable, spend-once artifact. */
+      nonce: `0x${string}`;
+      validAfterSec: number;
+      validBeforeSec: number;
+      maxAmountAtomic: string;
+      expectedChainId: number;
+      /** The assets this worker is willing to sign an authorization for; see AcquirePaymentInput. */
+      allowedAssets: readonly `0x${string}`[];
+    }>,
+  ): Promise<AcquiredPayment>;
 }
 
 export interface ToolReceiptSigner {
