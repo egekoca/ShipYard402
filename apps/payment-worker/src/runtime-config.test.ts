@@ -16,6 +16,25 @@ const completeEnvironment = {
   GOATX402_MAXIMUM_ATOMIC_AMOUNT: '100000000',
 } satisfies NodeJS.ProcessEnv;
 
+function scopedMerchantEnvironment(
+  prefix: 'GOATX402_TESTNET3' | 'GOATX402_MAINNET',
+  merchantId: string,
+  apiUrl: string,
+): NodeJS.ProcessEnv {
+  return {
+    [`${prefix}_API_URL`]: apiUrl,
+    [`${prefix}_MERCHANT_ID`]: merchantId,
+    [`${prefix}_API_KEY`]: `${merchantId}-key`,
+    [`${prefix}_API_SECRET`]: `${merchantId}-secret`,
+    [`${prefix}_TOKEN_ADDRESS`]: '0x1000000000000000000000000000000000000001',
+    [`${prefix}_TOKEN_SYMBOL`]: 'REVIEWED',
+    [`${prefix}_TOKEN_DECIMALS`]: '6',
+    [`${prefix}_RECEIVING_ADDRESS`]: '0x2000000000000000000000000000000000000002',
+    [`${prefix}_MINIMUM_ATOMIC_AMOUNT`]: '1',
+    [`${prefix}_MAXIMUM_ATOMIC_AMOUNT`]: '100000000',
+  };
+}
+
 describe('payment worker runtime configuration', () => {
   it('requires every merchant credential and reviewed capability field', () => {
     expect(() => parsePaymentWorkerRuntimeConfig({})).toThrowError(PaymentWorkerConfigurationError);
@@ -95,6 +114,17 @@ describe('payment worker runtime configuration', () => {
     });
   });
 
+  it('selects one network-scoped merchant without deleting or reading the other profile', () => {
+    const config = parsePaymentWorkerRuntimeConfig({
+      GOAT_NETWORK_ENVIRONMENT: 'mainnet',
+      ...scopedMerchantEnvironment('GOATX402_TESTNET3', 'testnet-merchant', 'https://flow-api.testnet3.goat.network'),
+      ...scopedMerchantEnvironment('GOATX402_MAINNET', 'mainnet-merchant', GOAT_MAINNET.flowApiUrl),
+    });
+
+    expect(config.merchant?.merchantId).toBe('mainnet-merchant');
+    expect(config.merchant?.capability).toMatchObject({ environment: 'mainnet', chainId: 2345 });
+  });
+
   it('refuses to start the production payment worker against Testnet3', () => {
     expect(() =>
       parsePaymentWorkerRuntimeConfig({
@@ -105,5 +135,45 @@ describe('payment worker runtime configuration', () => {
         GOATX402_API_URL: 'https://flow-api.testnet3.goat.network',
       }),
     ).toThrowError(/Production payment worker must use GOAT mainnet/);
+  });
+});
+
+const completeBotChainEnvironment = {
+  MERCHANT_ADAPTER: 'bot-chain-direct',
+  BOTX402_MERCHANT_ID: 'shipyard-botchain',
+  BOTX402_TOKEN_ADDRESS: '0x1000000000000000000000000000000000000001',
+  BOTX402_TOKEN_SYMBOL: 'USDT',
+  BOTX402_TOKEN_DECIMALS: '6',
+  BOTX402_RECEIVING_ADDRESS: '0x2000000000000000000000000000000000000002',
+  BOTX402_MINIMUM_ATOMIC_AMOUNT: '1',
+  BOTX402_MAXIMUM_ATOMIC_AMOUNT: '100000000',
+} satisfies NodeJS.ProcessEnv;
+
+describe('BOT Chain payment worker runtime configuration', () => {
+  it('does not require any GOAT credentials when bot-chain-direct is selected', () => {
+    const config = parsePaymentWorkerRuntimeConfig(completeBotChainEnvironment);
+    expect(config.merchantAdapter).toBe('bot-chain-direct');
+    expect(config.merchant).toBeUndefined();
+    expect(config.botChainMerchant?.capability).toMatchObject({
+      environment: 'botChainTestnet',
+      chainId: 968,
+      mode: 'DIRECT_ERC20',
+    });
+    expect(config.botChainRpcUrl).toBe('https://rpc.bohr.life');
+  });
+
+  it('requires every BOT Chain merchant field', () => {
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({ MERCHANT_ADAPTER: 'bot-chain-direct', BOTX402_MERCHANT_ID: 'partial' }),
+    ).toThrowError(PaymentWorkerConfigurationError);
+  });
+
+  it('rejects a BOT Chain RPC override that does not match the reviewed origin', () => {
+    expect(() =>
+      parsePaymentWorkerRuntimeConfig({
+        ...completeBotChainEnvironment,
+        BOTCHAIN_TESTNET_RPC_URL: 'https://attacker.example',
+      }),
+    ).toThrowError(PaymentWorkerConfigurationError);
   });
 });

@@ -10,14 +10,18 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "maintenance:expire-stale-orders": "tsx --env-file-if-exists=../../.env src/expire-stale-orders.ts"
   },
   "dependencies": {
+    "@shipyard402/bot-chain-adapter": "workspace:*",
+    "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-chain-reader": "workspace:*",
     "@shipyard402/goat-flow-adapter": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/payment-reconciliation": "workspace:*",
     "@shipyard402/persistence-postgres": "workspace:*",
+    "viem": "2.55.10",
     "zod": "3.25.76"
   },
   "devDependencies": {

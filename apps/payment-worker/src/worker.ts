@@ -1,5 +1,6 @@
 import {
   PaymentNotReadyError,
+  PaymentOrderExpiredError,
   ReceiptNotYetAvailableError,
   SettlementRejectedError,
   type PaymentReconciler,
@@ -13,8 +14,11 @@ export type PaymentReconciliationJob = Readonly<{
 
 export type PaymentJobResult =
   | Readonly<{ action: 'ACK'; proofHash: `0x${string}`; transactionHash: `0x${string}` }>
+  | Readonly<{ action: 'WAIT'; delayMilliseconds: number; reason: string }>
   | Readonly<{ action: 'RETRY'; delayMilliseconds: number; reason: string }>
-  | Readonly<{ action: 'DEAD_LETTER'; reason: string; failureCodes?: readonly string[] }>;
+  | Readonly<{ action: 'DEAD_LETTER'; reason: string; failureCodes?: readonly string[] }>
+  /** The job reached a terminal answer that is not a payment -- an unpaid order that expired. */
+  | Readonly<{ action: 'RESOLVED'; reason: string }>;
 
 export type LeasedPaymentReconciliationJob = PaymentReconciliationJob &
   Readonly<{
@@ -29,6 +33,7 @@ export interface PaymentReconciliationJobQueue {
     }>,
   ): Promise<LeasedPaymentReconciliationJob | null>;
   markCompleted(job: LeasedPaymentReconciliationJob): Promise<void>;
+  markWaiting(job: LeasedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void>;
   markRetry(job: LeasedPaymentReconciliationJob, delayMilliseconds: number, reason: string): Promise<void>;
   markDeadLetter(job: LeasedPaymentReconciliationJob, reason: string, failureCodes?: readonly string[]): Promise<void>;
 }
@@ -50,6 +55,12 @@ export class PaymentReconciliationJobHandler {
         transactionHash: payment.proof.transactionHash,
       };
     } catch (error) {
+      // An expired order is a normal outcome, not an incident: the customer simply did not pay in
+      // time. Expiring the run here is what keeps it from sitting in PAYMENT_REQUIRED forever.
+      if (error instanceof PaymentOrderExpiredError) {
+        await this.#reconciler.expireRun(job.runId);
+        return { action: 'RESOLVED', reason: 'PAYMENT_ORDER_EXPIRED' };
+      }
       if (error instanceof SettlementRejectedError) {
         return {
           action: 'DEAD_LETTER',
@@ -59,19 +70,26 @@ export class PaymentReconciliationJobHandler {
       }
       const isTransientWait = error instanceof PaymentNotReadyError || error instanceof ReceiptNotYetAvailableError;
       if (!isTransientWait) {
+        // Log a flattened string, never the raw error object: util.inspect on some adapter errors
+        // throws, and a logging call must not be able to kill the worker mid-reconciliation.
         console.error(
-          `[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}):`,
-          error,
+          `[payment-worker] reconciliation failure for ${job.runId} (attempt ${job.attempt}/${job.maximumAttempts}): ${
+            error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+          }`,
         );
       }
+      // A human payment wait or a not-yet-indexed transaction is governed by the order deadline,
+      // not the technical failure retry budget. Spending that budget here used to abandon a
+      // 30-minute payment order after roughly 11 minutes.
+      if (isTransientWait) {
+        return {
+          action: 'WAIT',
+          delayMilliseconds: retryDelay(job.attempt),
+          reason: error instanceof PaymentNotReadyError ? 'PAYMENT_NOT_READY' : 'RECEIPT_NOT_YET_AVAILABLE',
+        };
+      }
       if (job.attempt >= job.maximumAttempts) {
-        const reason =
-          error instanceof PaymentNotReadyError
-            ? 'PAYMENT_NOT_READY_TIMEOUT'
-            : error instanceof ReceiptNotYetAvailableError
-              ? 'RECEIPT_NOT_YET_AVAILABLE_TIMEOUT'
-              : classifyRetryableError(error);
-        return { action: 'DEAD_LETTER', reason };
+        return { action: 'DEAD_LETTER', reason: classifyRetryableError(error) };
       }
       return {
         action: 'RETRY',
@@ -100,8 +118,14 @@ export async function processNextPaymentJob(
     case 'ACK':
       await queue.markCompleted(job);
       return true;
+    case 'WAIT':
+      await queue.markWaiting(job, result.delayMilliseconds, result.reason);
+      return true;
     case 'RETRY':
       await queue.markRetry(job, result.delayMilliseconds, result.reason);
+      return true;
+    case 'RESOLVED':
+      await queue.markCompleted(job);
       return true;
     case 'DEAD_LETTER':
       await queue.markDeadLetter(job, result.reason, result.failureCodes ?? []);

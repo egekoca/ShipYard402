@@ -1,14 +1,26 @@
 import {
+  parseBotChainMerchantCapability,
+  resolveBotChainRpcUrl,
+  type BotChainRuntimeCapability,
+} from '@shipyard402/bot-chain-network-config';
+import {
   ConfigurationError,
-  assertExactUrl,
+  GOAT_X402_ALL_ENV_NAMES,
   assertPostgresUrl,
   parseBoundedInt,
   parseMerchantCapability,
-  resolveNetwork,
+  resolveGoatMerchantProfile,
   resolveRpcUrl,
   type FlowRuntimeCapability,
 } from '@shipyard402/goat-network-config';
 import { z } from 'zod';
+
+const goatMerchantEnvironmentShape = Object.fromEntries(
+  GOAT_X402_ALL_ENV_NAMES.map((name) => [
+    name,
+    name.endsWith('_API_URL') ? z.string().url().optional() : z.string().optional(),
+  ]),
+) as Record<(typeof GOAT_X402_ALL_ENV_NAMES)[number], z.ZodOptional<z.ZodString>>;
 
 const environmentSchema = z
   .object({
@@ -18,16 +30,20 @@ const environmentSchema = z
     DATABASE_TLS: z.enum(['true', 'false']).optional(),
     GOAT_MAINNET_RPC_URL: z.string().url().optional(),
     GOAT_TESTNET_RPC_URL: z.string().url().optional(),
-    GOATX402_API_URL: z.string().url().optional(),
-    GOATX402_MERCHANT_ID: z.string().min(1),
-    GOATX402_API_KEY: z.string().min(1),
-    GOATX402_API_SECRET: z.string().min(1),
-    GOATX402_TOKEN_ADDRESS: z.string().min(1),
-    GOATX402_TOKEN_SYMBOL: z.string().min(1),
-    GOATX402_TOKEN_DECIMALS: z.string().min(1),
-    GOATX402_RECEIVING_ADDRESS: z.string().min(1),
-    GOATX402_MINIMUM_ATOMIC_AMOUNT: z.string().min(1),
-    GOATX402_MAXIMUM_ATOMIC_AMOUNT: z.string().min(1),
+    // Required as a complete selected-network group only when the GOAT adapter is active.
+    ...goatMerchantEnvironmentShape,
+    // Selects which merchant adapter this process runs. Defaults to 'goat-flow' so an unset env
+    // var reproduces today's exact behavior. Mirrors apps/api-gateway/src/runtime-config.ts.
+    MERCHANT_ADAPTER: z.enum(['goat-flow', 'bot-chain-direct']).default('goat-flow'),
+    BOT_NETWORK_ENVIRONMENT: z.literal('botChainTestnet').default('botChainTestnet'),
+    BOTCHAIN_TESTNET_RPC_URL: z.string().url().optional(),
+    BOTX402_MERCHANT_ID: z.string().min(1).optional(),
+    BOTX402_TOKEN_ADDRESS: z.string().min(1).optional(),
+    BOTX402_TOKEN_SYMBOL: z.string().min(1).optional(),
+    BOTX402_TOKEN_DECIMALS: z.string().min(1).optional(),
+    BOTX402_RECEIVING_ADDRESS: z.string().min(1).optional(),
+    BOTX402_MINIMUM_ATOMIC_AMOUNT: z.string().min(1).optional(),
+    BOTX402_MAXIMUM_ATOMIC_AMOUNT: z.string().min(1).optional(),
     PAYMENT_WORKER_ID: z
       .string()
       .regex(/^[a-zA-Z0-9:_-]{1,200}$/)
@@ -44,33 +60,51 @@ const selectedNames = [
   'DATABASE_TLS',
   'GOAT_MAINNET_RPC_URL',
   'GOAT_TESTNET_RPC_URL',
-  'GOATX402_API_URL',
-  'GOATX402_MERCHANT_ID',
-  'GOATX402_API_KEY',
-  'GOATX402_API_SECRET',
-  'GOATX402_TOKEN_ADDRESS',
-  'GOATX402_TOKEN_SYMBOL',
-  'GOATX402_TOKEN_DECIMALS',
-  'GOATX402_RECEIVING_ADDRESS',
-  'GOATX402_MINIMUM_ATOMIC_AMOUNT',
-  'GOATX402_MAXIMUM_ATOMIC_AMOUNT',
+  ...GOAT_X402_ALL_ENV_NAMES,
+  'MERCHANT_ADAPTER',
+  'BOT_NETWORK_ENVIRONMENT',
+  'BOTCHAIN_TESTNET_RPC_URL',
+  'BOTX402_MERCHANT_ID',
+  'BOTX402_TOKEN_ADDRESS',
+  'BOTX402_TOKEN_SYMBOL',
+  'BOTX402_TOKEN_DECIMALS',
+  'BOTX402_RECEIVING_ADDRESS',
+  'BOTX402_MINIMUM_ATOMIC_AMOUNT',
+  'BOTX402_MAXIMUM_ATOMIC_AMOUNT',
   'PAYMENT_WORKER_ID',
   'PAYMENT_POLL_INTERVAL_MS',
   'PAYMENT_LEASE_SECONDS',
 ] as const;
 
+const botMerchantFieldNames = [
+  'BOTX402_MERCHANT_ID',
+  'BOTX402_TOKEN_ADDRESS',
+  'BOTX402_TOKEN_SYMBOL',
+  'BOTX402_TOKEN_DECIMALS',
+  'BOTX402_RECEIVING_ADDRESS',
+  'BOTX402_MINIMUM_ATOMIC_AMOUNT',
+  'BOTX402_MAXIMUM_ATOMIC_AMOUNT',
+] as const;
+type BotMerchantFieldName = (typeof botMerchantFieldNames)[number];
+
 export type PaymentWorkerRuntimeConfig = Readonly<{
   database: Readonly<{ connectionString: string; useTls: boolean }>;
-  goatEnvironment: 'mainnet' | 'testnet3';
-  rpcUrl: string;
   workerId: string;
   pollIntervalMilliseconds: number;
   leaseDurationSeconds: number;
-  merchant: Readonly<{
+  merchantAdapter: 'goat-flow' | 'bot-chain-direct';
+  goatEnvironment?: 'mainnet' | 'testnet3';
+  rpcUrl?: string;
+  merchant?: Readonly<{
     merchantId: string;
     apiKey: string;
     apiSecret: string;
     capability: FlowRuntimeCapability;
+  }>;
+  botChainRpcUrl?: string;
+  botChainMerchant?: Readonly<{
+    merchantId: string;
+    capability: BotChainRuntimeCapability;
   }>;
 }>;
 
@@ -102,25 +136,6 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     throw new PaymentWorkerConfigurationError('Production payment worker requires PostgreSQL', ['DATABASE_URL']);
   }
   assertPostgresUrl(connectionString, throwPaymentWorkerConfigurationError);
-  if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
-    throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', [
-      'GOAT_NETWORK_ENVIRONMENT',
-    ]);
-  }
-  const network = resolveNetwork(values.GOAT_NETWORK_ENVIRONMENT);
-  const rpcUrl = resolveRpcUrl(
-    values.GOAT_NETWORK_ENVIRONMENT,
-    { mainnetRpcUrl: values.GOAT_MAINNET_RPC_URL, testnetRpcUrl: values.GOAT_TESTNET_RPC_URL },
-    throwPaymentWorkerConfigurationError,
-  );
-  if (values.GOATX402_API_URL) {
-    assertExactUrl(
-      values.GOATX402_API_URL,
-      network.flowApiUrl,
-      'GOATX402_API_URL',
-      throwPaymentWorkerConfigurationError,
-    );
-  }
 
   const pollIntervalMilliseconds = parseBoundedInt(values.PAYMENT_POLL_INTERVAL_MS, '2000', { min: 250, max: 60_000 });
   if (pollIntervalMilliseconds === undefined) {
@@ -135,15 +150,82 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
     ]);
   }
 
+  const shared = {
+    database: {
+      connectionString,
+      useTls: values.DATABASE_TLS ? values.DATABASE_TLS === 'true' : values.APP_ENV === 'production',
+    },
+    workerId: values.PAYMENT_WORKER_ID ?? `payment-worker:${process.pid}`,
+    pollIntervalMilliseconds,
+    leaseDurationSeconds,
+  };
+
+  if (values.MERCHANT_ADAPTER === 'bot-chain-direct') {
+    const missing = botMerchantFieldNames.filter((field) => values[field] === undefined);
+    if (missing.length > 0) {
+      throw new PaymentWorkerConfigurationError('BOT Chain merchant configuration is incomplete', missing);
+    }
+    const required = values as typeof values & Record<BotMerchantFieldName, string>;
+    const botChainRpcUrl = resolveBotChainRpcUrl(
+      values.BOT_NETWORK_ENVIRONMENT,
+      { testnetRpcUrl: values.BOTCHAIN_TESTNET_RPC_URL },
+      throwPaymentWorkerConfigurationError,
+    );
+    const capability = parseBotChainMerchantCapability({
+      environment: values.BOT_NETWORK_ENVIRONMENT,
+      merchantId: required.BOTX402_MERCHANT_ID,
+      tokenAddress: required.BOTX402_TOKEN_ADDRESS,
+      tokenSymbol: required.BOTX402_TOKEN_SYMBOL,
+      tokenDecimals: Number(required.BOTX402_TOKEN_DECIMALS),
+      receivingAddress: required.BOTX402_RECEIVING_ADDRESS,
+      minimumAtomicAmount: required.BOTX402_MINIMUM_ATOMIC_AMOUNT,
+      maximumAtomicAmount: required.BOTX402_MAXIMUM_ATOMIC_AMOUNT,
+    });
+    if (!capability.success) {
+      throw new PaymentWorkerConfigurationError(
+        'Reviewed BOT Chain merchant capability is invalid',
+        capability.error.issues.map((issue) => issue.path.join('.')).filter(Boolean),
+      );
+    }
+    return {
+      ...shared,
+      merchantAdapter: 'bot-chain-direct',
+      botChainRpcUrl,
+      botChainMerchant: { merchantId: required.BOTX402_MERCHANT_ID, capability: capability.data },
+    };
+  }
+
+  if (values.APP_ENV === 'production' && values.GOAT_NETWORK_ENVIRONMENT !== 'mainnet') {
+    throw new PaymentWorkerConfigurationError('Production payment worker must use GOAT mainnet', [
+      'GOAT_NETWORK_ENVIRONMENT',
+    ]);
+  }
+  const rpcUrl = resolveRpcUrl(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    { mainnetRpcUrl: values.GOAT_MAINNET_RPC_URL, testnetRpcUrl: values.GOAT_TESTNET_RPC_URL },
+    throwPaymentWorkerConfigurationError,
+  );
+  const goatProfile = resolveGoatMerchantProfile(
+    values.GOAT_NETWORK_ENVIRONMENT,
+    selected,
+    throwPaymentWorkerConfigurationError,
+  );
+  if (!goatProfile.merchant) {
+    throw new PaymentWorkerConfigurationError(
+      'GOAT x402 merchant configuration is incomplete',
+      goatProfile.expectedMerchantFields,
+    );
+  }
+  const requiredGoat = goatProfile.merchant;
   const capability = parseMerchantCapability({
     environment: values.GOAT_NETWORK_ENVIRONMENT,
-    merchantId: values.GOATX402_MERCHANT_ID,
-    tokenAddress: values.GOATX402_TOKEN_ADDRESS,
-    tokenSymbol: values.GOATX402_TOKEN_SYMBOL,
-    tokenDecimals: Number(values.GOATX402_TOKEN_DECIMALS),
-    receivingAddress: values.GOATX402_RECEIVING_ADDRESS,
-    minimumAtomicAmount: values.GOATX402_MINIMUM_ATOMIC_AMOUNT,
-    maximumAtomicAmount: values.GOATX402_MAXIMUM_ATOMIC_AMOUNT,
+    merchantId: requiredGoat.merchantId,
+    tokenAddress: requiredGoat.tokenAddress,
+    tokenSymbol: requiredGoat.tokenSymbol,
+    tokenDecimals: Number(requiredGoat.tokenDecimals),
+    receivingAddress: requiredGoat.receivingAddress,
+    minimumAtomicAmount: requiredGoat.minimumAtomicAmount,
+    maximumAtomicAmount: requiredGoat.maximumAtomicAmount,
     source: 'PORTAL_REVIEW',
   });
   if (!capability.success) {
@@ -154,19 +236,14 @@ export function parsePaymentWorkerRuntimeConfig(environment: NodeJS.ProcessEnv):
   }
 
   return {
-    database: {
-      connectionString,
-      useTls: values.DATABASE_TLS ? values.DATABASE_TLS === 'true' : values.APP_ENV === 'production',
-    },
+    ...shared,
+    merchantAdapter: 'goat-flow',
     goatEnvironment: values.GOAT_NETWORK_ENVIRONMENT,
     rpcUrl,
-    workerId: values.PAYMENT_WORKER_ID ?? `payment-worker:${process.pid}`,
-    pollIntervalMilliseconds,
-    leaseDurationSeconds,
     merchant: {
-      merchantId: values.GOATX402_MERCHANT_ID,
-      apiKey: values.GOATX402_API_KEY,
-      apiSecret: values.GOATX402_API_SECRET,
+      merchantId: requiredGoat.merchantId,
+      apiKey: requiredGoat.apiKey,
+      apiSecret: requiredGoat.apiSecret,
       capability: capability.data,
     },
   };
