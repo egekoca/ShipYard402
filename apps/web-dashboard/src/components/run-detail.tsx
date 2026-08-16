@@ -1,17 +1,23 @@
 'use client';
 
-import { ShipyardApiClient } from '@shipyard402/public-api-client';
 import { useEffect, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
+import { createApiClient, DEFAULT_API_BACKEND, type ApiBackendId } from '../lib/api-backends';
 import { connectWallet, formatWalletError, getAuthorizedAccount } from '../lib/goat-wallet';
 import { ensureSession } from '../lib/session';
 import { RunProgressPanels } from './run-progress-panels';
 import { SiteHeader } from './site-header';
 import { VerifiedText } from './verified-text';
 
-export function RunDetail({ runId }: Readonly<{ runId: string }>) {
-  const { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal } = useRunProgress(runId);
+export function RunDetail({
+  runId,
+  apiBackend = DEFAULT_API_BACKEND,
+}: Readonly<{ runId: string; apiBackend?: ApiBackendId }>) {
+  const { run, plan, evidence, attestation, error, lastPolledAt, activeStep, isTerminal } = useRunProgress(
+    runId,
+    apiBackend,
+  );
   // This page is a permalink -- reached by a fresh visit, a bookmark, or a shared link with no
   // prior page state, so unlike release-run-form.tsx it can't assume a session already exists.
   // Every GET this page polls now requires proof the caller owns the run, so it needs its own
@@ -25,8 +31,8 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
     getAuthorizedAccount()
       .then(async (address) => {
         if (cancelled || !address) return;
-        const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
-        await ensureSession(client, address);
+        const client = createApiClient(apiBackend);
+        await ensureSession(client, address, apiBackend);
       })
       .catch(() => {
         /* no wallet, or the user hasn't authorized this site -- the Connect button below handles it */
@@ -34,15 +40,15 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiBackend]);
 
   async function handleConnect() {
     setConnecting(true);
     setConnectError(null);
     try {
       const address = await connectWallet();
-      const client = new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
-      await ensureSession(client, address);
+      const client = createApiClient(apiBackend);
+      await ensureSession(client, address, apiBackend);
       // The polling loop already re-attaches whatever token is in storage on its next tick
       // (getStoredSessionToken is read fresh per request), so no explicit refetch is needed here.
     } catch (caught) {
@@ -110,6 +116,7 @@ export function RunDetail({ runId }: Readonly<{ runId: string }>) {
           attestation={attestation}
           activeStep={activeStep}
           isTerminal={isTerminal}
+          apiBackend={apiBackend}
         />
       )}
 

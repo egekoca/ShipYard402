@@ -3,34 +3,23 @@
 import type { AttestationResponse, EvidenceResponse, PlanResponse, RunResponse } from '@shipyard402/public-api-client';
 import { useState } from 'react';
 
-import {
-  explorerTxUrl,
-  formatDurationEstimate,
-  ipfsGatewayUrl,
-  shortHash,
-  useStepDurationStats,
-} from '../hooks/use-run-progress';
-import { GOAT_TESTNET3_CHAIN_ID } from '../lib/goat-wallet';
+import { formatDurationEstimate, ipfsGatewayUrl, shortHash, useStepDurationStats } from '../hooks/use-run-progress';
+import { DEFAULT_API_BACKEND, fundingChainIdForBackend, type ApiBackendId } from '../lib/api-backends';
+import { ExplorerTxLink } from './explorer-tx-link';
+import { SettlementFlow } from './settlement-flow';
 import { RadarMark } from './logo';
 import { Pipeline } from './pipeline';
 import { VerifiedText } from './verified-text';
 import { WalletPayPanel } from './wallet-pay-panel';
 
-const STEPS = [
-  'Customer payment',
-  'AI risk plan',
-  'Paid tool procurement',
-  'Deterministic evidence',
-  'GOAT attestation',
-];
 /** Same order as STEPS -- maps each stepper label to the step-duration-stats bucket it corresponds to. */
 const STEP_DURATION_BUCKETS = ['payment', 'plan', 'procurement', 'evidence', 'attestation'] as const;
 
 type PanelState = 'pending' | 'active' | 'ready' | 'fail';
-type PanelKey = 'payment' | 'plan' | 'evidence' | 'attestation';
+type PanelKey = 'payment' | 'plan' | 'procurement' | 'evidence' | 'attestation';
 
 /**
- * The pipeline + verdict + four-panel detail grid, shared between the standalone /runs/[id] page
+ * The pipeline + verdict + detail-panel grid, shared between the standalone /runs/[id] page
  * and the inline "watch it happen right here" section on the run-request card -- one real
  * implementation of "what does a run's progress look like", not two that can drift apart.
  *
@@ -54,6 +43,7 @@ export function RunProgressPanels({
   tokenSymbol,
   tokenDecimals,
   connectedAddress,
+  apiBackend = DEFAULT_API_BACKEND,
 }: Readonly<{
   runId: string;
   run: RunResponse;
@@ -65,13 +55,30 @@ export function RunProgressPanels({
   tokenSymbol?: string | undefined;
   tokenDecimals?: number | undefined;
   connectedAddress?: `0x${string}` | null | undefined;
+  apiBackend?: ApiBackendId | undefined;
 }>) {
-  const stepDurationStats = useStepDurationStats();
+  const stepDurationStats = useStepDurationStats(apiBackend);
   const stepEtas: readonly (string | null)[] = STEP_DURATION_BUCKETS.map((bucket) => {
     const ms = stepDurationStats?.medianMillisecondsByStep[bucket];
     return ms ? formatDurationEstimate(ms) : null;
   });
   const manifest = evidence?.publicManifest;
+  const paymentChallenge = run.payment.paymentRequired?.accepts[0];
+  const paymentChainId = resolvePaymentChainId(run.payment.chainId, paymentChallenge?.network, apiBackend);
+  const attestationLabel = attestationStepLabel(attestation?.chainId ?? paymentChainId);
+  // The procurement step is named after what this run actually did: a bridged run really does move
+  // funds across chains first, a prefunded one just buys the call.
+  const steps = [
+    'Customer payment',
+    'AI risk plan',
+    run.settlementLegs?.some((leg) => leg.kind === 'BRIDGE')
+      ? 'Bridge + x402 purchase'
+      : run.settlementLegs?.length
+        ? 'x402 purchase'
+        : 'Paid tool procurement',
+    'Deterministic evidence',
+    attestationLabel,
+  ];
   // The plan panel's own content -- prefer the early plan endpoint (available right after
   // PLAN_COMPILED) over waiting for the evidence pack (only built much later); once evidence
   // exists its manifest carries the same fields plus scenarioTraces used elsewhere, but for this
@@ -90,6 +97,7 @@ export function RunProgressPanels({
       ? 'active'
       : 'pending';
   const attestationState: PanelState = attestation ? 'ready' : activeStep >= 4 ? 'active' : 'pending';
+  const procurementState: PanelState = settlementState(run.settlementLegs);
   // activeStep stays -1 while the run is only PAYMENT_REQUIRED (used above so the payment card
   // itself doesn't flip to "ready" early). The stepper is about showing where the run visibly is
   // right now though, and a real payment challenge sitting there awaiting confirmation is step 1
@@ -99,7 +107,7 @@ export function RunProgressPanels({
   return (
     <>
       <section className="workflow-section" aria-label="Run progress">
-        <Pipeline steps={STEPS} activeIndex={pipelineActiveIndex} stepEtas={stepEtas} />
+        <Pipeline steps={steps} activeIndex={pipelineActiveIndex} stepEtas={stepEtas} />
       </section>
 
       {isTerminal && (
@@ -125,23 +133,20 @@ export function RunProgressPanels({
               <div className="panel-preview-facts">
                 <span>Payment confirmed</span>
                 {run.payment.transactionHash && (
-                  <a
-                    className="explorer-link"
-                    href={explorerTxUrl(run.payment.chainId ?? GOAT_TESTNET3_CHAIN_ID, run.payment.transactionHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <ExplorerTxLink chainId={paymentChainId} txHash={run.payment.transactionHash}>
                     view payment tx ↗
-                  </a>
+                  </ExplorerTxLink>
                 )}
               </div>
-            ) : run.payment.paymentRequired?.accepts[0] ? (
+            ) : paymentChallenge ? (
               <WalletPayPanel
-                chainId={GOAT_TESTNET3_CHAIN_ID}
-                challenge={run.payment.paymentRequired.accepts[0]}
+                runId={runId}
+                chainId={paymentChainId}
+                challenge={paymentChallenge}
                 tokenSymbol={tokenSymbol}
                 tokenDecimals={tokenDecimals}
                 connectedAddress={connectedAddress}
+                apiBackend={apiBackend}
               />
             ) : (
               <PanelLoadingRadar label="Preparing the payment challenge…" />
@@ -159,7 +164,7 @@ export function RunProgressPanels({
             </div>
             {run.payment.orderId && (
               <div>
-                <dt>GOAT Flow order</dt>
+                <dt>Payment order</dt>
                 <dd className="mono">{run.payment.orderId}</dd>
               </div>
             )}
@@ -231,6 +236,19 @@ export function RunProgressPanels({
           )}
         </Panel>
 
+        {run.settlementLegs && run.settlementLegs.length > 0 && (
+          <Panel
+            label="CROSS-CHAIN PROCUREMENT"
+            state={procurementState}
+            expanded={Boolean(expanded.procurement)}
+            onToggle={() => toggle('procurement')}
+            summary={settlementSummary(run.settlementLegs)}
+            preview={<SettlementFlow legs={run.settlementLegs} />}
+          >
+            <SettlementFlow legs={run.settlementLegs} />
+          </Panel>
+        )}
+
         <Panel
           label="EVIDENCE"
           state={evidenceState}
@@ -245,20 +263,15 @@ export function RunProgressPanels({
                   {evidence.publicManifest.toolReceipts.length === 1 ? 'check' : 'checks'} against the target
                 </span>
                 {evidence.publicManifest.toolReceipts[0] && (
-                  <a
-                    className="explorer-link"
-                    href={explorerTxUrl(
-                      evidence.publicManifest.toolReceipts[0].chainId,
-                      evidence.publicManifest.toolReceipts[0].chainTransactionHash,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
+                  <ExplorerTxLink
+                    chainId={evidence.publicManifest.toolReceipts[0].chainId}
+                    txHash={evidence.publicManifest.toolReceipts[0].chainTransactionHash}
                   >
                     view procurement tx ↗
                     {evidence.publicManifest.toolReceipts.length > 1
                       ? ` (+${evidence.publicManifest.toolReceipts.length - 1} more below)`
                       : ''}
-                  </a>
+                  </ExplorerTxLink>
                 )}
               </div>
             ) : evidenceState === 'active' ? (
@@ -302,14 +315,9 @@ export function RunProgressPanels({
                           {receipt.result}
                         </span>
                         <span className="mono">{receipt.scenarioId}</span>
-                        <a
-                          className="explorer-link"
-                          href={explorerTxUrl(receipt.chainId, receipt.chainTransactionHash)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        <ExplorerTxLink chainId={receipt.chainId} txHash={receipt.chainTransactionHash}>
                           payment tx ↗
-                        </a>
+                        </ExplorerTxLink>
                       </div>
                       {trace && trace.attempts.length > 0 && (
                         <ol className="scenario-trace">
@@ -345,14 +353,9 @@ export function RunProgressPanels({
           preview={
             attestation ? (
               <div className="panel-preview-facts">
-                <a
-                  className="explorer-link"
-                  href={explorerTxUrl(attestation.chainId, attestation.transactionHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <ExplorerTxLink chainId={attestation.chainId} txHash={attestation.transactionHash}>
                   view attestation tx ↗
-                </a>
+                </ExplorerTxLink>
                 <span>expires {new Date(attestation.expiresAt).toLocaleDateString()}</span>
               </div>
             ) : attestationState === 'active' ? (
@@ -373,14 +376,9 @@ export function RunProgressPanels({
               <div>
                 <dt>Transaction</dt>
                 <dd>
-                  <a
-                    className="explorer-link"
-                    href={explorerTxUrl(attestation.chainId, attestation.transactionHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <ExplorerTxLink chainId={attestation.chainId} txHash={attestation.transactionHash}>
                     <VerifiedText text={shortHash(attestation.transactionHash)} /> ↗
-                  </a>
+                  </ExplorerTxLink>
                 </dd>
               </div>
               <div>
@@ -393,6 +391,50 @@ export function RunProgressPanels({
       </div>
     </>
   );
+}
+
+/**
+ * The payment order's chain is authoritative. Older API responses did not expose it until after
+ * reconciliation, so also accept the CAIP-2 network carried by the x402 challenge. The selected
+ * API backend is the last-resort fallback; it prevents a BOT Chain run from silently becoming a
+ * GOAT Testnet3 wallet request while the challenge is still pending.
+ */
+export function resolvePaymentChainId(
+  explicitChainId: number | undefined,
+  challengeNetwork: string | undefined,
+  apiBackend: ApiBackendId,
+): number {
+  if (Number.isSafeInteger(explicitChainId) && Number(explicitChainId) > 0) return Number(explicitChainId);
+
+  const caipMatch = /^eip155:(\d+)$/.exec(challengeNetwork ?? '');
+  if (caipMatch) {
+    const challengeChainId = Number(caipMatch[1]);
+    if (Number.isSafeInteger(challengeChainId) && challengeChainId > 0) return challengeChainId;
+  }
+
+  return fundingChainIdForBackend(apiBackend);
+}
+
+function attestationStepLabel(chainId: number): string {
+  if (chainId === 968 || chainId === 677) return 'BOT Chain attestation';
+  if (chainId === 56) return 'BNB attestation';
+  return 'GOAT attestation';
+}
+
+/** The panel is only "ready" once every recorded step finished; one refusal fails the whole panel. */
+function settlementState(legs: RunResponse['settlementLegs']): PanelState {
+  if (!legs || legs.length === 0) return 'pending';
+  if (legs.some((leg) => leg.status === 'FAILED')) return 'fail';
+  return legs.every((leg) => leg.status === 'CONFIRMED') ? 'ready' : 'active';
+}
+
+/** One line for the collapsed panel: what is happening now, or what happened in the end. */
+function settlementSummary(legs: readonly NonNullable<RunResponse['settlementLegs']>[number][]): string {
+  const failed = legs.find((leg) => leg.status === 'FAILED');
+  if (failed) return failed.kind === 'BRIDGE' ? 'Bridge refused' : 'Target refused';
+  const working = legs.find((leg) => leg.status !== 'CONFIRMED');
+  if (!working) return 'Purchased';
+  return working.kind === 'BRIDGE' ? 'Bridging funds…' : 'Buying the API call…';
 }
 
 function Panel({

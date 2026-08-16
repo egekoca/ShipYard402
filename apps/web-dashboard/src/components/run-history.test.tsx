@@ -77,21 +77,46 @@ describe('RunHistory', () => {
     expect(await screen.findByText('PASS')).toBeInTheDocument();
     expect(screen.getByText('EXECUTING')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Open ↗' })).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: /Load more/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
   });
 
-  it('loads and appends the next page on "Load more"', async () => {
+  it('shows five runs per page and preserves the absolute row numbers', async () => {
     ensureSession.mockResolvedValue('session-token');
-    listRuns
-      .mockResolvedValueOnce({ runs: [run({ id: 'run_1' })], hasMore: true })
-      .mockResolvedValueOnce({ runs: [run({ id: 'run_2' })], hasMore: false });
+    listRuns.mockResolvedValue({
+      runs: Array.from({ length: 7 }, (_, index) => run({ id: `run_${index + 1}` })),
+      hasMore: false,
+    });
     const user = userEvent.setup();
 
     render(<RunHistory requesterAddress={REQUESTER_ADDRESS} />);
-    await user.click(await screen.findByRole('button', { name: 'Load more' }));
 
-    await waitFor(() => expect(listRuns).toHaveBeenLastCalledWith(REQUESTER_ADDRESS, { limit: 20, offset: 1 }));
+    expect(await screen.findAllByRole('link', { name: 'Open ↗' })).toHaveLength(5);
+    expect(screen.getByRole('button', { name: 'Page 1' })).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+
+    expect(screen.getAllByRole('link', { name: 'Open ↗' })).toHaveLength(2);
+    expect(screen.getByTitle('run_6')).toBeInTheDocument();
+    expect(screen.getByText('6')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Page 2' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('loads the next API batch when navigating beyond the loaded runs', async () => {
+    ensureSession.mockResolvedValue('session-token');
+    listRuns
+      .mockResolvedValueOnce({
+        runs: Array.from({ length: 5 }, (_, index) => run({ id: `run_${index + 1}` })),
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({ runs: [run({ id: 'run_6' }), run({ id: 'run_7' })], hasMore: false });
+    const user = userEvent.setup();
+
+    render(<RunHistory requesterAddress={REQUESTER_ADDRESS} />);
+    await user.click(await screen.findByRole('button', { name: 'Next page' }));
+
+    await waitFor(() => expect(listRuns).toHaveBeenLastCalledWith(REQUESTER_ADDRESS, { limit: 20, offset: 5 }));
     expect(await screen.findAllByRole('link', { name: 'Open ↗' })).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('run_6')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
   });
 });

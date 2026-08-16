@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from 'react';
 
-import { connectWallet, ensureChain, formatWalletError, isWalletAvailable, sendErc20Payment } from '../lib/goat-wallet';
+import { createApiClient, DEFAULT_API_BACKEND, type ApiBackendId } from '../lib/api-backends';
+import { formatAtomic } from '../lib/amount-format';
+import {
+  connectWallet,
+  ensureChain,
+  formatWalletError,
+  isWalletAvailable,
+  readErc20Balance,
+  sendErc20Payment,
+} from '../lib/goat-wallet';
+import { getStoredSessionToken } from '../lib/session';
+import { ExplorerTxLink } from './explorer-tx-link';
 
 export type PaymentChallenge = Readonly<{
   network: string;
@@ -12,18 +23,22 @@ export type PaymentChallenge = Readonly<{
 }>;
 
 export function WalletPayPanel({
+  runId,
   chainId,
   challenge,
   tokenSymbol,
   tokenDecimals,
   connectedAddress,
+  apiBackend = DEFAULT_API_BACKEND,
 }: Readonly<{
+  runId: string;
   chainId: number;
   challenge: PaymentChallenge;
   tokenSymbol?: string | undefined;
   tokenDecimals?: number | undefined;
   /** Already-connected address, if the wallet was connected elsewhere (e.g. earlier in the form) -- skips asking to connect again. */
   connectedAddress?: `0x${string}` | null | undefined;
+  apiBackend?: ApiBackendId | undefined;
 }>) {
   const [address, setAddress] = useState<`0x${string}` | null>(connectedAddress ?? null);
   const [networkStatus, setNetworkStatus] = useState<'checking' | 'ready' | 'failed'>('checking');
@@ -78,6 +93,14 @@ export function WalletPayPanel({
     try {
       setBusyLabel('Switching network…');
       await ensureChain(chainId);
+      setBusyLabel('Checking balance…');
+      const balanceAtomic = await readErc20Balance(challenge.asset, address);
+      if (balanceAtomic < BigInt(challenge.amount)) {
+        const needed = tokenDecimals !== undefined ? formatAtomic(challenge.amount, tokenDecimals) : challenge.amount;
+        const available =
+          tokenDecimals !== undefined ? formatAtomic(balanceAtomic.toString(), tokenDecimals) : balanceAtomic;
+        throw new Error(`Insufficient ${assetLabel} balance. Need ${needed}; wallet has ${available}.`);
+      }
       setBusyLabel('Confirm in wallet…');
       const hash = await sendErc20Payment({
         fromAddress: address,
@@ -86,6 +109,13 @@ export function WalletPayPanel({
         amountAtomic: challenge.amount,
       });
       setTxHash(hash);
+      // Best-effort: only a BOT-Chain-configured backend needs this (no merchant/order API to
+      // discover the payment on its own -- see submitPaymentTransaction's own doc comment). A
+      // GOAT Flow deployment responds 503, which is expected and fine here, not a real failure --
+      // the payment already succeeded on-chain regardless of whether this call does anything.
+      void createApiClient(apiBackend, () => getStoredSessionToken(address, apiBackend))
+        .submitPaymentTransaction(runId, hash)
+        .catch(() => {});
     } catch (caught) {
       setError(formatWalletError(caught));
     } finally {
@@ -113,9 +143,9 @@ export function WalletPayPanel({
           <div>
             <dt>Transaction</dt>
             <dd>
-              <a className="explorer-link" href={explorerTxUrl(chainId, txHash)} target="_blank" rel="noreferrer">
+              <ExplorerTxLink chainId={chainId} txHash={txHash}>
                 {shortAddress(txHash)} ↗
-              </a>
+              </ExplorerTxLink>
             </dd>
           </div>
         )}
@@ -149,11 +179,7 @@ export function WalletPayPanel({
           onClick={handlePay}
         >
           {(busy || networkStatus === 'checking') && <span className="spinner" aria-hidden="true" />}
-          {busy
-            ? busyLabel
-            : networkStatus === 'checking'
-              ? 'Adding GOAT network…'
-              : `Pay ${amountLabel} ${assetLabel}`}
+          {busy ? busyLabel : networkStatus === 'checking' ? 'Switching network…' : `Pay ${amountLabel} ${assetLabel}`}
         </button>
       )}
     </div>
@@ -162,15 +188,4 @@ export function WalletPayPanel({
 
 function shortAddress(value: string): string {
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
-}
-
-function explorerTxUrl(chainId: number, txHash: string): string {
-  const base = chainId === 2345 ? 'https://explorer.goat.network' : 'https://explorer.testnet3.goat.network';
-  return `${base}/tx/${txHash}`;
-}
-
-function formatAtomic(value: string, decimals: number): string {
-  if (decimals === 0) return value;
-  const divisor = 10n ** BigInt(decimals);
-  return `${BigInt(value) / divisor}.${(BigInt(value) % divisor).toString().padStart(decimals, '0')}`;
 }

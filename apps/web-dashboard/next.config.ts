@@ -1,6 +1,15 @@
 import type { NextConfig } from 'next';
 
-const apiOrigin = validatedApiOrigin(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001');
+const apiOrigins = [
+  validatedApiOrigin(
+    process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001',
+    'NEXT_PUBLIC_SHIPYARD_API_URL',
+  ),
+  validatedApiOrigin(
+    process.env['NEXT_PUBLIC_BOTCHAIN_API_URL'] ?? 'http://127.0.0.1:3011',
+    'NEXT_PUBLIC_BOTCHAIN_API_URL',
+  ),
+];
 // React's dev bundle uses eval() to reconstruct cross-environment stack traces -- never in
 // production (React itself guarantees this). Loosening script-src only under `next dev` keeps
 // the deployed CSP exactly as strict as before.
@@ -21,7 +30,7 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; connect-src 'self' ${apiOrigin}; img-src 'self' data:; style-src 'self' 'unsafe-inline'; ${scriptSrc}; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
+            value: `default-src 'self'; connect-src 'self' ${[...new Set(apiOrigins)].join(' ')}; img-src 'self' data:; style-src 'self' 'unsafe-inline'; ${scriptSrc}; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
           },
           { key: 'Referrer-Policy', value: 'no-referrer' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -35,10 +44,9 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-function validatedApiOrigin(value: string): string {
+function validatedApiOrigin(value: string, field: string): string {
   const url = new URL(value);
   const local = url.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost');
-  if (url.protocol !== 'https:' && !local)
-    throw new Error('NEXT_PUBLIC_SHIPYARD_API_URL must use HTTPS outside local development');
+  if (url.protocol !== 'https:' && !local) throw new Error(`${field} must use HTTPS outside local development`);
   return url.origin;
 }

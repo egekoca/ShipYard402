@@ -6,7 +6,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { RunProgressPanels } from './run-progress-panels';
+import { resolvePaymentChainId, RunProgressPanels } from './run-progress-panels';
 
 const { useStepDurationStats } = vi.hoisted(() => ({ useStepDurationStats: vi.fn() }));
 
@@ -45,6 +45,15 @@ afterEach(() => {
 });
 
 describe('RunProgressPanels', () => {
+  it('keeps a pending BOT Chain payment on chain 968 before reconciliation', () => {
+    expect(resolvePaymentChainId(undefined, 'eip155:968', 'bot-chain')).toBe(968);
+    expect(resolvePaymentChainId(undefined, undefined, 'bot-chain')).toBe(968);
+  });
+
+  it('prefers an explicit order chain over challenge and backend fallbacks', () => {
+    expect(resolvePaymentChainId(968, 'eip155:48816', 'goat')).toBe(968);
+  });
+
   it('shows a preparing state on the payment panel before a challenge exists', () => {
     useStepDurationStats.mockReturnValue(null);
     render(<RunProgressPanels {...REQUIRED_PROPS} run={baseRun()} activeStep={-1} />);
@@ -89,6 +98,34 @@ describe('RunProgressPanels', () => {
     );
   });
 
+  it('names the final step after the chain that actually received the attestation', () => {
+    useStepDurationStats.mockReturnValue(null);
+    const attestation: AttestationResponse = {
+      runId: 'run_1',
+      registryAddress: '0xcccc000000000000000000000000000000000000000000000000000000000ccc',
+      chainId: 968,
+      transactionHash: '0xdddd000000000000000000000000000000000000000000000000000000000ddd',
+      attestor: '0xeeee000000000000000000000000000000000000000000000000000000000eee',
+      expiresAt: '2026-09-01T00:00:00.000Z',
+      submittedAt: '2026-08-18T00:10:00.000Z',
+    };
+    const run = baseRun({ status: 'DELIVERED_PASS' }, { status: 'PAID', chainId: 968 });
+
+    render(
+      <RunProgressPanels
+        {...REQUIRED_PROPS}
+        run={run}
+        attestation={attestation}
+        activeStep={5}
+        isTerminal
+        apiBackend="bot-chain"
+      />,
+    );
+
+    expect(screen.getByText('BOT Chain attestation')).toBeInTheDocument();
+    expect(screen.queryByText('GOAT attestation')).not.toBeInTheDocument();
+  });
+
   it('shows the AI risk plan once compiled', () => {
     useStepDurationStats.mockReturnValue(null);
     const plan: PlanResponse = {
@@ -100,6 +137,105 @@ describe('RunProgressPanels', () => {
     };
     render(<RunProgressPanels {...REQUIRED_PROPS} run={baseRun()} plan={plan} activeStep={1} />);
     expect(screen.getByText('MEDIUM risk · 2 scenarios')).toBeInTheDocument();
+  });
+
+  it('shows a bridged run as two ordered steps with both transaction trails', async () => {
+    useStepDurationStats.mockReturnValue(null);
+    const run: RunResponse = {
+      ...baseRun({ status: 'EXECUTING' }, { status: 'PAID' }),
+      settlementLegs: [
+        {
+          legIndex: 0,
+          kind: 'BRIDGE',
+          network: 'eip155:2345',
+          assetSymbol: 'USDT',
+          assetDecimals: 6,
+          status: 'CONFIRMED',
+          transactionHash: `0x${'11'.repeat(32)}`,
+          amountAtomic: '250000',
+          provider: 'STARGATE_V2_LAYERZERO',
+          detail: {
+            destinationNetwork: 'eip155:56',
+            destinationAssetSymbol: 'USDT',
+            destinationTransactionHash: `0x${'22'.repeat(32)}`,
+          },
+        },
+        {
+          legIndex: 1,
+          kind: 'TARGET_PAYMENT',
+          network: 'eip155:56',
+          assetSymbol: 'USDT',
+          assetDecimals: 18,
+          status: 'CONFIRMED',
+          transactionHash: `0x${'33'.repeat(32)}`,
+          amountAtomic: '200000000000000000',
+          provider: 'x402',
+        },
+      ],
+    };
+    const user = userEvent.setup();
+    render(<RunProgressPanels {...REQUIRED_PROPS} run={run} activeStep={2} />);
+
+    expect(screen.getAllByText('Bridging funds')).not.toHaveLength(0);
+    expect(screen.getAllByText('Buying the API call')).not.toHaveLength(0);
+    expect(screen.getAllByRole('link', { name: 'source tx ↗' })[0]).toHaveAttribute(
+      'href',
+      `https://explorer.goat.network/tx/0x${'11'.repeat(32)}`,
+    );
+    expect(screen.getAllByRole('link', { name: 'arrival tx ↗' })[0]).toHaveAttribute(
+      'href',
+      `https://bscscan.com/tx/0x${'22'.repeat(32)}`,
+    );
+    await user.click(screen.getByRole('button', { name: /CROSS-CHAIN PROCUREMENT/ }));
+    expect(screen.getAllByText('0.2')).not.toHaveLength(0);
+  });
+
+  it('shows a prefunded run as a single purchase step, with no bridge stage invented', async () => {
+    // A prefunded run genuinely never bridged; drawing a bridge stage would be a lie about it.
+    useStepDurationStats.mockReturnValue(null);
+    const run: RunResponse = {
+      ...baseRun({ status: 'EXECUTING' }, { status: 'PAID' }),
+      settlementLegs: [
+        {
+          legIndex: 1,
+          kind: 'TARGET_PAYMENT',
+          network: 'eip155:56',
+          assetSymbol: 'USD1',
+          assetDecimals: 18,
+          status: 'CONFIRMED',
+          amountAtomic: '1000000000000000',
+          provider: 'x402',
+        },
+      ],
+    };
+    render(<RunProgressPanels {...REQUIRED_PROPS} run={run} activeStep={2} />);
+
+    expect(screen.queryByText('Bridging funds')).toBeNull();
+    expect(screen.getAllByText('Buying the API call')).not.toHaveLength(0);
+    expect(screen.getAllByText('0.001')).not.toHaveLength(0);
+  });
+
+  it('explains a refused purchase in words rather than leaving the step spinning', async () => {
+    useStepDurationStats.mockReturnValue(null);
+    const run: RunResponse = {
+      ...baseRun({ status: 'EXECUTING' }, { status: 'PAID' }),
+      settlementLegs: [
+        {
+          legIndex: 1,
+          kind: 'TARGET_PAYMENT',
+          network: 'eip155:56',
+          assetSymbol: 'USD1',
+          assetDecimals: 18,
+          status: 'FAILED',
+          provider: 'x402',
+          detail: { rejectionCodes: ['ASSET_NOT_HELD'] },
+        },
+      ],
+    };
+    render(<RunProgressPanels {...REQUIRED_PROPS} run={run} activeStep={2} />);
+
+    expect(screen.getAllByText('Priced in a token this run does not hold')).not.toHaveLength(0);
+    expect(screen.getAllByText('Refused')).not.toHaveLength(0);
   });
 
   it('shows the terminal verdict banner once the run is done', () => {

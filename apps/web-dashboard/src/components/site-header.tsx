@@ -1,5 +1,6 @@
+import { SHOWCASE_NETWORKS } from '../lib/networks';
 import { AppLinkButton } from './app-link-button';
-import GlassSurface from './GlassSurface';
+import { NetworkLogo } from './network-marks';
 
 export function SiteHeader({
   homeHref,
@@ -25,28 +26,14 @@ export function SiteHeader({
           <i />
         </span>
         <div className="nav-actions">
-          <GlassSurface
-            width="auto"
-            height={34}
-            borderRadius={999}
-            borderWidth={0.05}
-            brightness={18}
-            opacity={0.82}
-            blur={7}
-            displace={0.2}
-            backgroundOpacity={0.08}
-            saturation={1.15}
-            distortionScale={-70}
-            redOffset={0}
-            greenOffset={0}
-            blueOffset={0}
-            mixBlendMode="normal"
-            className="network-glass"
-          >
-            <div className="network-pill">
-              <span /> GOAT T3
-            </div>
-          </GlassSurface>
+          <ul className="header-networks" aria-label="Supported networks">
+            {SHOWCASE_NETWORKS.map((network) => (
+              <li className="header-network" key={network.id} title={network.name}>
+                <NetworkLogo networkId={network.id} size={18} className="header-network-logo" />
+                <span className="header-network-label">{network.shortLabel}</span>
+              </li>
+            ))}
+          </ul>
           {showTryApp && <AppLinkButton className="nav-try-button">Try the app</AppLinkButton>}
         </div>
       </div>

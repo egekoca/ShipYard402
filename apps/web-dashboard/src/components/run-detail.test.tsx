@@ -81,7 +81,11 @@ describe('RunDetail', () => {
 
     await user.click(screen.getByRole('button', { name: 'Connect wallet' }));
     await waitFor(() =>
-      expect(ensureSession).toHaveBeenCalledWith(expect.anything(), '0x3000000000000000000000000000000000000003'),
+      expect(ensureSession).toHaveBeenCalledWith(
+        expect.anything(),
+        '0x3000000000000000000000000000000000000003',
+        'goat',
+      ),
     );
   });
 });

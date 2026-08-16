@@ -41,7 +41,14 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
         <div
           key={fillResetKey}
           className={`pipeline-rail-fill${continuous ? ' is-continuous' : ''}`}
-          style={{ width: `${width}%` }}
+          /**
+           * --fill-percent lets the CSS stretch the gold-to-green gradient across the *rail*
+           * rather than across the fill itself. Without it the gradient is sized to whatever the
+           * fill currently is, so a run sitting on step 1 would already show the full ramp and
+           * read as finished-green in its first fifth. Clamped above zero because the CSS divides
+           * by this value.
+           */
+          style={{ width: `${width}%`, '--fill-percent': Math.max(width, 0.01) } as CSSProperties}
         />
         {steps.map((step, index) => {
           const dotPosition = (index + 0.5) / steps.length;
@@ -53,7 +60,10 @@ export function Pipeline({ steps, activeIndex, visible = true, fillResetKey, pro
               // every dot back to unlit instantly, not fade it back out over its light-up transition.
               key={fillResetKey !== undefined ? `${fillResetKey}-${step}` : step}
               className={`pipeline-dot${isDone ? ' is-done' : ''}${isActive ? ' is-active' : ''}`}
-              style={{ left: `${dotPosition * 100}%` }}
+              // Each dot is tinted by where it sits along the same gold-to-green ramp the rail
+              // uses, so a lit dot always matches the fill passing under it instead of every dot
+              // being gold against a rail that has already gone green.
+              style={{ left: `${dotPosition * 100}%`, '--dot-position': dotPosition * 100 } as CSSProperties}
             >
               {isActive && <RadarMark className="pipeline-dot-radar" aria-hidden="true" />}
             </span>

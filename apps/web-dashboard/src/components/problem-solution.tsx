@@ -5,11 +5,13 @@ import { ShieldAlertMark, ShieldCheckMark } from './icons';
 const WITHOUT: readonly { lead: string; highlight: string }[] = [
   { lead: 'The paid path changes.', highlight: 'Nobody re-tests it.' },
   { lead: 'Payment failures are found by', highlight: 'customers.' },
+  { lead: 'An agent on another chain', highlight: "can't even reach the service." },
 ];
 
 const WITH: readonly { lead: string; highlight: string }[] = [
   { lead: 'Every release pays and probes', highlight: 'the real endpoint.' },
   { lead: 'Every result leaves', highlight: 'signed, version-scoped evidence.' },
+  { lead: 'Funds bridge across chains', highlight: 'to pay any supported target.' },
 ];
 
 export function ProblemSolution() {

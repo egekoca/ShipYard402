@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  explorerTxUrl,
   formatDurationEstimate,
   ipfsGatewayUrl,
   isTerminalStatus,
@@ -71,16 +70,6 @@ describe('formatDurationEstimate', () => {
 
   it('formats minutes and seconds together', () => {
     expect(formatDurationEstimate(135_000)).toBe('~2m 15s');
-  });
-});
-
-describe('explorerTxUrl', () => {
-  it('routes GOAT mainnet (chain 2345) to the mainnet explorer', () => {
-    expect(explorerTxUrl(2345, '0xabc')).toBe('https://explorer.goat.network/tx/0xabc');
-  });
-
-  it('routes any other chain id to the testnet3 explorer', () => {
-    expect(explorerTxUrl(48816, '0xabc')).toBe('https://explorer.testnet3.goat.network/tx/0xabc');
   });
 });
 

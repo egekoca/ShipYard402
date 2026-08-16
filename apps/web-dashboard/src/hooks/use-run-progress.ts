@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ShipyardApiClient,
   ShipyardApiError,
   type AttestationResponse,
   type EvidenceResponse,
@@ -11,6 +10,7 @@ import {
 } from '@shipyard402/public-api-client';
 import { useEffect, useMemo, useState } from 'react';
 
+import { createApiClient, DEFAULT_API_BACKEND, type ApiBackendId } from '../lib/api-backends';
 import { getStoredSessionToken } from '../lib/session';
 
 const POLL_MS = 4000;
@@ -42,7 +42,7 @@ export function isTerminalStatus(status: string): boolean {
 }
 
 /** Polls a run (plus its evidence/attestation once available) every few seconds, backing off once terminal. */
-export function useRunProgress(runId: string | null) {
+export function useRunProgress(runId: string | null, apiBackend: ApiBackendId = DEFAULT_API_BACKEND) {
   const [run, setRun] = useState<RunResponse | null>(null);
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidenceResponse | null>(null);
@@ -50,11 +50,8 @@ export function useRunProgress(runId: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
   const client = useMemo(
-    () =>
-      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
-        getStoredSessionToken(),
-      ),
-    [],
+    () => createApiClient(apiBackend, () => getStoredSessionToken(undefined, apiBackend)),
+    [apiBackend],
   );
 
   // run?.run.status (not the whole run object) is deliberate -- poll() only reads `run` to compute
@@ -123,14 +120,11 @@ export function useRunProgress(runId: string | null) {
  * per-run state. Failing quietly (no ETA hint) beats surfacing an error banner for what is only
  * ever a nice-to-have estimate.
  */
-export function useStepDurationStats(): StepDurationStatsResponse | null {
+export function useStepDurationStats(apiBackend: ApiBackendId = DEFAULT_API_BACKEND): StepDurationStatsResponse | null {
   const [stats, setStats] = useState<StepDurationStatsResponse | null>(null);
   const client = useMemo(
-    () =>
-      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
-        getStoredSessionToken(),
-      ),
-    [],
+    () => createApiClient(apiBackend, () => getStoredSessionToken(undefined, apiBackend)),
+    [apiBackend],
   );
 
   useEffect(() => {
@@ -158,11 +152,6 @@ export function formatDurationEstimate(milliseconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return seconds === 0 ? `~${minutes}m` : `~${minutes}m ${seconds}s`;
-}
-
-export function explorerTxUrl(chainId: number, txHash: string): string {
-  const base = chainId === 2345 ? 'https://explorer.goat.network' : 'https://explorer.testnet3.goat.network';
-  return `${base}/tx/${txHash}`;
 }
 
 export function ipfsGatewayUrl(uri: string): string {

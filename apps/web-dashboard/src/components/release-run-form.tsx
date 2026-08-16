@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ShipyardApiClient,
   ShipyardApiError,
   type QuoteRequest,
   type QuoteResponse,
@@ -9,20 +8,24 @@ import {
   type ServiceOnboardingResponse,
 } from '@shipyard402/public-api-client';
 import type { FormEvent, InputHTMLAttributes } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useRunProgress } from '../hooks/use-run-progress';
 import {
-  connectWallet,
-  ensureChain,
-  formatWalletError,
-  getAuthorizedAccount,
-  GOAT_TESTNET3_CHAIN_ID,
-} from '../lib/goat-wallet';
+  createApiClient,
+  DEFAULT_API_BACKEND,
+  fundingChainIdForBackend,
+  type ApiBackendId,
+  type RoutedMarketplaceService,
+} from '../lib/api-backends';
+import { formatAtomic } from '../lib/amount-format';
+import { connectWallet, ensureChain, formatWalletError, getAuthorizedAccount } from '../lib/goat-wallet';
 import { ensureSession, getStoredSessionToken } from '../lib/session';
 import GlassSurface from './GlassSurface';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
+import { EcosystemShowcase } from './ecosystem-showcase';
+import { ServiceMarketplace } from './service-marketplace';
 import { ServiceOnboarding } from './service-onboarding';
 import SpotlightCard from './SpotlightCard';
 import { VerifiedText } from './verified-text';
@@ -40,13 +43,11 @@ type FormState = Readonly<{
 }>;
 
 /**
- * The one service/release/policy currently onboarded in the catalog (organizations/services/
- * releases/policies tables) that a quote can actually be created against -- there is no
- * self-service onboarding flow yet (a real one would let a customer register their own service
- * and compute these from their live OpenAPI spec), so asking a person to hand-type a UUID and two
- * 32-byte hashes here would be pure friction for zero benefit until that exists. Pre-filling the
- * one target that's actually real removes that friction without pretending it's more dynamic than
- * it is; the fields stay editable for anyone who has their own onboarded catalog entry to test.
+ * The catalog row for Shipyard's own demo target, kept here as the pre-selected fallback for the
+ * case where the marketplace directory is empty or unreachable (a fresh local database has neither
+ * this row nor any listings). Normally the directory supplies these identifiers -- nobody is meant
+ * to hand-type a UUID and two 32-byte hashes -- but a first-time visitor should never land on a
+ * form with no valid target at all just because the listing query failed.
  */
 const SELF_TEST_TARGET: Omit<FormState, 'requesterAddress'> = {
   organizationId: 'b6b9ef3b-5528-4dd6-b3e7-cb79440db30a',
@@ -69,12 +70,26 @@ export function ReleaseRunForm() {
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [run, setRun] = useState<RunResponse | null>(null);
   const [runRequestKey, setRunRequestKey] = useState<string | null>(null);
+  const [apiBackend, setApiBackend] = useState<ApiBackendId>(DEFAULT_API_BACKEND);
+  // The catalog's settlement chain, independent from which API deployment owns the listing.
+  // Selecting a card updates this immediately so a later wallet connection still lands on the
+  // service's own network rather than a backend-wide default.
+  const [selectedChainId, setSelectedChainId] = useState(() => fundingChainIdForBackend(DEFAULT_API_BACKEND));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const runProgressRef = useRef<HTMLElement>(null);
   // Polls the run itself the moment it exists, independently of the WalletPayPanel below --
   // so the pipeline visibly starts moving the instant the payment worker sees the on-chain
   // settlement, without the customer ever having to leave this page to watch it happen.
-  const progress = useRunProgress(run?.run.id ?? null);
+  const progress = useRunProgress(run?.run.id ?? null, apiBackend);
+  // The directory entry currently being targeted, kept only so the summary line can say the
+  // service's human name ("GOAT Testnet Paid API") instead of its catalog id. Null means the
+  // built-in fallback target, which has no listing behind it.
+  const [selectedListing, setSelectedListing] = useState<RoutedMarketplaceService | null>(null);
+  // Lifted out of ServiceOnboarding so the directory's "Not listed? Add your API" affordance can
+  // open the same panel, rather than there being two separate ways in that don't know about
+  // each other.
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   // Collapsed by default: these are catalog identifiers (a UUID, two 32-byte hashes, two URLs)
   // that describe exactly which pre-registered service/version/policy the quote is for -- nobody
   // is meant to type these by hand, they're already filled in from SELF_TEST_TARGET. Shown
@@ -82,10 +97,10 @@ export function ReleaseRunForm() {
   const [showTechnical, setShowTechnical] = useState(false);
   const client = useMemo(
     () =>
-      new ShipyardApiClient(process.env['NEXT_PUBLIC_SHIPYARD_API_URL'] ?? 'http://127.0.0.1:3001', undefined, () =>
-        getStoredSessionToken(form.requesterAddress ? (form.requesterAddress as `0x${string}`) : null),
+      createApiClient(apiBackend, () =>
+        getStoredSessionToken(form.requesterAddress ? (form.requesterAddress as `0x${string}`) : null, apiBackend),
       ),
-    [form.requesterAddress],
+    [apiBackend, form.requesterAddress],
   );
 
   // Ticks once a second only while a live, unspent quote exists -- a quote has a real 900s
@@ -101,6 +116,15 @@ export function ReleaseRunForm() {
   const quoteExpiresInMs = quote ? Date.parse(quote.expiresAt) - nowMs : null;
   const quoteExpired = quoteExpiresInMs !== null && quoteExpiresInMs <= 0;
 
+  // Once the economic commitment creates a real run, take the customer directly to step 1.
+  // Without this, the payment challenge is rendered below the fold and can look as if clicking
+  // Create did nothing, while the payment window is already counting down out of sight.
+  const createdRunId = run?.run.id;
+  useEffect(() => {
+    if (!createdRunId) return;
+    runProgressRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [createdRunId]);
+
   // Restores the connected address after a full page navigation (e.g. back from a run's detail
   // page): the wallet extension's own permission grant survives navigation even though this
   // component's state doesn't, so without this a customer looks disconnected every time they
@@ -114,12 +138,12 @@ export function ReleaseRunForm() {
       .then((address) => {
         if (cancelled || !address) return;
         setForm((current) => ({ ...current, requesterAddress: address }));
-        void ensureChain(GOAT_TESTNET3_CHAIN_ID).catch(() => {
+        void ensureChain(fundingChainIdForBackend(apiBackend)).catch(() => {
           /* WalletPayPanel retries this later */
         });
         // Best-effort: if this signature is skipped or fails, the first protected API call below
         // (requestQuote/createRun) tries again before it actually needs the token.
-        void ensureSession(client, address).catch(() => {});
+        void ensureSession(client, address, apiBackend).catch(() => {});
       })
       .catch(() => {
         /* no wallet, or the user hasn't authorized this site -- fine, show Connect */
@@ -143,18 +167,19 @@ export function ReleaseRunForm() {
     try {
       const address = await connectWallet();
       update('requesterAddress', address);
-      // Add/switch to GOAT Testnet3 immediately -- don't wait for a quote+run to exist first, so
+      // Add/switch to this deployment's selected network immediately -- don't wait for a
+      // quote+run to exist first, so
       // the wallet is already on the right network well before Pay is ever clicked. A failure
       // here (e.g. the add-network prompt was dismissed) still leaves the address connected;
       // WalletPayPanel retries the same call later.
       try {
-        await ensureChain(GOAT_TESTNET3_CHAIN_ID);
+        await ensureChain(selectedChainId);
       } catch (chainError) {
         setError(formatWalletError(chainError));
       }
       // One signature to prove control of the address, traded for a bearer token -- everything
       // below this (quoting, creating a run, reading its own progress) needs it.
-      await ensureSession(client, address);
+      await ensureSession(client, address, apiBackend);
     } catch (caught) {
       setError(formatWalletError(caught));
     } finally {
@@ -170,7 +195,7 @@ export function ReleaseRunForm() {
     setRun(null);
     setRunRequestKey(null);
     try {
-      await ensureSession(client, form.requesterAddress as `0x${string}`);
+      await ensureSession(client, form.requesterAddress as `0x${string}`, apiBackend);
       const created = await client.createQuote(form as QuoteRequest);
       setQuote(created);
       setRunRequestKey(`web-${globalThis.crypto.randomUUID()}`);
@@ -181,16 +206,21 @@ export function ReleaseRunForm() {
     }
   }
 
-  function handleOnboarded(onboarded: ServiceOnboardingResponse) {
+  function handleOnboarded(onboarded: ServiceOnboardingResponse, backend: ApiBackendId, chainId: number) {
     setForm((current) => ({
       ...current,
       organizationId: onboarded.organizationId,
       targetServiceId: onboarded.targetServiceId,
+      targetAgentId: onboarded.targetAgentId,
       targetVersionHash: onboarded.targetVersionHash,
       policyHash: onboarded.policyHash,
       x402Endpoint: onboarded.x402Endpoint,
       openApiUrl: onboarded.openApiUrl,
     }));
+    setApiBackend(backend);
+    setSelectedChainId(chainId);
+    void ensureChain(chainId).catch((caught: unknown) => setError(formatWalletError(caught)));
+    setSelectedListing(null);
     setQuote(null);
     setRun(null);
     setRunRequestKey(null);
@@ -198,12 +228,41 @@ export function ReleaseRunForm() {
     setShowTechnical(true);
   }
 
+  /**
+   * A directory listing already carries every identifier a quote binds against, so selecting one
+   * replaces the whole target in a single click. The budget ceiling is deliberately left alone --
+   * it is the customer's own spending limit, not a property of the service being tested.
+   */
+  function handleSelectService(service: RoutedMarketplaceService) {
+    setForm((current) => ({
+      ...current,
+      organizationId: service.organizationId,
+      targetServiceId: service.targetServiceId,
+      targetAgentId: service.targetAgentId,
+      targetVersionHash: service.targetVersionHash,
+      policyHash: service.policyHash,
+      x402Endpoint: service.x402Endpoint,
+      openApiUrl: service.openApiUrl,
+    }));
+    setApiBackend(service.apiBackend);
+    setSelectedChainId(service.chainId);
+    if (form.requesterAddress) {
+      void ensureChain(service.chainId).catch((caught: unknown) => setError(formatWalletError(caught)));
+    }
+    setSelectedListing(service);
+    setOnboardingOpen(false);
+    setQuote(null);
+    setRun(null);
+    setRunRequestKey(null);
+    setError(null);
+  }
+
   async function createRun() {
     if (!quote || !runRequestKey) return;
     setBusy(true);
     setError(null);
     try {
-      await ensureSession(client, form.requesterAddress as `0x${string}`);
+      await ensureSession(client, form.requesterAddress as `0x${string}`, apiBackend);
       const created = await client.createRun(quote.id, runRequestKey);
       setRun(await client.requestPaymentChallenge(created.run.id));
     } catch (caught) {
@@ -215,7 +274,16 @@ export function ReleaseRunForm() {
 
   return (
     <div className="run-request">
-      {form.requesterAddress && <RunHistory requesterAddress={form.requesterAddress as `0x${string}`} />}
+      {form.requesterAddress && (
+        <RunHistory requesterAddress={form.requesterAddress as `0x${string}`} apiBackend={apiBackend} />
+      )}
+      <ServiceMarketplace
+        selectedServiceId={form.targetServiceId}
+        selectedApiBackend={apiBackend}
+        canRegister={Boolean(form.requesterAddress)}
+        onSelect={handleSelectService}
+        onRegisterOwn={() => setOnboardingOpen(true)}
+      />
       <div className="run-grid">
         <SpotlightCard className="app-card-spotlight app-form-spotlight" spotlightColor="rgba(240, 196, 25, 0.12)">
           <form className="release-form" onSubmit={requestQuote}>
@@ -238,7 +306,12 @@ export function ReleaseRunForm() {
             <div className="form-body">
               <div className="target-summary">
                 <p>
-                  {form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
+                  {selectedListing ? (
+                    <>
+                      Testing <strong>{selectedListing.name}</strong> at release{' '}
+                      <span className="mono">{selectedListing.version}</span> — selected from the directory above.
+                    </>
+                  ) : form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
                     <>
                       Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on
                       GOAT Testnet3.
@@ -257,6 +330,8 @@ export function ReleaseRunForm() {
                 {form.requesterAddress && (
                   <ServiceOnboarding
                     requesterAddress={form.requesterAddress as `0x${string}`}
+                    open={onboardingOpen}
+                    onOpenChange={setOnboardingOpen}
                     onOnboarded={handleOnboarded}
                   />
                 )}
@@ -340,7 +415,7 @@ export function ReleaseRunForm() {
                 </div>
                 <h3>No fabricated quote</h3>
                 <p>
-                  A price appears only when the backend has a reviewed GOAT Flow chain, token, and receiving-address
+                  A price appears only when the selected backend has a reviewed chain, token, and receiving-address
                   capability.
                 </p>
               </div>
@@ -383,13 +458,17 @@ export function ReleaseRunForm() {
                   )}
                 </GlassSurface>
                 <p className="amount">
-                  {formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)}{' '}
+                  <span className="quote-amount-value">
+                    {formatAtomic(quote.totalAtomicAmount, quote.capabilitySnapshot.tokenDecimals)}
+                  </span>{' '}
                   <small>{quote.capabilitySnapshot.tokenSymbol}</small>
                 </p>
                 <dl>
                   <div>
                     <dt>Network</dt>
-                    <dd>GOAT / {quote.capabilitySnapshot.chainId}</dd>
+                    <dd>
+                      {networkLabel(quote.capabilitySnapshot.chainId)} / {quote.capabilitySnapshot.chainId}
+                    </dd>
                   </div>
                   <div>
                     <dt>Mode</dt>
@@ -426,7 +505,7 @@ export function ReleaseRunForm() {
       </div>
 
       {run && (
-        <section className="run-progress-section glow-card" aria-live="polite">
+        <section ref={runProgressRef} className="run-progress-section glow-card" aria-live="polite">
           <div className="run-progress-header">
             <span className="panel-label">
               <i>[RUN]</i> {run.run.id}
@@ -434,7 +513,7 @@ export function ReleaseRunForm() {
             </span>
             <a
               className="explorer-link"
-              href={`/runs/${encodeURIComponent(run.run.id)}`}
+              href={`/runs/${encodeURIComponent(run.run.id)}?backend=${encodeURIComponent(apiBackend)}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -453,6 +532,7 @@ export function ReleaseRunForm() {
               tokenSymbol={quote?.capabilitySnapshot.tokenSymbol}
               tokenDecimals={quote?.capabilitySnapshot.tokenDecimals}
               connectedAddress={form.requesterAddress as `0x${string}`}
+              apiBackend={apiBackend}
             />
           ) : (
             <div className="run-detail-loading">
@@ -464,6 +544,8 @@ export function ReleaseRunForm() {
           )}
         </section>
       )}
+
+      <EcosystemShowcase />
     </div>
   );
 }
@@ -503,8 +585,10 @@ export function formatCountdown(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-export function formatAtomic(value: string, decimals: number): string {
-  if (decimals === 0) return value;
-  const divisor = 10n ** BigInt(decimals);
-  return `${BigInt(value) / divisor}.${(BigInt(value) % divisor).toString().padStart(decimals, '0')}`;
+export { formatAtomic } from '../lib/amount-format';
+
+function networkLabel(chainId: number): string {
+  if (chainId === 968) return 'BOT Chain';
+  if (chainId === 56) return 'BNB';
+  return 'GOAT';
 }

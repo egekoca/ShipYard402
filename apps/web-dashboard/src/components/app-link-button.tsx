@@ -21,7 +21,7 @@ export function AppLinkButton({
       tint="#000000"
       tintOpacity={0.6}
       textColor="#f0c419"
-      lineColor="#f0c419"
+      lineColor="#14a17e"
       baseColor="#000000"
       intensity={1.05}
       shineSize={14}

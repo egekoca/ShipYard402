@@ -50,4 +50,12 @@ describe('formatAtomic', () => {
   it('zero-pads the fractional part so trailing zeros are not dropped', () => {
     expect(formatAtomic('1000001', 6)).toBe('1.000001');
   });
+
+  it('uses a compact scientific representation for tiny 18-decimal amounts', () => {
+    expect(formatAtomic('1421052', 18)).toBe('1.421052e-12');
+  });
+
+  it('does not turn a zero amount into scientific notation', () => {
+    expect(formatAtomic('0', 18)).toBe('0.000000000000000000');
+  });
 });

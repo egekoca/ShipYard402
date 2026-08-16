@@ -4,7 +4,10 @@ import AnimatedContent from '../components/AnimatedContent';
 import LightRays from '../components/LightRays';
 import { AppLinkButton } from '../components/app-link-button';
 import { AnimatedWorkflow } from '../components/animated-workflow';
-import { HeroRadar } from '../components/logo';
+import { Capabilities } from '../components/capabilities';
+import { CrossChainFlow } from '../components/cross-chain-flow';
+import { HeroRoute } from '../components/hero-console';
+import { NetworksStrip } from '../components/networks-strip';
 import { ProblemSolution } from '../components/problem-solution';
 import { ReplayDefenseDemo } from '../components/replay-defense-demo';
 import { SiteHeader } from '../components/site-header';
@@ -36,30 +39,50 @@ export default function HomePage() {
     <main>
       <SiteHeader homeHref="#top" />
 
-      <section className="hero" id="top">
-        <HeroRadar className="hero-radar" />
-        <h1>
-          <span className="hero-in" style={delayStyle(40)}>
-            <ShimmerText>Prove the paid path.</ShimmerText>
+      <section className="hero hero--split" id="top">
+        <div className="hero-lead">
+          <span className="hero-eyebrow hero-in" style={delayStyle(20)}>
+            x402 RELEASE ASSURANCE
           </span>
-          <br />
-          <em className="hero-in" style={delayStyle(80)}>
-            <ShimmerText>Before users find the drift.</ShimmerText>
-          </em>
-        </h1>
-        <p className="hero-copy hero-in" style={delayStyle(200)}>
-          Real x402 purchases. Signed evidence. One exact service version.
-        </p>
-        <AppLinkButton size="md" className="hero-cta hero-in" style={delayStyle(300)}>
-          Run a live test →
-        </AppLinkButton>
+          <h1>
+            <span className="hero-in" style={delayStyle(40)}>
+              <ShimmerText>Prove every paid path.</ShimmerText>
+            </span>
+            <br />
+            <em className="hero-in" style={delayStyle(80)}>
+              <ShimmerText>Before release.</ShimmerText>
+            </em>
+          </h1>
+          <p className="hero-copy hero-in" style={delayStyle(200)}>
+            Pay it. Attack it. Publish a signed verdict.
+          </p>
+          <div className="hero-actions hero-in" style={delayStyle(300)}>
+            <AppLinkButton size="md" className="hero-cta">
+              Run a test →
+            </AppLinkButton>
+            <a className="hero-secondary" href="#how-it-works">
+              How it works
+            </a>
+          </div>
+        </div>
+        <div className="hero-in hero-visual" style={delayStyle(240)}>
+          <HeroRoute />
+        </div>
       </section>
 
       <ProblemSolution />
 
+      <NetworksStrip />
+
+      <Capabilities />
+
       <ThreatCoverage />
 
-      <AnimatedWorkflow />
+      <CrossChainFlow />
+
+      <div id="how-it-works">
+        <AnimatedWorkflow />
+      </div>
 
       <ReplayDefenseDemo />
 
