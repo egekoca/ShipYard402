@@ -73,6 +73,14 @@ with open('.env', 'w') as f:
     f.write(content)
 PYEOF
 
+# The directory stores the URL a service was onboarded with, and the tunnel hostname above is new
+# on every restart -- so without this the listing keeps pointing at a host that no longer resolves
+# and the next customer run pays for real, then fails at procurement. Best-effort: the api-gateway
+# is not started by this script, so it may not be up yet.
+echo "==> re-pointing the listed demo target at the new tunnel"
+DEMO_TARGET_BASE_URL="$TUNNEL_URL" node scripts/testnet/relist-demo-target.mjs \
+  || echo "    (skipped -- start the api-gateway, then: DEMO_TARGET_BASE_URL=$TUNNEL_URL node scripts/testnet/relist-demo-target.mjs)"
+
 echo "==> starting payment-worker"
 nohup pnpm --filter @shipyard402/payment-worker dev > /tmp/payment-worker-dev.log 2>&1 &
 disown
