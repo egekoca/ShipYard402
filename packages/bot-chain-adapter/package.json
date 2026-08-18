@@ -21,7 +21,7 @@
     "@shipyard402/goat-chain-reader": "workspace:*",
     "@shipyard402/x402-payments": "workspace:*",
     "ethers": "6.17.0",
-    "viem": "2.55.10"
+    "viem": "2.55.16"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

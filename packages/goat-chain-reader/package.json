@@ -19,7 +19,7 @@
   "dependencies": {
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/payment-reconciliation": "workspace:*",
-    "viem": "2.55.10"
+    "viem": "2.55.16"
   },
   "devDependencies": {
     "@types/node": "24.3.0",

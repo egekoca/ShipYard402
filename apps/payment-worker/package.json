@@ -21,7 +21,7 @@
     "@shipyard402/goat-network-config": "workspace:*",
     "@shipyard402/payment-reconciliation": "workspace:*",
     "@shipyard402/persistence-postgres": "workspace:*",
-    "viem": "2.55.10",
+    "viem": "2.55.16",
     "zod": "3.25.76"
   },
   "devDependencies": {
