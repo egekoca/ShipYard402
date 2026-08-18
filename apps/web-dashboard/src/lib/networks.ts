@@ -1,9 +1,10 @@
 /**
  * Single source of truth for the blockchain networks Shipyard402 works across, and -- crucially --
- * how far each one actually is. The `status` is deliberately honest: only GOAT Testnet3 has a real
- * run history today, cross-chain BNB settlement is implemented but not yet proven with a mainnet
- * run, and BOT Chain is still scaffolding. The UI renders these badges verbatim so marketing copy
- * can never quietly overclaim a network as production-live before it is.
+ * how far each one actually is. The `status` is deliberately honest, and cuts both ways: GOAT
+ * Testnet3 has the longest real run history, BOT Chain testnet has settled and attested real runs
+ * end to end, and cross-chain BNB settlement is implemented but not yet proven with a mainnet run.
+ * The UI renders these badges verbatim, so a network may not be shown as more finished than its
+ * evidence supports -- nor left understated once real runs exist.
  */
 
 export type NetworkStatus = 'live' | 'beta' | 'coming';
@@ -84,9 +85,9 @@ export const BOT_CHAIN: NetworkInfo = {
   colorVar: '--bot-green',
   logo: { src: '/networks/botchain.jpeg', background: '#050607' },
   explorerUrl: 'https://scan.bohr.life',
-  status: 'coming',
+  status: 'beta',
   roles: ['settlement'],
-  blurb: 'Direct-merchant settlement. Adapter ready, registry next.',
+  blurb: 'Direct-merchant settlement, verified on-chain with no merchant API. Real runs settle and attest here.',
 };
 
 export const BOT_CHAIN_MAINNET: NetworkInfo = {
