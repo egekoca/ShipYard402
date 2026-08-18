@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,12 +73,29 @@ vi.mock('./service-onboarding', () => ({ ServiceOnboarding: () => null }));
 const REQUESTER_ADDRESS = '0x3000000000000000000000000000000000000003';
 const scrollIntoView = vi.fn();
 
+/** A directory row, which is the only thing that can give the form a target to quote. */
+const LISTING = {
+  organizationId: '11111111-2222-3333-4444-555555555555',
+  targetServiceId: 'service:acme-weather',
+  targetAgentId: 'agent:service:acme-weather',
+  targetVersionHash: '0xaaaa000000000000000000000000000000000000000000000000000000000aaa',
+  policyHash: '0xbbbb000000000000000000000000000000000000000000000000000000000bbb',
+  x402Endpoint: 'https://api.acme.com/paid/weather',
+  openApiUrl: 'https://api.acme.com/openapi.json',
+  name: 'Acme Weather',
+  description: null,
+  logoUrl: null,
+  version: '2.1.0',
+  chainId: 48816,
+  listedAt: '2026-08-13T00:00:00.000Z',
+};
+
 beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView });
   getAuthorizedAccount.mockResolvedValue(null);
-  // Most cases here are about the quote flow, not the directory -- an empty directory is the
-  // configuration where the built-in fallback target is what gets quoted.
-  listMarketplaceServices.mockResolvedValue([]);
+  // Most cases here are about the quote flow rather than the directory itself, but there is no
+  // built-in target any more: a listing is what makes the form quotable at all.
+  listMarketplaceServices.mockResolvedValue([LISTING]);
 });
 
 afterEach(() => {
@@ -86,11 +103,51 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/**
+ * The service name also appears in the form's target summary once a listing is selected, so a
+ * click meant for a directory card has to be scoped to the directory rather than matched globally.
+ */
+async function directory(): Promise<HTMLElement> {
+  return screen.findByRole('region', { name: 'x402 service directory' });
+}
+
 describe('ReleaseRunForm', () => {
   it('asks to connect a wallet before anything can be submitted', async () => {
     render(<ReleaseRunForm />);
     expect(await screen.findByRole('button', { name: 'Connect wallet' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect a wallet first' })).toBeDisabled();
+  });
+
+  it('refuses to quote when the directory has nothing to target', async () => {
+    // The form ships with no compiled-in target, so an empty directory means there is genuinely
+    // nothing to quote -- saying so is honest, where quoting a fabricated endpoint would take a
+    // real payment for a run whose target does not exist.
+    listMarketplaceServices.mockResolvedValue([]);
+    connectWallet.mockResolvedValue(REQUESTER_ADDRESS);
+    ensureChain.mockResolvedValue(undefined);
+    ensureSession.mockResolvedValue('session-token');
+
+    const user = userEvent.setup();
+    render(<ReleaseRunForm />);
+    await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
+
+    expect(await screen.findByRole('button', { name: 'Pick a target first' })).toBeDisabled();
+    expect(screen.getByText(/No target selected yet/)).toBeInTheDocument();
+    expect(createQuote).not.toHaveBeenCalled();
+  });
+
+  it('adopts the first listing so a visitor never lands on an unquotable form', async () => {
+    connectWallet.mockResolvedValue(REQUESTER_ADDRESS);
+    ensureChain.mockResolvedValue(undefined);
+    ensureSession.mockResolvedValue('session-token');
+    createQuote.mockRejectedValue(new Error('quote rejected'));
+
+    const user = userEvent.setup();
+    render(<ReleaseRunForm />);
+    await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
+    await user.click(await screen.findByRole('button', { name: 'Request transparent quote' }));
+
+    expect(createQuote).toHaveBeenCalledWith(expect.objectContaining({ targetServiceId: LISTING.targetServiceId }));
   });
 
   it('connects a wallet, then requests and displays a quote', async () => {
@@ -162,23 +219,8 @@ describe('ReleaseRunForm', () => {
     expect(await screen.findByText('no reviewed merchant capability')).toBeInTheDocument();
   });
 
-  it('quotes the service picked from the directory, not the built-in fallback target', async () => {
-    const listing = {
-      organizationId: '11111111-2222-3333-4444-555555555555',
-      targetServiceId: 'service:acme-weather',
-      targetAgentId: 'agent:service:acme-weather',
-      targetVersionHash: '0xaaaa000000000000000000000000000000000000000000000000000000000aaa',
-      policyHash: '0xbbbb000000000000000000000000000000000000000000000000000000000bbb',
-      x402Endpoint: 'https://api.acme.com/paid/weather',
-      openApiUrl: 'https://api.acme.com/openapi.json',
-      name: 'Acme Weather',
-      description: null,
-      logoUrl: null,
-      version: '2.1.0',
-      chainId: 48816,
-      listedAt: '2026-08-13T00:00:00.000Z',
-    };
-    listMarketplaceServices.mockResolvedValue([listing]);
+  it('quotes exactly the service picked from the directory', async () => {
+    const listing = LISTING;
     connectWallet.mockResolvedValue(REQUESTER_ADDRESS);
     ensureChain.mockResolvedValue(undefined);
     ensureSession.mockResolvedValue('session-token');
@@ -188,7 +230,7 @@ describe('ReleaseRunForm', () => {
     render(<ReleaseRunForm />);
 
     await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
-    await user.click(await screen.findByText('Acme Weather'));
+    await user.click(await within(await directory()).findByText('Acme Weather'));
     await user.click(await screen.findByRole('button', { name: 'Request transparent quote' }));
 
     // Every catalog identifier the quote binds against has to come from the listing -- a target
@@ -233,7 +275,7 @@ describe('ReleaseRunForm', () => {
     render(<ReleaseRunForm />);
     await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
     await user.click(await screen.findByRole('tab', { name: /BNB/ }));
-    await user.click(await screen.findByText('BNB Weather'));
+    await user.click(await within(await directory()).findByText('BNB Weather'));
 
     expect(ensureChain).toHaveBeenLastCalledWith(56);
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   backendForChainId,
@@ -51,6 +51,10 @@ export function ServiceMarketplace({
 }>) {
   const [state, setState] = useState<MarketplaceState>({ kind: 'loading' });
   const [chain, setChain] = useState<ChainFilter>('goat');
+  // Held in a ref so adopting the first listing depends on the listing arriving, not on the parent
+  // happening to hand us a new callback identity on some later render.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -98,6 +102,16 @@ export function ServiceMarketplace({
       countByChain[current] > 0 ? current : (CHAIN_TABS.find((t) => countByChain[t.key] > 0)?.key ?? current),
     );
   }, [hasServices, countByChain]);
+
+  // The form holds no target until something real supplies one, so adopt the first listing as soon
+  // as the directory has one. Without this a first-time visitor lands on a form that cannot be
+  // submitted at all; with it they land on a target whose every identifier came from the catalog.
+  // Guarded on the parent still having no selection, so a later manual pick is never overridden.
+  const firstService = services[0];
+  useEffect(() => {
+    if (!firstService || selectedServiceId) return;
+    onSelectRef.current(firstService);
+  }, [firstService, selectedServiceId]);
 
   return (
     <section className="marketplace" aria-label="x402 service directory">

@@ -43,27 +43,43 @@ type FormState = Readonly<{
 }>;
 
 /**
- * The catalog row for Shipyard's own demo target, kept here as the pre-selected fallback for the
- * case where the marketplace directory is empty or unreachable (a fresh local database has neither
- * this row nor any listings). Normally the directory supplies these identifiers -- nobody is meant
- * to hand-type a UUID and two 32-byte hashes -- but a first-time visitor should never land on a
- * form with no valid target at all just because the listing query failed.
+ * The form starts with no target at all. Every catalog identifier a quote binds against --
+ * organization, service, agent, version hash, policy hash, endpoints -- describes a row that
+ * exists in some deployment's database, so the only truthful sources for them are the directory
+ * and the onboarding form. Compiling a target in here instead would ship identifiers that are
+ * only valid against one particular database and an endpoint nobody can reach, and a visitor who
+ * funded that would pay for a run whose target does not exist.
+ *
+ * The directory selects its first listing as soon as it loads, so the common case still lands on
+ * a ready-to-quote target without anyone typing a UUID and two 32-byte hashes.
  */
-const SELF_TEST_TARGET: Omit<FormState, 'requesterAddress'> = {
-  organizationId: 'b6b9ef3b-5528-4dd6-b3e7-cb79440db30a',
-  targetAgentId: 'agent:shipyard402-selftest',
-  targetServiceId: 'service:x402-demo-target:testnet3-real-merchant',
-  targetVersionHash: '0xd7a58f3393a3ce108484d3fe83c2a65a870c99cb1be072363b9cc26f1f5ec176',
-  policyHash: '0x46a763af460addd917b0bb04976aee3544dbfe1e5d8cfe89808247091351c490',
-  x402Endpoint: 'https://x402-demo-target.shipyard402-selftest.internal/paid/resource',
-  openApiUrl: 'https://x402-demo-target.shipyard402-selftest.internal/openapi.json',
-  maximumCustomerBudgetAtomic: '5000000',
-};
-
 const initialForm: FormState = {
-  ...SELF_TEST_TARGET,
+  organizationId: '',
+  targetAgentId: '',
+  targetServiceId: '',
+  targetVersionHash: '',
+  policyHash: '',
+  x402Endpoint: '',
+  openApiUrl: '',
+  // The customer's own spending limit, not a property of any service -- safe to prefill.
+  maximumCustomerBudgetAtomic: '5000000',
   requesterAddress: '',
 };
+
+/** Every identifier the server binds a quote against. A blank one means there is no target yet. */
+const TARGET_FIELDS = [
+  'organizationId',
+  'targetAgentId',
+  'targetServiceId',
+  'targetVersionHash',
+  'policyHash',
+  'x402Endpoint',
+  'openApiUrl',
+] as const satisfies readonly (keyof FormState)[];
+
+function hasCompleteTarget(form: FormState): boolean {
+  return TARGET_FIELDS.every((field) => form[field].trim().length > 0);
+}
 
 export function ReleaseRunForm() {
   const [form, setForm] = useState<FormState>(initialForm);
@@ -84,17 +100,21 @@ export function ReleaseRunForm() {
   const progress = useRunProgress(run?.run.id ?? null, apiBackend);
   // The directory entry currently being targeted, kept only so the summary line can say the
   // service's human name ("GOAT Testnet Paid API") instead of its catalog id. Null means the
-  // built-in fallback target, which has no listing behind it.
+  // target came from onboarding rather than a listing, or that there is no target yet.
   const [selectedListing, setSelectedListing] = useState<RoutedMarketplaceService | null>(null);
   // Lifted out of ServiceOnboarding so the directory's "Not listed? Add your API" affordance can
   // open the same panel, rather than there being two separate ways in that don't know about
   // each other.
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   // Collapsed by default: these are catalog identifiers (a UUID, two 32-byte hashes, two URLs)
-  // that describe exactly which pre-registered service/version/policy the quote is for -- nobody
-  // is meant to type these by hand, they're already filled in from SELF_TEST_TARGET. Shown
+  // that describe exactly which registered service/version/policy the quote is for -- nobody is
+  // meant to type these by hand, selecting a listing or onboarding a service fills them in. Shown
   // collapsed so a first-time visitor sees "what am I testing" in plain language, not a form.
   const [showTechnical, setShowTechnical] = useState(false);
+  // No target means nothing to quote. Guarding here rather than letting the request go out keeps
+  // the failure honest and local: the server would reject an incomplete binding anyway, but only
+  // after the person had reason to think a run was starting.
+  const targetReady = hasCompleteTarget(form);
   const client = useMemo(
     () =>
       createApiClient(apiBackend, () =>
@@ -311,15 +331,15 @@ export function ReleaseRunForm() {
                       Testing <strong>{selectedListing.name}</strong> at release{' '}
                       <span className="mono">{selectedListing.version}</span> — selected from the directory above.
                     </>
-                  ) : form.targetServiceId === SELF_TEST_TARGET.targetServiceId ? (
-                    <>
-                      Testing <strong>x402-demo-target</strong> — a pre-registered, real GOAT Flow merchant service on
-                      GOAT Testnet3.
-                    </>
-                  ) : (
+                  ) : targetReady ? (
                     <>
                       Testing <strong className="mono">{form.targetServiceId}</strong> — registered through onboarding
                       below.
+                    </>
+                  ) : (
+                    <>
+                      No target selected yet — pick a service from the directory above, or register your own through
+                      onboarding.
                     </>
                   )}{' '}
                   Budget ceiling: <span className="mono">{form.maximumCustomerBudgetAtomic}</span> atomic units.
@@ -393,13 +413,19 @@ export function ReleaseRunForm() {
               )}
             </div>
             <div className="form-footer">
-              <button className="primary-button" disabled={busy || !form.requesterAddress} type="submit">
+              <button
+                className="primary-button"
+                disabled={busy || !form.requesterAddress || !targetReady}
+                type="submit"
+              >
                 {busy && <span className="spinner" aria-hidden="true" />}
                 {!form.requesterAddress
                   ? 'Connect a wallet first'
-                  : busy
-                    ? 'Checking capability…'
-                    : 'Request transparent quote'}
+                  : !targetReady
+                    ? 'Pick a target first'
+                    : busy
+                      ? 'Checking capability…'
+                      : 'Request transparent quote'}
               </button>
             </div>
           </form>
