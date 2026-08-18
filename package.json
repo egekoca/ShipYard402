@@ -41,16 +41,16 @@
     "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm test:coverage && pnpm build && pnpm depcruise && pnpm contracts:compile && pnpm contracts:test"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
-    "@openzeppelin/contracts": "5.4.0",
-    "@types/node": "24.3.0",
-    "dependency-cruiser": "18.1.1",
+    "@biomejs/biome": "2.5.8",
+    "@openzeppelin/contracts": "5.6.1",
+    "@types/node": "26.2.0",
+    "dependency-cruiser": "18.2.0",
     "ethers": "6.17.0",
-    "solc": "0.8.24",
-    "tsx": "4.20.5",
-    "turbo": "2.5.6",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "solc": "0.8.36",
+    "tsx": "4.23.12",
+    "turbo": "2.10.10",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   },
   "pnpm": {
     "overrides": {
