@@ -24,7 +24,6 @@ import { ensureSession, getStoredSessionToken } from '../lib/session';
 import GlassSurface from './GlassSurface';
 import { RunHistory } from './run-history';
 import { RunProgressPanels } from './run-progress-panels';
-import { EcosystemShowcase } from './ecosystem-showcase';
 import { ServiceMarketplace } from './service-marketplace';
 import { ServiceOnboarding } from './service-onboarding';
 import SpotlightCard from './SpotlightCard';
@@ -570,8 +569,6 @@ export function ReleaseRunForm() {
           )}
         </section>
       )}
-
-      <EcosystemShowcase />
     </div>
   );
 }
