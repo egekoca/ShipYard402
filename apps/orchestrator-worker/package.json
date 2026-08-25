@@ -27,7 +27,7 @@
     "@shipyard402/stargate-bridge-adapter": "workspace:*",
     "@shipyard402/x402-payments": "workspace:*",
     "ethers": "6.17.0",
-    "openai": "7.4.0",
+    "openai": "7.5.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
