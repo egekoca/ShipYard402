@@ -20,7 +20,7 @@
     "@shipyard402/bot-chain-network-config": "workspace:*",
     "@shipyard402/goat-network-config": "workspace:*",
     "ethers": "6.17.0",
-    "viem": "2.55.10"
+    "viem": "2.55.19"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
