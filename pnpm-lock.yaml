@@ -106,8 +106,8 @@ importers:
         specifier: 2.22.0
         version: 2.22.0
       '@x402/evm':
-        specifier: 2.22.0
-        version: 2.22.0(typescript@5.9.3)
+        specifier: 2.23.0
+        version: 2.23.0(typescript@5.9.3)
       '@x402/fastify':
         specifier: 2.22.0
         version: 2.22.0(ethers@6.17.0)(fastify@5.11.2)(typescript@5.9.3)
@@ -342,8 +342,8 @@ importers:
         specifier: 2.22.0
         version: 2.22.0
       '@x402/evm':
-        specifier: 2.22.0
-        version: 2.22.0(typescript@5.9.3)
+        specifier: 2.23.0
+        version: 2.23.0(typescript@5.9.3)
       viem:
         specifier: 2.55.10
         version: 2.55.10(typescript@5.9.3)(zod@3.25.76)
@@ -1869,8 +1869,11 @@ packages:
   '@x402/core@2.22.0':
     resolution: {integrity: sha512-hYySs/PvukqRipC2mKqrsn/jx2U/p5EGnN3clQ2CIcApwtoFuG77CqpC3Wy7Fdp/juW8t8quiPVnqGuIkfix1Q==}
 
-  '@x402/evm@2.22.0':
-    resolution: {integrity: sha512-WzZVGVx6B2cvCAEHDCuNWfQkcwIZsOVdGcJKILmG/ySzLpBZ1/ARU2kU/8K3ekxhygAKrkarltVVznSEoO5vdQ==}
+  '@x402/core@2.23.0':
+    resolution: {integrity: sha512-EFeV0nXbTPPe5FXaD6y9vMgqc+k/ujLXCrUPrQXkmHjHyjC3Ir5tTL1e2FPSkx2+GUGzfpt1wVZb36639ygkWw==}
+
+  '@x402/evm@2.23.0':
+    resolution: {integrity: sha512-Ikaya5c0/qV/pdFRGfGSdlUX3ELZaUgrddsmmXZHPANtIAQ5uFH15+O+9Bt4PqdAXqCuS43WskJ7HgiLn/uW2g==}
 
   '@x402/extensions@2.22.0':
     resolution: {integrity: sha512-E5Ma1Fs1GwO/ET7KtGUI7dPuVFoINR+mwTWVoGdNi3DsJBJKDWSA7Ta7bDgSANzV3XCAMK9gvz/VSItZliApMA==}
@@ -4940,9 +4943,13 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@x402/evm@2.22.0(typescript@5.9.3)':
+  '@x402/core@2.23.0':
     dependencies:
-      '@x402/core': 2.22.0
+      zod: 3.25.76
+
+  '@x402/evm@2.23.0(typescript@5.9.3)':
+    dependencies:
+      '@x402/core': 2.23.0
       viem: 2.55.10(typescript@5.9.3)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
